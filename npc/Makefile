@@ -62,7 +62,7 @@ sim:
 	@echo "-- RUN ---------------------"
 	obj_dir/Vtop
 	@echo "-- OPEN WAVEFORM ------------"
-	gtkwave $(WAVE_FILE) &
+	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
 	@echo "-- DONE --------------------"
 	
 include ../Makefile
