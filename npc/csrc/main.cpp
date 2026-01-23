@@ -19,19 +19,23 @@ int main(int argc, char** argv) {
     VerilatedFstC* tfp = new VerilatedFstC;
     top->trace(tfp, 99); 
     tfp->open("wave/dump.fst");
-    int time = 100;
     
-    while (!contextp->gotFinish() && time--) {
+    int cycles = 100;
+    
+    while (!contextp->gotFinish() && cycles--) {
+
+        contextp->timeInc(1); 
 
         int a = rand() & 1;
-  	int b = rand() & 1;
-  	top->a = a;
-  	top->b = b;
-  	top->eval();
-  	tfp->dump(contextp->time());
-  	printf("a = %d, b = %d, f = %d\n", a, b, top->f);
-  	assert(top->f == (a ^ b));
-  	
+        int b = rand() & 1;
+        top->a = a;
+        top->b = b;
+        top->eval();
+        
+        tfp->dump(contextp->time());
+        
+        printf("a = %d, b = %d, f = %d\n", a, b, top->f);
+        assert(top->f == (a ^ b));
     }
 
     top->final();
@@ -43,3 +47,4 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+

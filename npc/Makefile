@@ -46,7 +46,7 @@ endif
 
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
-	-rm -rf obj_dir *.log *.dmp *.vpd core
+	-rm -rf obj_dir *.log *.dmp *.vpd core $(WAVE_DIR)
 	
 all:
 	@echo "Write this Makefile by your self."
@@ -61,7 +61,6 @@ sim:
 	@echo "-- RUN ---------------------"
 	obj_dir/Vtop
 	@echo "-- OPEN WAVEFORM ------------"
-	# 仿真结束后自动打开 GTKWave (加上 & 让其在后台运行，不阻塞终端)
 	gtkwave $(WAVE_FILE) &
 	@echo "-- DONE --------------------"
 	
