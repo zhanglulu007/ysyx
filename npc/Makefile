@@ -14,6 +14,7 @@
 
 	
 include ../Makefile
+include $(NVBOARD_HOME)/scripts/nvboard.mk
 
 ifneq ($(words $(CURDIR)),1)
   $(error Unsupported: GNU Make cannot build in directories containing spaces, build elsewhere: '$(CURDIR)')
@@ -58,8 +59,6 @@ WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 sim:
-	@echo "DEBUG: 正在打印 git_commit 命令内容..."
-	@$(info DEBUG: Git commit 命令内容如下: [$(call git_commit, "sim RTL")])
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)

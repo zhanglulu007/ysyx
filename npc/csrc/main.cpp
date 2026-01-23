@@ -6,6 +6,7 @@
 //======================================================================
 
 #include <iostream>
+#include <nvboard.h>
 #include <verilated.h>
 #include <verilated_fst_c.h>
 #include "Vtop.h"
@@ -15,6 +16,7 @@ int main(int argc, char** argv) {
     VerilatedContext* const contextp = new VerilatedContext;
     contextp->commandArgs(argc, argv);
     Vtop* const top = new Vtop{contextp};
+    nvboard_bind_all_pins(&top);
     Verilated::traceEverOn(true);
     VerilatedFstC* tfp = new VerilatedFstC;
     top->trace(tfp, 99); 
@@ -26,16 +28,11 @@ int main(int argc, char** argv) {
 
         contextp->timeInc(1); 
 
-        int a = rand() & 1;
-        int b = rand() & 1;
-        top->a = a;
-        top->b = b;
+
         top->eval();
         
         tfp->dump(contextp->time());
-        
-        printf("a = %d, b = %d, f = %d\n", a, b, top->f);
-        assert(top->f == (a ^ b));
+
     }
 
     top->final();
