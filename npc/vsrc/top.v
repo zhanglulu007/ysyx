@@ -8,6 +8,6 @@ module top(
     assign led[0] = sw[0] ^ sw[1];
 
     // 其他 LED 关闭 
-    assign led[15:1] = 16'h0;
+    assign led[15:1] = 15'h0;
 
 endmodule
