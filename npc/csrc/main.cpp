@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
     VerilatedContext* const contextp = new VerilatedContext;
     contextp->commandArgs(argc, argv);
     Vtop* const top = new Vtop{contextp};
-
+    Verilated::traceEverOn(true);
     VerilatedFstC* tfp = new VerilatedFstC;
     top->trace(tfp, 99); 
     tfp->open("wave/dump.fst");
