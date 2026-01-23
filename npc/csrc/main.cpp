@@ -16,7 +16,10 @@ int main(int argc, char** argv) {
     VerilatedContext* const contextp = new VerilatedContext;
     contextp->commandArgs(argc, argv);
     Vtop* const top = new Vtop{contextp};
+
     nvboard_bind_all_pins(&top);
+    nvboard_init();
+
     Verilated::traceEverOn(true);
     VerilatedFstC* tfp = new VerilatedFstC;
     top->trace(tfp, 99); 
@@ -26,11 +29,9 @@ int main(int argc, char** argv) {
     
     while (!contextp->gotFinish() && cycles--) {
 
+        nvboard_update();
         contextp->timeInc(1); 
-
-
         top->eval();
-        
         tfp->dump(contextp->time());
 
     }

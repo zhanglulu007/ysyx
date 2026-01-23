@@ -7,7 +7,7 @@ module top(
     // 我们使用 sw[0] 和 sw[1] 控制 led[0]
     assign led[0] = sw[0] ^ sw[1];
 
-    // 其他 LED 关闭
+    // 其他 LED 关闭 
     assign led[15:1] = 16'h0;
 
 endmodule
