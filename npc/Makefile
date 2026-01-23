@@ -50,14 +50,19 @@ clean mostlyclean distclean maintainer-clean::
 	
 all:
 	@echo "Write this Makefile by your self."
+	
+WAVE_DIR = wave
+WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- Verilator hello-world simple example"
 	@echo "-- VERILATE & BUILD --------"
-	$(VERILATOR) -cc --exe --build -j vsrc/top.v csrc/main.cpp
+	$(VERILATOR) -cc --exe --build -j --trace-fst --trace-structs vsrc/top.v csrc/main.cpp
 	@echo "-- RUN ---------------------"
 	obj_dir/Vtop
+	@echo "-- OPEN WAVEFORM ------------"
+	# 仿真结束后自动打开 GTKWave (加上 & 让其在后台运行，不阻塞终端)
+	gtkwave $(WAVE_FILE) &
 	@echo "-- DONE --------------------"
 	
 include ../Makefile
