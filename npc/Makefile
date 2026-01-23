@@ -57,6 +57,7 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
+	@mkdir -p $(WAVE_DIR)
 	$(VERILATOR) -cc --exe --build -j --trace-fst --trace-structs vsrc/top.v csrc/main.cpp
 	@echo "-- RUN ---------------------"
 	obj_dir/Vtop
