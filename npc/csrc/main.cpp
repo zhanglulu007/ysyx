@@ -5,10 +5,9 @@
 // SPDX-License-Identifier: CC0-1.0
 //======================================================================
 
-// Include common routines
+#include <iostream>
 #include <verilated.h>
-
-// Include model header, generated from Verilating "top.v"
+#include <verilated_fst_c.h>
 #include "Vtop.h"
 
 int main(int argc, char** argv) {
