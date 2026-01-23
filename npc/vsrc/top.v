@@ -1,14 +1,14 @@
 module top(
-    input  [15:0] sw,     // NVBoard 会自动绑定 sw 到开关
-    output [15:0] led,
-    input         clk
+  input clk,
+  input rst,
+  output reg [15:0] led
 );
-
-    // 双控开关逻辑：当两个开关状态不同时，灯亮 (异或逻辑)
-    // 我们使用 sw[0] 和 sw[1] 控制 led[0]
-    assign led[0] = sw[0] ^ sw[1];
-
-    // 其他 LED 关闭 
-    assign led[15:1] = 15'h0;
-
+  reg [31:0] count;
+  always @(posedge clk) begin
+    if (rst) begin led <= 1; count <= 0; end
+    else begin
+      if (count == 0) led <= {led[14:0], led[15]};
+      count <= (count >= 5000000 ? 32'b0 : count + 1);
+    end
+  end
 endmodule
