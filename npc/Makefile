@@ -12,6 +12,9 @@
 ######################################################################
 # Check for sanity to avoid later confusion
 
+	
+include ../Makefile
+
 ifneq ($(words $(CURDIR)),1)
   $(error Unsupported: GNU Make cannot build in directories containing spaces, build elsewhere: '$(CURDIR)')
 endif
@@ -55,6 +58,8 @@ WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 sim:
+	@echo "DEBUG: 正在打印 git_commit 命令内容..."
+	@$(info DEBUG: Git commit 命令内容如下: [$(call git_commit, "sim RTL")])
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
@@ -62,9 +67,8 @@ sim:
 	@echo "-- RUN ---------------------"
 	obj_dir/Vtop
 	@echo "-- OPEN WAVEFORM ------------"
-	gtkwave $(WAVE_FILE) &
+	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
 	@echo "-- DONE --------------------"
-	
-include ../Makefile
+
 
 
