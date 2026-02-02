@@ -1,14 +1,14 @@
 module top(
   input clk,
   input rst,
+  input [7:0] sw,
   output reg [15:0] led
 );
-  reg [31:0] count;
-  always @(posedge clk) begin
-    if (rst) begin led <= 1; count <= 0; end
-    else begin
-      if (count == 0) led <= {led[14:0], led[15]};
-      count <= (count >= 5000000 ? 32'b0 : count + 1);
-    end
-  end
+
+  prencoder83 u_prencoder83 (
+    .x(sw),
+    .en(clk),
+    .y(led[2:0])
+  );
+
 endmodule
