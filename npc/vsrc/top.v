@@ -24,12 +24,18 @@ module top(
   //   .C(led[6])
   // );
 
-  lfsr u_lfsr (
-    .clk(clk),
-    .rst_n(~rst),
-    .btn_step(btc),
-    .hex0(seg0),
-    .hex1(seg1)
-  );
+  // lfsr u_lfsr (
+  //   .clk(clk),
+  //   .rst_n(~rst),
+  //   .btn_step(btc),
+  //   .hex0(seg0),
+  //   .hex1(seg1)
+  // );
 
+  scpu u_scpu (
+    .clk(btc),
+    .rst(rst),
+    .seg0(seg0),
+    .seg1(seg1)
+  );
 endmodule
