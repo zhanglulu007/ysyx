@@ -1,13 +1,41 @@
 module top(
-    input  [15:0] sw,     // NVBoard 会自动绑定 sw 到开关
-    output [15:0] led     // NVBoard 会自动绑定 led 到 LED
+  input clk,
+  input rst,
+  input btc,
+  input [15:0] sw,
+  output [6:0] seg0,
+  output [6:0] seg1,
+  output reg [15:0] led
 );
 
-    // 双控开关逻辑：当两个开关状态不同时，灯亮 (异或逻辑)
-    // 我们使用 sw[0] 和 sw[1] 控制 led[0]
-    assign led[0] = sw[0] ^ sw[1];
+  // prencoder83 u_prencoder83 (
+  //   .x(sw),
+  //   .en(clk),
+  //   .y(led[2:0])
+  // );
 
-    // 其他 LED 关闭 
-    assign led[15:1] = 15'h0;
+  // alu u_alu (
+  //   .A(sw[7:4]),
+  //   .B(sw[3:0]),
+  //   .sel(sw[10:8]),
+  //   .out(led[3:0]),
+  //   .Z(led[4]),
+  //   .O(led[5]),
+  //   .C(led[6])
+  // );
 
+  // lfsr u_lfsr (
+  //   .clk(clk),
+  //   .rst_n(~rst),
+  //   .btn_step(btc),
+  //   .hex0(seg0),
+  //   .hex1(seg1)
+  // );
+
+  scpu u_scpu (
+    .clk(btc),
+    .rst(rst),
+    .seg0(seg0),
+    .seg1(seg1)
+  );
 endmodule
