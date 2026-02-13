@@ -17,6 +17,7 @@
 #include <cpu/cpu.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <memory/paddr.h>
 #include "sdb.h"
 
 static int is_batch_mode = false;
@@ -53,6 +54,78 @@ static int cmd_q(char *args) {
   return -1;
 }
 
+static int cmd_si(char *args) {
+  int n = 1;
+  
+  if (args != NULL) {
+    // 解析参数N
+    sscanf(args, "%d", &n);
+  }
+  cpu_exec(n);
+  
+  return 0;
+}
+
+static int cmd_info(char *args) {
+  if (args == NULL) {
+    printf("Usage: info r - print register info\n");
+    printf("       info w - print watchpoint info\n");
+    return 0;
+  }
+  
+  if (strcmp(args, "r") == 0) {
+    isa_reg_display();
+  } 
+  else if (strcmp(args, "w") == 0) {
+    // 打印监视点（后续实现）
+    printf("Watchpoint info not implemented yet\n");
+  }
+  else {
+    printf("Unknown subcommand: %s\n", args);
+  }
+  
+  return 0;
+}
+
+static int cmd_x(char *args) {
+  if (args == NULL) {
+    printf("Usage: x N EXPR\n");
+    return 0;
+  }
+  
+  int n;
+  char expr[256];
+  
+  // 解析参数: N和表达式
+  if (sscanf(args, "%d %s", &n, expr) != 2) {
+    printf("Invalid format. Usage: x N EXPR\n");
+    return 0;
+  }
+  
+  // 简化版本：EXPR是十六进制地址
+  paddr_t addr;
+  sscanf(expr, "%x", &addr);
+  
+  // 打印内存内容
+  for (int i = 0; i < n; i++) {
+    if (i % 4 == 0) {
+      printf("0x%08x: ", addr + i * 4);
+    }
+    
+    // 读取内存
+    word_t data = paddr_read(addr + i * 4, 4);
+    printf("0x%08x  ", data);
+    
+    if (i % 4 == 3) printf("\n");
+  }
+  
+  if (n % 4 != 0) printf("\n");
+  
+  return 0;
+}
+
+
+
 static int cmd_help(char *args);
 
 static struct {
@@ -63,6 +136,9 @@ static struct {
   { "help", "Display information about all supported commands", cmd_help },
   { "c", "Continue the execution of the program", cmd_c },
   { "q", "Exit NEMU", cmd_q },
+  { "si", "Step [N] instructions", cmd_si },
+  { "info", "Print registers or watchpoint info", cmd_info },
+  { "x", "Examine memory: x N EXPR", cmd_x },
 
   /* TODO: Add more commands */
 
