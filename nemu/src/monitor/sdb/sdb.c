@@ -142,6 +142,80 @@ static int cmd_p(char *args) {
   return 0;
 }
 
+static int cmd_test_expr(char *args) {
+  if (args == NULL) {
+    printf("Usage: test-expr <filename>\n");
+    printf("Example: test-expr /tmp/expr_test.txt\n");
+    return 0;
+  }
+  
+  FILE *fp = fopen(args, "r");
+  if (fp == NULL) {
+    printf("Cannot open file: %s\n", args);
+    return 0;
+  }
+  
+  int total = 0;
+  int passed = 0;
+  int failed = 0;
+  
+  char line[65536];
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    // 移除换行符
+    line[strcspn(line, "\n")] = 0;
+    
+    // 跳过空行
+    if (strlen(line) == 0) continue;
+    
+    // 解析：期望结果 表达式
+    char *space = strchr(line, ' ');
+    if (space == NULL) continue;
+    
+    *space = '\0';
+    unsigned int expected = atoi(line);
+    char *expr_str = space + 1;
+    
+    total++;
+    
+    // 调用expr()求值
+    bool success = false;
+    word_t result = expr(expr_str, &success);
+    
+    if (!success) {
+      failed++;
+      printf("Test %d: FAIL (parse error)\n", total);
+      printf("  Expression: %s\n", expr_str);
+      continue;
+    }
+    
+    // 比较结果
+    if (result == expected) {
+      passed++;
+      printf("Test %d: PASS\n", total);
+    } else {
+      failed++;
+      printf("Test %d: FAIL\n", total);
+      printf("  Expression: %s\n", expr_str);
+      printf("  Expected: %u (0x%x)\n", expected, expected);
+      printf("  Got: %u (0x%x)\n", result, result);
+    }
+  }
+  
+  fclose(fp);
+  
+  printf("\n========================================\n");
+  printf("Test Summary:\n");
+  printf("  Total: %d\n", total);
+  printf("  Passed: %d\n", passed);
+  printf("  Failed: %d\n", failed);
+  if (total > 0) {
+    printf("  Pass Rate: %.2f%%\n", (double)passed / total * 100);
+  }
+  printf("========================================\n");
+  
+  return 0;
+}
+
 
 static int cmd_help(char *args);
 
@@ -157,6 +231,7 @@ static struct {
   { "info", "Print registers or watchpoint info", cmd_info },
   { "x", "Examine memory: x N EXPR", cmd_x },
   { "p", "Evaluate expression: p EXPR", cmd_p },
+  { "test-expr", "Test expression evaluation: test-expr <file>", cmd_test_expr },
 
   /* TODO: Add more commands */
 
