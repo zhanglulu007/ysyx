@@ -124,6 +124,23 @@ static int cmd_x(char *args) {
   return 0;
 }
 
+static int cmd_p(char *args) {
+  if (args == NULL) {
+    printf("Usage: p EXPR\n");
+    return 0;
+  }
+  
+  bool success = false;
+  word_t result = expr(args, &success);
+  
+  if (success) {
+    printf("%u (0x%x)\n", result, result);
+  } else {
+    printf("Invalid expression\n");
+  }
+  
+  return 0;
+}
 
 
 static int cmd_help(char *args);
@@ -139,6 +156,7 @@ static struct {
   { "si", "Step [N] instructions", cmd_si },
   { "info", "Print registers or watchpoint info", cmd_info },
   { "x", "Examine memory: x N EXPR", cmd_x },
+  { "p", "Evaluate expression: p EXPR", cmd_p },
 
   /* TODO: Add more commands */
 
