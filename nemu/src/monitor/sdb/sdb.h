@@ -18,6 +18,16 @@
 
 #include <common.h>
 
+// 表达式求值
 word_t expr(char *e, bool *success);
+
+// 监视点结构体定义
+typedef struct watchpoint WP;
+
+// 监视点接口
+WP* create_watchpoint(char *expr_str);
+bool delete_watchpoint(int no);
+void display_watchpoints();
+bool check_watchpoints();
 
 #endif
