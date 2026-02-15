@@ -77,8 +77,7 @@ static int cmd_info(char *args) {
     isa_reg_display();
   } 
   else if (strcmp(args, "w") == 0) {
-    // 打印监视点（后续实现）
-    printf("Watchpoint info not implemented yet\n");
+    display_watchpoints();
   }
   else {
     printf("Unknown subcommand: %s\n", args);
@@ -216,6 +215,34 @@ static int cmd_test_expr(char *args) {
   return 0;
 }
 
+static int cmd_w(char *args) {
+  if (args == NULL) {
+    printf("Usage: w EXPR\n");
+    return 0;
+  }
+  
+  create_watchpoint(args);
+  
+  return 0;
+}
+
+static int cmd_d(char *args) {
+  if (args == NULL) {
+    printf("Usage: d N\n");
+    return 0;
+  }
+  
+  int no;
+  sscanf(args, "%d", &no);
+  
+  if (delete_watchpoint(no)) {
+    printf("Watchpoint %d deleted\n", no);
+  } else {
+    printf("Watchpoint %d not found\n", no);
+  }
+  
+  return 0;
+}
 
 static int cmd_help(char *args);
 
@@ -231,6 +258,8 @@ static struct {
   { "info", "Print registers or watchpoint info", cmd_info },
   { "x", "Examine memory: x N EXPR", cmd_x },
   { "p", "Evaluate expression: p EXPR", cmd_p },
+  { "w", "Set watchpoint: w EXPR", cmd_w },           
+  { "d", "Delete watchpoint: d N", cmd_d },   
   { "test-expr", "Test expression evaluation: test-expr <file>", cmd_test_expr },
 
   /* TODO: Add more commands */
