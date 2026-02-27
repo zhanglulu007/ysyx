@@ -1,8 +1,9 @@
 module scpu(
-    input wire clk,          // 时钟
-    input wire rst,          // 复位
-    output wire [6:0] seg0,  // 七段数码管 0 (显示高位)
-    output wire [6:0] seg1   // 七段数码管 1 (显示低位)
+    input wire clk,          
+    input wire rst,          
+    output wire [6:0] seg0,  
+    output wire [6:0] seg1,
+    output reg [15:0] led  
 );
 
     reg [3:0] pc_reg;
@@ -25,9 +26,7 @@ module scpu(
     wire [7:0] ir; //IR指令寄存器
     assign ir = rom[pc_reg];
 
-    // ---------------------------------------------------------
-    // Decode (译码)
-    // ---------------------------------------------------------
+    // 译码
     wire [1:0] opcode;
     wire [1:0] rd;
     wire [1:0] rs1;
@@ -42,9 +41,7 @@ module scpu(
     assign imm = ir[3:0];
     assign branch_addr = ir[5:2];
 
-    // ---------------------------------------------------------
     // GPR
-    // ---------------------------------------------------------
     reg [7:0] gpr [0:3];
     
     wire [7:0] rdata1;
@@ -52,7 +49,7 @@ module scpu(
     assign rdata1 = gpr[rs1];
     assign rdata2 = gpr[rs2];
     
-    // 显示寄存器 (用于锁存要输出的值)
+    // 显存
     reg [7:0] display_reg;
 
     wire [7:0] alu_result;
@@ -63,34 +60,14 @@ module scpu(
     assign li_data = {4'b0000, imm};
     assign branch_taken = (gpr[0] != rdata2);
 
-    function [6:0] hex_to_seg;
-        input [3:0] hex;
-        begin
-            case (hex)
-                4'h0: hex_to_seg = 7'b0000001; 
-                4'h1: hex_to_seg = 7'b1001111; 
-                4'h2: hex_to_seg = 7'b0010010; 
-                4'h3: hex_to_seg = 7'b0000110; 
-                4'h4: hex_to_seg = 7'b1001100; 
-                4'h5: hex_to_seg = 7'b0100100; 
-                4'h6: hex_to_seg = 7'b0100000; 
-                4'h7: hex_to_seg = 7'b0001111; 
-                4'h8: hex_to_seg = 7'b0000000; 
-                4'h9: hex_to_seg = 7'b0000100; 
-                4'hA: hex_to_seg = 7'b0001000; 
-                4'hB: hex_to_seg = 7'b1100000; 
-                4'hC: hex_to_seg = 7'b0110001; 
-                4'hD: hex_to_seg = 7'b1000010; 
-                4'hE: hex_to_seg = 7'b0110000; 
-                4'hF: hex_to_seg = 7'b0111000;
-                default: hex_to_seg = 7'b1111111;
-            endcase
-        end
-    endfunction
-
-    // 将 display_reg 的值分解为两个半字节进行译码
-    assign seg1 = hex_to_seg(display_reg[7:4]); // 高位
-    assign seg0 = hex_to_seg(display_reg[3:0]); // 低位
+    hex u_hex0 (
+        .hex(display_reg[3:0]),
+        .seg(seg0)
+    );
+    hex u_hex1 (
+        .hex(display_reg[7:4]),
+        .seg(seg1)
+    );
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin

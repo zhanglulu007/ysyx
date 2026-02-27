@@ -21,7 +21,7 @@ module alu(
     // 加法: A + B
     assign {c_add, sum_add} = A + B;
     // 减法: A - B = A + (~B + 1)
-     assign {c_sub, sum_sub} = {1'b0, A} + {1'b0, ~B} + 1'b1;
+    assign {c_sub, sum_sub} = {1'b0, A} + {1'b0, ~B} + 1'b1;
 
     // --- 溢出判断逻辑 ---
     // 加法溢出: 操作数符号相同，但结果符号不同
