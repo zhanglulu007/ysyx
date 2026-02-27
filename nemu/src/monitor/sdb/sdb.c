@@ -93,17 +93,25 @@ static int cmd_x(char *args) {
   }
   
   int n;
-  char expr[256];
+  char exp[256];
   
   // 解析参数: N和表达式
-  if (sscanf(args, "%d %s", &n, expr) != 2) {
+  if (sscanf(args, "%d %s", &n, exp) != 2) {
     printf("Invalid format. Usage: x N EXPR\n");
     return 0;
   }
   
   // 简化版本：EXPR是十六进制地址
-  paddr_t addr;
-  sscanf(expr, "%x", &addr);
+  //paddr_t addr;
+  //sscanf(expr, "%x", &addr);
+
+  bool success;
+  paddr_t addr = expr(exp, &success);
+  
+  if (!success) {
+    printf("Invalid address expression: %s\n", exp);
+    return 0;
+  }
   
   // 打印内存内容
   for (int i = 0; i < n; i++) {
