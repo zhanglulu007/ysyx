@@ -62,26 +62,26 @@ module top(
   //   .hex1(seg1)
   // );
 
-  // ps2_keyboard u_ps2_keyboard (
-  //   .clk(clk),
-  //   .resetn(rst),
-  //   .ps2_clk(ps2_clk),
-  //   .ps2_data(ps2_data),
-  //   .key_pressed(led[0]),
-  //   .key_valid(led[1]),
-  //   .seg0(seg0),
-  //   .seg1(seg1),
-  //   .seg6(seg6),
-  //   .seg7(seg7)
-  // );
-
-  scpu u_scpu (
-    .clk(btc),
-    .rst(rst),
+  ps2_keyboard u_ps2_keyboard (
+    .clk(clk),
+    .resetn(rst),
+    .ps2_clk(ps2_clk),
+    .ps2_data(ps2_data),
+    .key_pressed(led[0]),
+    .key_valid(led[1]),
     .seg0(seg0),
     .seg1(seg1),
-    .led(led)
+    .seg6(seg6),
+    .seg7(seg7)
   );
+
+  // scpu u_scpu (
+  //   .clk(btc),
+  //   .rst(rst),
+  //   .seg0(seg0),
+  //   .seg1(seg1),
+  //   .led(led)
+  // );
 
   // vmem my_vmem(
   //   .h_addr(h_addr),
