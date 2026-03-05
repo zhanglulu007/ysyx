@@ -18,6 +18,11 @@
 #include <cpu/ifetch.h>
 #include <cpu/decode.h>
 
+#ifdef CONFIG_FTRACE
+extern void ftrace_call(vaddr_t pc, vaddr_t target);
+extern void ftrace_ret(vaddr_t pc);
+#endif
+
 #define R(i) gpr(i)
 #define Mr vaddr_read
 #define Mw vaddr_write
@@ -128,9 +133,29 @@ static int decode_exec(Decode *s) {
   INSTPAT("??????? ????? ????? 111 ????? 11000 11", bgeu   , B, if (src1 >= src2) s->dnpc = s->pc + imm);
   
   // J-type jump instructions
-  INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal    , J, R(rd) = s->snpc; s->dnpc = s->pc + imm);
-  INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr   , I, s->dnpc = (src1 + imm) & ~1; R(rd) = s->snpc);
+  INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal    , J, 
+    R(rd) = s->snpc; 
+    s->dnpc = s->pc + imm;
+    #ifdef CONFIG_FTRACE
+    if (rd == 1) {  // rd == ra (x1)，表示函数调用
+      ftrace_call(s->pc, s->dnpc);
+    }
+    #endif
+  );
   
+  INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr   , I, 
+    s->dnpc = (src1 + imm) & ~1; 
+    R(rd) = s->snpc;
+    #ifdef CONFIG_FTRACE
+    int rs1 = BITS(s->isa.inst, 19, 15);
+    if (rd == 0 && rs1 == 1) {  // jalr zero, ra, 0 (ret)
+      ftrace_ret(s->pc);
+    } else if (rd == 1) {  // jalr ra, rs1, offset (call)
+      ftrace_call(s->pc, s->dnpc);
+    }
+    #endif
+  );
+
   // System instructions
   INSTPAT("0000000 00001 00000 000 00000 11100 11", ebreak , N, NEMUTRAP(s->pc, R(10))); // R(10) is $a0
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, INV(s->pc));

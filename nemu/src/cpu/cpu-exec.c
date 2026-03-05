@@ -25,6 +25,7 @@
  * You can modify this value as you want.
  */
 #define MAX_INST_TO_PRINT 10
+#define IRINGBUF_SIZE 16
 
 CPU_state cpu = {};
 uint64_t g_nr_guest_inst = 0;
@@ -32,6 +33,56 @@ static uint64_t g_timer = 0; // unit: us
 static bool g_print_step = false;
 
 void device_update();
+
+typedef struct {
+  vaddr_t pc;
+  uint32_t inst;
+  char logbuf[128];
+} IringBufEntry;
+
+static IringBufEntry iringbuf[IRINGBUF_SIZE];
+static int iringbuf_idx = 0;
+static bool iringbuf_full = false;
+
+static void iringbuf_write(vaddr_t pc, uint32_t inst, const char *logbuf) {
+  iringbuf[iringbuf_idx].pc = pc;
+  iringbuf[iringbuf_idx].inst = inst;
+  size_t len = strlen(logbuf);
+  if (len >= sizeof(iringbuf[iringbuf_idx].logbuf)) {
+    len = sizeof(iringbuf[iringbuf_idx].logbuf) - 1;
+  }
+  memcpy(iringbuf[iringbuf_idx].logbuf, logbuf, len);
+  iringbuf[iringbuf_idx].logbuf[len] = '\0';
+  
+  iringbuf_idx = (iringbuf_idx + 1) % IRINGBUF_SIZE;
+  if (iringbuf_idx == 0) {
+    iringbuf_full = true;
+  }
+}
+
+void display_iringbuf() {
+  printf("\n" ANSI_FMT("Recent executed instructions (iringbuf):", ANSI_FG_CYAN) "\n");
+  
+  int start = iringbuf_full ? iringbuf_idx : 0;
+  int count = iringbuf_full ? IRINGBUF_SIZE : iringbuf_idx;
+  
+  if (count == 0) {
+    printf("  (empty)\n");
+    return;
+  }
+  
+  for (int i = 0; i < count; i++) {
+    int idx = (start + i) % IRINGBUF_SIZE;
+    
+    // 标记最后一条指令（出错的指令）
+    if (i == count - 1) {
+      printf(ANSI_FMT("-->", ANSI_FG_RED) " %s\n", iringbuf[idx].logbuf);
+    } else {
+      printf("    %s\n", iringbuf[idx].logbuf);
+    }
+  }
+  printf("\n");
+}
 
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 
@@ -48,7 +99,6 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
     if (nemu_state.state != NEMU_END) nemu_state.state = NEMU_STOP;
   }
 #endif
-
 }
 
 static void exec_once(Decode *s, vaddr_t pc) {
@@ -80,6 +130,9 @@ static void exec_once(Decode *s, vaddr_t pc) {
   disassemble(p, s->logbuf + sizeof(s->logbuf) - p,
       MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc), (uint8_t *)&s->isa.inst, ilen);
 #endif
+  
+  // 将指令写入环形缓冲区
+  IFDEF(CONFIG_ITRACE, iringbuf_write(s->pc, s->isa.inst, s->logbuf));
 }
 
 static void execute(uint64_t n) {
@@ -103,6 +156,7 @@ static void statistic() {
 }
 
 void assert_fail_msg() {
+  IFDEF(CONFIG_ITRACE, display_iringbuf());
   isa_reg_display();
   statistic();
 }
@@ -133,6 +187,10 @@ void cpu_exec(uint64_t n) {
            (nemu_state.halt_ret == 0 ? ANSI_FMT("HIT GOOD TRAP", ANSI_FG_GREEN) :
             ANSI_FMT("HIT BAD TRAP", ANSI_FG_RED))),
           nemu_state.halt_pc);
+      // 在程序异常终止时显示 iringbuf
+      if (nemu_state.state == NEMU_ABORT || nemu_state.halt_ret != 0) {
+        IFDEF(CONFIG_ITRACE, display_iringbuf());
+      }
       // fall through
     case NEMU_QUIT: statistic();
   }
