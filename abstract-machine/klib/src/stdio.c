@@ -5,26 +5,11 @@
 
 #if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
 
-/**
- * out_char - 输出一个字符到缓冲区
- * @out: 输出缓冲区指针的指针
- * @c: 要输出的字符
- * 
- * 将字符c写入*out指向的位置，并将*out指针前进一位
- */
 static void out_char(char **out, char c) {
   **out = c;
   (*out)++;
 }
 
-/**
- * out_str - 输出字符串到缓冲区
- * @out: 输出缓冲区指针的指针
- * @s: 要输出的字符串
- * 
- * 将字符串s写入*out指向的位置，并更新*out指针
- * 返回写入的字符数
- */
 static int out_str(char **out, const char *s) {
   int count = 0;
   while (*s) {
@@ -34,14 +19,6 @@ static int out_str(char **out, const char *s) {
   return count;
 }
 
-/**
- * out_int - 输出整数到缓冲区
- * @out: 输出缓冲区指针的指针
- * @num: 要输出的整数
- * 
- * 将整数num转换为字符串并写入*out指向的位置
- * 返回写入的字符数
- */
 static int out_int(char **out, int num) {
   char buf[32];  // 足够存储32位整数的字符串表示
   int i = 0;
@@ -81,20 +58,6 @@ static int out_int(char **out, int num) {
   return count;
 }
 
-/**
- * vsprintf - 格式化输出到字符串（使用va_list）
- * @out: 输出缓冲区
- * @fmt: 格式字符串
- * @ap: 可变参数列表
- * 
- * 根据格式字符串fmt和参数列表ap，将格式化后的字符串写入out
- * 返回写入的字符数（不包括结尾的'\0'）
- * 
- * 支持的格式：
- *   %s - 字符串
- *   %d - 十进制整数
- *   %% - 百分号字符
- */
 int vsprintf(char *out, const char *fmt, va_list ap) {
   char *out_start = out;  // 保存起始位置
   
@@ -143,19 +106,6 @@ int vsprintf(char *out, const char *fmt, va_list ap) {
   return out - out_start;
 }
 
-/**
- * sprintf - 格式化输出到字符串
- * @out: 输出缓冲区
- * @fmt: 格式字符串
- * @...: 可变参数
- * 
- * 根据格式字符串fmt和后续参数，将格式化后的字符串写入out
- * 返回写入的字符数（不包括结尾的'\0'）
- * 
- * 示例：
- *   sprintf(buf, "%s", "Hello");           // buf = "Hello"
- *   sprintf(buf, "%d + %d = %d", 1, 2, 3); // buf = "1 + 2 = 3"
- */
 int sprintf(char *out, const char *fmt, ...) {
   va_list ap;
   int ret;
