@@ -74,15 +74,6 @@ int strncmp(const char *s1, const char *s2, size_t n) {
   return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
-/**
- * memset - 设置内存块
- * @s: 内存块指针
- * @c: 要设置的值（会被转换为unsigned char）
- * @n: 要设置的字节数
- * 
- * 将s指向的内存块的前n个字节设置为c
- * 返回s的指针
- */
 void *memset(void *s, int c, size_t n) {
   unsigned char *p = s;
   // 将c转换为unsigned char，然后设置n个字节
@@ -92,16 +83,6 @@ void *memset(void *s, int c, size_t n) {
   return s;
 }
 
-/**
- * memmove - 移动内存块（支持重叠）
- * @dst: 目标内存块
- * @src: 源内存块
- * @n: 要移动的字节数
- * 
- * 将src的n个字节移动到dst
- * 即使src和dst重叠也能正确工作
- * 返回dst的指针
- */
 void *memmove(void *dst, const void *src, size_t n) {
   unsigned char *d = dst;
   const unsigned char *s = src;
@@ -123,16 +104,6 @@ void *memmove(void *dst, const void *src, size_t n) {
   return dst;
 }
 
-/**
- * memcpy - 复制内存块
- * @out: 目标内存块
- * @in: 源内存块
- * @n: 要复制的字节数
- * 
- * 将in的n个字节复制到out
- * 注意：如果src和dst重叠，行为未定义（应使用memmove）
- * 返回out的指针
- */
 void *memcpy(void *out, const void *in, size_t n) {
   unsigned char *dst = out;
   const unsigned char *src = in;
@@ -143,18 +114,6 @@ void *memcpy(void *out, const void *in, size_t n) {
   return out;
 }
 
-/**
- * memcmp - 比较内存块
- * @s1: 第一个内存块
- * @s2: 第二个内存块
- * @n: 要比较的字节数
- * 
- * 按字节比较s1和s2的前n个字节
- * 返回值：
- *   < 0: s1 < s2
- *   = 0: s1 == s2
- *   > 0: s1 > s2
- */
 int memcmp(const void *s1, const void *s2, size_t n) {
   const unsigned char *p1 = s1;
   const unsigned char *p2 = s2;
