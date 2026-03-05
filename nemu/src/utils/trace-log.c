@@ -30,20 +30,24 @@ extern uint64_t g_nr_guest_inst;
 // 是否启用分离日志文件
 static bool separate_logs = true;
 
+// Trace 日志目录（通过 Makefile 传递，默认为 $(WORK_DIR)/build）
+#ifndef TRACE_LOG_DIR
+#define TRACE_LOG_DIR "build"  // 如果 Makefile 未定义，使用相对路径作为后备
+#endif
+
 /**
  * init_trace_log() - 初始化 trace 日志系统
  * 
- * @log_dir: 日志文件目录，如果为 NULL 则使用默认的 build 目录
  * @separate: 是否将不同类型的 trace 分离到不同文件
  * 
- * 这个函数会创建以下日志文件：
+ * 这个函数会在 TRACE_LOG_DIR 目录下创建以下日志文件：
  * - itrace.txt: 指令追踪日志
  * - mtrace.txt: 内存访问追踪日志
  * - ftrace.txt: 函数调用追踪日志
  * 
  * 如果 separate 为 false，所有 trace 都会输出到主日志文件
  */
-void init_trace_log(const char *log_dir, bool separate) {
+void init_trace_log(bool separate) {
   separate_logs = separate;
   
   if (!separate) {
@@ -51,14 +55,13 @@ void init_trace_log(const char *log_dir, bool separate) {
     return;
   }
   
-  // 使用默认目录
-  const char *dir = log_dir ? log_dir : "build";
+  Log("Trace logs will be written to directory: %s", TRACE_LOG_DIR);
   
   char path[256];
   
 #ifdef CONFIG_ITRACE
   // 创建 itrace 日志文件
-  snprintf(path, sizeof(path), "%s/itrace.txt", dir);
+  snprintf(path, sizeof(path), "%s/itrace.txt", TRACE_LOG_DIR);
   itrace_fp = fopen(path, "w");
   if (itrace_fp) {
     Log("Instruction trace will be written to %s", path);
@@ -69,7 +72,7 @@ void init_trace_log(const char *log_dir, bool separate) {
 
 #ifdef CONFIG_MTRACE
   // 创建 mtrace 日志文件
-  snprintf(path, sizeof(path), "%s/mtrace.txt", dir);
+  snprintf(path, sizeof(path), "%s/mtrace.txt", TRACE_LOG_DIR);
   mtrace_fp = fopen(path, "w");
   if (mtrace_fp) {
     Log("Memory trace will be written to %s", path);
@@ -80,7 +83,7 @@ void init_trace_log(const char *log_dir, bool separate) {
 
 #ifdef CONFIG_FTRACE
   // 创建 ftrace 日志文件
-  snprintf(path, sizeof(path), "%s/ftrace.txt", dir);
+  snprintf(path, sizeof(path), "%s/ftrace.txt", TRACE_LOG_DIR);
   ftrace_fp = fopen(path, "w");
   if (ftrace_fp) {
     Log("Function trace will be written to %s", path);
