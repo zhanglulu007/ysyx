@@ -21,7 +21,7 @@
 #ifndef CONFIG_TARGET_AM
 
 // 初始化 trace 日志系统
-void init_trace_log(const char *log_dir, bool separate);
+void init_trace_log(bool separate);
 
 // 不同类型的 trace 写入函数
 void itrace_write(const char *fmt, ...);
