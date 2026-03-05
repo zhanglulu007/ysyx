@@ -40,10 +40,6 @@ SRCS-BLACKLIST-y += $(SRCS-BLACKLIST)
 SRCS-y += $(if $(DIRS-y), $(shell find -L $(DIRS-y) -name "*.c"),)
 SRCS = $(filter-out $(SRCS-BLACKLIST-y),$(SRCS-y))
 
-# Define build directory (same as in build.mk)
-WORK_DIR  = $(shell pwd)
-BUILD_DIR = $(WORK_DIR)/build
-
 # Extract compiler and options from menuconfig
 ifneq ($(CONFIG_CC),)
 CC = $(call remove_quote,$(CONFIG_CC))
@@ -54,7 +50,6 @@ CFLAGS_BUILD += $(if $(CONFIG_CC_DEBUG),-Og -ggdb3,)
 CFLAGS_BUILD += $(if $(CONFIG_CC_ASAN),-fsanitize=address,)
 CFLAGS_TRACE += -DITRACE_COND=$(if $(CONFIG_ITRACE_COND),$(call remove_quote,$(CONFIG_ITRACE_COND)),true)
 CFLAGS_TRACE += -DMTRACE_COND=$(if $(CONFIG_MTRACE_COND),$(call remove_quote,$(CONFIG_MTRACE_COND)),true)
-CFLAGS_TRACE += -DTRACE_LOG_DIR=\"$(BUILD_DIR)\"
 CFLAGS  += $(CFLAGS_BUILD) $(CFLAGS_TRACE) -D__GUEST_ISA__=$(GUEST_ISA)
 LDFLAGS += $(CFLAGS_BUILD)
 

@@ -87,10 +87,7 @@ void display_iringbuf() {
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 
 #ifdef CONFIG_ITRACE_COND
-  if (ITRACE_COND) { 
-    extern void itrace_write(const char *fmt, ...);
-    itrace_write("%s\n", _this->logbuf);
-  }
+  if (ITRACE_COND) { log_write("%s\n", _this->logbuf); }
 #endif
 
   if (g_print_step) { IFDEF(CONFIG_ITRACE, puts(_this->logbuf)); }
@@ -132,9 +129,10 @@ static void exec_once(Decode *s, vaddr_t pc) {
   void disassemble(char *str, int size, uint64_t pc, uint8_t *code, int nbyte);
   disassemble(p, s->logbuf + sizeof(s->logbuf) - p,
       MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc), (uint8_t *)&s->isa.inst, ilen);
+#endif
+  
   // 将指令写入环形缓冲区
-  iringbuf_write(s->pc, s->isa.inst, s->logbuf);
-  #endif
+  IFDEF(CONFIG_ITRACE, iringbuf_write(s->pc, s->isa.inst, s->logbuf));
 }
 
 static void execute(uint64_t n) {
@@ -194,13 +192,6 @@ void cpu_exec(uint64_t n) {
         IFDEF(CONFIG_ITRACE, display_iringbuf());
       }
       // fall through
-    case NEMU_QUIT: 
-      statistic();
-      #ifdef CONFIG_TRACE
-      // 关闭所有 trace 日志文件
-      extern void close_trace_logs();
-      close_trace_logs();
-      #endif
-      break;
+    case NEMU_QUIT: statistic();
   }
 }
