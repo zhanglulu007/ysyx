@@ -119,7 +119,8 @@ static const char* find_func_name(vaddr_t addr) {
 // 函数调用
 void ftrace_call(vaddr_t pc, vaddr_t target) {
   const char *func_name = find_func_name(target);
-  log_write(FMT_WORD ": %*scall [%s@" FMT_WORD "]\n", 
+  extern void ftrace_write(const char *fmt, ...);
+  ftrace_write(FMT_WORD ": %*scall [%s@" FMT_WORD "]\n", 
             pc, func_depth * 2, "", func_name, target);
   func_depth++;
 }
@@ -130,7 +131,8 @@ void ftrace_ret(vaddr_t pc) {
   if (func_depth < 0) func_depth = 0;  // 防止深度为负
   
   const char *func_name = find_func_name(pc);
-  log_write(FMT_WORD ": %*sret  [%s]\n", 
+  extern void ftrace_write(const char *fmt, ...);
+  ftrace_write(FMT_WORD ": %*sret  [%s]\n", 
             pc, func_depth * 2, "", func_name);
 }
 

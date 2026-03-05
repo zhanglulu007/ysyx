@@ -87,7 +87,10 @@ void display_iringbuf() {
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 
 #ifdef CONFIG_ITRACE_COND
-  if (ITRACE_COND) { log_write("%s\n", _this->logbuf); }
+  if (ITRACE_COND) { 
+    extern void itrace_write(const char *fmt, ...);
+    itrace_write("%s\n", _this->logbuf);
+  }
 #endif
 
   if (g_print_step) { IFDEF(CONFIG_ITRACE, puts(_this->logbuf)); }
@@ -191,6 +194,13 @@ void cpu_exec(uint64_t n) {
         IFDEF(CONFIG_ITRACE, display_iringbuf());
       }
       // fall through
-    case NEMU_QUIT: statistic();
+    case NEMU_QUIT: 
+      statistic();
+      #ifdef CONFIG_TRACE
+      // 关闭所有 trace 日志文件
+      extern void close_trace_logs();
+      close_trace_logs();
+      #endif
+      break;
   }
 }

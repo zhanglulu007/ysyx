@@ -113,6 +113,12 @@ void init_monitor(int argc, char *argv[]) {
   /* Open the log file. */
   init_log(log_file);
 
+  #ifdef CONFIG_TRACE
+  /* 初始化 trace 日志系统 - 将不同类型的 trace 分离到不同文件 */
+  extern void init_trace_log(const char *log_dir, bool separate);
+  init_trace_log(NULL, true);  // NULL 表示使用默认目录，true 表示分离日志
+  #endif
+
   /* Initialize memory. */
   init_mem();
 
