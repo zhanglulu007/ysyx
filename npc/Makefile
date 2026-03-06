@@ -71,7 +71,7 @@ sim:
 	--Mdir $(OBJ_DIR)
 	@echo "-- RUN ---------------------"
 	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
-	obj_dir/Vtop $(PROG) $(HALT)
+	$(OBJ_DIR)/Vtop $(PROG) $(HALT)
 	@echo "-- OPEN WAVEFORM ------------"
 	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
 	@echo "-- DONE --------------------"
