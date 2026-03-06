@@ -59,7 +59,7 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 # 默认程序和halt地址
 PROG ?= test/mem.bin
-HALT ?= 0x228
+HALT ?= 0x1220
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
