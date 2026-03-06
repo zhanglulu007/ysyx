@@ -220,10 +220,10 @@ int main(int argc, char** argv) {
     
     // 仿真循环 - 持续运行直到ebreak
     int cycles = 0;
-    int max_cycles = 10000000; // 增加最大周期数
+    //int max_cycles = 10000000; // 增加最大周期数
     printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
-    while (!contextp->gotFinish() && !should_exit && cycles < max_cycles) {
+    while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
         // 下降沿
         top->clk = 0;
         top->eval();
