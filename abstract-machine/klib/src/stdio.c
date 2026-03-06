@@ -123,7 +123,25 @@ int sprintf(char *out, const char *fmt, ...) {
 }
 
 int printf(const char *fmt, ...) {
-  panic("Not implemented");
+  char buf[4096];  // 临时缓冲区
+  va_list ap;
+  int ret;
+  
+  // 初始化可变参数列表
+  va_start(ap, fmt);
+  
+  // 使用vsprintf格式化到缓冲区
+  ret = vsprintf(buf, fmt, ap);
+  
+  // 清理可变参数列表
+  va_end(ap);
+  
+  // 逐字符输出到串口
+  for (int i = 0; i < ret; i++) {
+    putch(buf[i]);
+  }
+  
+  return ret;
 }
 
 int snprintf(char *out, size_t n, const char *fmt, ...) {
