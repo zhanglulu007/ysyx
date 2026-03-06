@@ -33,7 +33,7 @@ static uint64_t g_timer = 0; // unit: us
 static bool g_print_step = false;
 
 void device_update();
-
+#ifdef CONFIG_ITRACE
 typedef struct {
   vaddr_t pc;
   uint32_t inst;
@@ -83,7 +83,7 @@ void display_iringbuf() {
   }
   printf("\n");
 }
-
+#endif
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 
 #ifdef CONFIG_ITRACE_COND
