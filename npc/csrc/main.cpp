@@ -27,10 +27,14 @@ static inline uint8_t* guest_to_host(uint32_t paddr) {
 extern "C" int pmem_read(int raddr) {
   // 按4字节对齐读取
   raddr = raddr & ~0x3u;
-  if (raddr < 0 || raddr >= PMEM_SIZE) {
-    printf("ERROR: pmem_read address out of range: 0x%x\n", raddr);
+  
+  // 检查地址是否在有效范围内
+  if (raddr < PMEM_BASE || raddr >= PMEM_BASE + PMEM_SIZE) {
+    printf("ERROR: pmem_read address out of range: 0x%x (valid: 0x%x - 0x%x)\n", 
+           raddr, PMEM_BASE, PMEM_BASE + PMEM_SIZE - 1);
     return 0;
   }
+  
   uint32_t* p = (uint32_t*)guest_to_host(raddr);
   return *p;
 }
@@ -39,8 +43,11 @@ extern "C" int pmem_read(int raddr) {
 extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   // 按4字节对齐写入
   waddr = waddr & ~0x3u;
-  if (waddr < 0 || waddr >= PMEM_SIZE) {
-    printf("ERROR: pmem_write address out of range: 0x%x\n", waddr);
+  
+  // 检查地址是否在有效范围内
+  if (waddr < PMEM_BASE || waddr >= PMEM_BASE + PMEM_SIZE) {
+    printf("ERROR: pmem_write address out of range: 0x%x (valid: 0x%x - 0x%x)\n", 
+           waddr, PMEM_BASE, PMEM_BASE + PMEM_SIZE - 1);
     return;
   }
   
