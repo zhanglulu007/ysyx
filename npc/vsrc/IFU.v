@@ -22,6 +22,6 @@ module IFU(
   end
   
   // 取指：从PC地址读取指令
-  assign inst = pmem_read(pc);
+  assign inst = rst ? 32'h00000013 : pmem_read(pc);  // nop = addi x0, x0, 0
 
 endmodule
