@@ -23,6 +23,22 @@
 static uint8_t *io_space = NULL;
 static uint8_t *p_space = NULL;
 
+#ifdef CONFIG_DTRACE
+static void dtrace_read(const char *name, paddr_t addr, int len, word_t data) {
+#ifdef CONFIG_DTRACE_COND
+    log_write("[DTRACE] READ  device=%s addr=" FMT_PADDR " len=%d data=" FMT_WORD " pc=" FMT_WORD "\n",
+              name, addr, len, data, cpu.pc);
+#endif
+}
+
+static void dtrace_write(const char *name, paddr_t addr, int len, word_t data) {
+#ifdef CONFIG_DTRACE_COND
+    log_write("[DTRACE] WRITE device=%s addr=" FMT_PADDR " len=%d data=" FMT_WORD " pc=" FMT_WORD "\n",
+              name, addr, len, data, cpu.pc);
+#endif
+}
+#endif
+
 uint8_t* new_space(int size) {
   uint8_t *p = p_space;
   // page aligned;
@@ -58,6 +74,7 @@ word_t map_read(paddr_t addr, int len, IOMap *map) {
   paddr_t offset = addr - map->low;
   invoke_callback(map->callback, offset, len, false); // prepare data to read
   word_t ret = host_read(map->space + offset, len);
+  IFDEF(CONFIG_DTRACE, dtrace_read(map->name, addr, len, ret));
   return ret;
 }
 
@@ -65,6 +82,7 @@ void map_write(paddr_t addr, int len, word_t data, IOMap *map) {
   assert(len >= 1 && len <= 8);
   check_bound(map, addr);
   paddr_t offset = addr - map->low;
+  IFDEF(CONFIG_DTRACE, dtrace_write(map->name, addr, len, data));
   host_write(map->space + offset, len, data);
   invoke_callback(map->callback, offset, len, true);
 }
