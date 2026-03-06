@@ -34,7 +34,37 @@ void *malloc(size_t size) {
   // Therefore do not call panic() here, else it will yield a dead recursion:
   //   panic() -> putchar() -> (glibc) -> malloc() -> panic()
 #if !(defined(__ISA_NATIVE__) && defined(__NATIVE_USE_KLIB__))
-  panic("Not implemented");
+  // 静态变量，维护当前堆顶位置
+  static char *hbrk = NULL;
+  
+  // 首次调用时初始化
+  if (hbrk == NULL) {
+    hbrk = (char *)ROUNDUP((uintptr_t)heap.start, 8);
+  }
+  
+  // 如果请求大小为0，返回NULL
+  if (size == 0) {
+    return NULL;
+  }
+  
+  // 将size向上对齐到8字节边界（malloc要求返回的地址按照最大基本类型对齐）
+  size = ROUNDUP(size, 8);
+  
+  // 保存当前位置
+  char *old = hbrk;
+  
+  // 移动堆顶指针
+  hbrk += size;
+  
+  // 检查是否超出堆区范围
+  if ((uintptr_t)hbrk > (uintptr_t)heap.end) {
+    // 内存不足，恢复指针并返回NULL
+    hbrk = old;
+    return NULL;
+  }
+  
+  // 返回分配的内存起始地址
+  return old;
 #endif
   return NULL;
 }
