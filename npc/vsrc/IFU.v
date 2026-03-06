@@ -15,7 +15,7 @@ module IFU(
   // PC寄存器更新
   always @(posedge clk) begin
     if (rst) begin
-      pc <= 32'h80000000;  // minirv-npc约定从0x80000000开始
+      pc <= 32'h00000000;  // minirv-npc约定从0x80000000开始
     end else begin
       pc <= pc_next;
     end
