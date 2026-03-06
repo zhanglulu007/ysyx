@@ -1,128 +1,150 @@
+// NPC - minirv processor (Modular Design)
+// 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
+
 module top(
   input clk,
-  input rst,
-  input btc,
-  input [15:0] sw,
-  input ps2_clk,
-  input ps2_data,
-  output [6:0] seg0,
-  output [6:0] seg1,
-  output [6:0] seg2,
-  output [6:0] seg6,
-  output [6:0] seg7,
-  output VGA_CLK,
-  output VGA_HSYNC,
-  output VGA_VSYNC,
-  output VGA_BLANK_N,
-  output [7:0] VGA_R,
-  output [7:0] VGA_G,
-  output [7:0] VGA_B,
-  output [15:0] led
+  input rst
 );
 
-  // prencoder83 u_prencoder83 (
-  //   .x(sw[7:0]),
-  //   .en(clk),
-  //   .y(led[2:0]),
-  //   .seg(seg0)
-  // );
-
-  // reg [3:0]out;
-
-  // alu u_alu (
-  //   .A(sw[7:4]),
-  //   .B(sw[3:0]),
-  //   .sel(sw[10:8]),
-  //   .out(out),
-  //   .Z(led[4]),
-  //   .O(led[5]),
-  //   .C(led[6])
-  // );
-
-  // hex u_hex0 (
-  //   .hex(out),
-  //   .seg(seg0)
-  // );
-  // hex u_hex1 (
-  //   .hex(sw[3:0]),
-  //   .seg(seg1)
-  // );
-  // hex u_hex2 (
-  //   .hex(sw[7:4]),
-  //   .seg(seg2)
-  // );
-
-  // assign led[10:8] = sw[10:8];
-  // assign led[3:0] = out;
-
-  // lfsr u_lfsr (
-  //   .rst(rst),
-  //   .step(btc),
-  //   .hex0(seg0),
-  //   .hex1(seg1)
-  // );
-
-  ps2_keyboard u_ps2_keyboard (
-    .clk(clk),
-    .resetn(rst),
-    .ps2_clk(ps2_clk),
-    .ps2_data(ps2_data),
-    .key_pressed(led[0]),
-    .key_valid(led[1]),
-    .seg0(seg0),
-    .seg1(seg1),
-    .seg6(seg6),
-    .seg7(seg7)
-  );
-
-  // scpu u_scpu (
-  //   .clk(btc),
-  //   .rst(rst),
-  //   .seg0(seg0),
-  //   .seg1(seg1),
-  //   .led(led)
-  // );
-
-  // vmem my_vmem(
-  //   .h_addr(h_addr),
-  //   .v_addr(v_addr[8:0]),
-  //   .vga_data(vga_data)
-  // );
+  // ========== 模块间连接信号 ==========
   
-  // assign VGA_CLK = clk;
-
-  // wire [9:0] h_addr;
-  // wire [9:0] v_addr;
-  // wire [23:0] vga_data;
-
-  // vga_ctrl my_vga_ctrl(
-  //     .pclk(clk),
-  //     .reset(rst),
-  //     .vga_data(vga_data),
-  //     .h_addr(h_addr),
-  //     .v_addr(v_addr),
-  //     .hsync(VGA_HSYNC),
-  //     .vsync(VGA_VSYNC),
-  //     .valid(VGA_BLANK_N),
-  //     .vga_r(VGA_R),
-  //     .vga_g(VGA_G),
-  //     .vga_b(VGA_B)
-  // );
+  // IFU <-> IDU
+  wire [31:0] pc;
+  wire [31:0] inst;
+  
+  // IDU输出
+  wire [6:0] opcode;
+  wire [4:0] rd, rs1, rs2;
+  wire [2:0] funct3;
+  wire [6:0] funct7;
+  wire [31:0] imm_i, imm_s, imm_u;
+  wire is_addi, is_jalr, is_ebreak, is_lui, is_add;
+  wire is_lw, is_lbu, is_sw, is_sb;
+  wire reg_wen, mem_valid, mem_wen;
+  
+  // RegisterFile输出
+  wire [31:0] rs1_data, rs2_data;
+  wire [31:0] a0_value;  // a0寄存器的值
+  
+  // EXU输出
+  wire [31:0] alu_result;
+  wire [31:0] jump_target;
+  
+  // LSU输出
+  wire [31:0] mem_rdata;
+  
+  // WBU输出
+  wire [31:0] rd_data;
+  wire [31:0] pc_next;
+  
+  // 访存地址计算
+  wire [31:0] mem_addr;
+  assign mem_addr = (is_sw || is_sb) ? (rs1_data + imm_s) : (rs1_data + imm_i);
+  
+  // ========== 模块实例化 ==========
+  
+  // IFU - 取指单元
+  IFU u_ifu(
+    .clk(clk),
+    .rst(rst),
+    .pc_next(pc_next),
+    .pc(pc),
+    .inst(inst)
+  );
+  
+  // IDU - 译码单元
+  IDU u_idu(
+    .inst(inst),
+    .opcode(opcode),
+    .rd(rd),
+    .rs1(rs1),
+    .rs2(rs2),
+    .funct3(funct3),
+    .funct7(funct7),
+    .imm_i(imm_i),
+    .imm_s(imm_s),
+    .imm_u(imm_u),
+    .is_addi(is_addi),
+    .is_jalr(is_jalr),
+    .is_ebreak(is_ebreak),
+    .is_lui(is_lui),
+    .is_add(is_add),
+    .is_lw(is_lw),
+    .is_lbu(is_lbu),
+    .is_sw(is_sw),
+    .is_sb(is_sb),
+    .reg_wen(reg_wen),
+    .mem_valid(mem_valid),
+    .mem_wen(mem_wen)
+  );
+  
+  // RegisterFile - 寄存器堆
+  RegisterFile u_regfile(
+    .clk(clk),
+    .waddr(rd),
+    .wdata(rd_data),
+    .wen(reg_wen),
+    .raddr1(rs1),
+    .rdata1(rs1_data),
+    .raddr2(rs2),
+    .rdata2(rs2_data),
+    .a0_value(a0_value)
+  );
+  
+  // EXU - 执行单元
+  EXU u_exu(
+    .rs1_data(rs1_data),
+    .rs2_data(rs2_data),
+    .imm_i(imm_i),
+    .pc(pc),
+    .is_add(is_add),
+    .is_jalr(is_jalr),
+    .alu_result(alu_result),
+    .jump_target(jump_target)
+  );
+  
+  // LSU - 访存单元
+  LSU u_lsu(
+    .clk(clk),
+    .rst(rst),
+    .mem_valid(mem_valid),
+    .mem_wen(mem_wen),
+    .is_lw(is_lw),
+    .is_lbu(is_lbu),
+    .is_sw(is_sw),
+    .is_sb(is_sb),
+    .mem_addr(mem_addr),
+    .wdata(rs2_data),
+    .rdata(mem_rdata)
+  );
+  
+  // WBU - 写回单元
+  WBU u_wbu(
+    .pc(pc),
+    .alu_result(alu_result),
+    .mem_rdata(mem_rdata),
+    .imm_u(imm_u),
+    .jump_target(jump_target),
+    .is_jalr(is_jalr),
+    .is_lui(is_lui),
+    .is_lw(is_lw),
+    .is_lbu(is_lbu),
+    .is_ebreak(is_ebreak),
+    .rd_data(rd_data),
+    .pc_next(pc_next)
+  );
+  
+  // ========== ebreak处理 ==========
+  
+  import "DPI-C" function void ebreak_handler(input int a0_value);
+  
+  always @(posedge clk) begin
+    if (!rst && is_ebreak) begin
+      $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
+      ebreak_handler(a0_value);
+    end
+  end
 
 endmodule
 
-// module vmem(
-//     input [9:0] h_addr,
-//     input [8:0] v_addr,
-//     output [23:0] vga_data
-// );
 
-// reg [23:0] vga_mem [524287:0];
-
-// initial begin
-//     $readmemh("resource/picture.hex", vga_mem);
-// end
-
-// assign vga_data = vga_mem[{h_addr, v_addr}];
-
-// endmodule
