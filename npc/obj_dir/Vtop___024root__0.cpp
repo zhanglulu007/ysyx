@@ -226,7 +226,7 @@ void Vtop___024root___nba_sequent__TOP__0(Vtop___024root* vlSelf) {
             = __VdlyVal__top__DOT__u_regfile__DOT__rf__v0;
     }
     vlSelfRef.top__DOT__pc = ((IData)(vlSelfRef.rst)
-                               ? 0x80000000U : vlSelfRef.top__DOT__u_ifu__DOT__pc_next);
+                               ? 0U : vlSelfRef.top__DOT__u_ifu__DOT__pc_next);
     Vtop___024root____Vdpiimwrap_top__DOT__u_ifu__DOT__pmem_read_TOP(vlSelfRef.top__DOT__pc, vlSelfRef.__Vfunc_top__DOT__u_ifu__DOT__pmem_read__1__Vfuncout);
     vlSelfRef.top__DOT__inst = vlSelfRef.__Vfunc_top__DOT__u_ifu__DOT__pmem_read__1__Vfuncout;
     vlSelfRef.top__DOT__u_exu__DOT__is_add = (IData)(
