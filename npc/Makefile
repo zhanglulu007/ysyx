@@ -58,7 +58,7 @@ WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 # 默认程序和halt地址
-PROG ?= csrc/sum.bin
+PROG ?= test/sum.bin
 HALT ?= 0x228
 
 sim:
