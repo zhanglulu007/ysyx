@@ -1,10 +1,14 @@
 #include <am.h>
+#include "npc.h"
 
 void __am_timer_init() {
 }
 
 void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
-  uptime->us = 0;
+  // 读取RTC寄存器获取系统启动时间（微秒）
+  uint32_t lo = inl(RTC_ADDR_LO);
+  uint32_t hi = inl(RTC_ADDR_HI);
+  uptime->us = ((uint64_t)hi << 32) | lo;
 }
 
 void __am_timer_rtc(AM_TIMER_RTC_T *rtc) {
