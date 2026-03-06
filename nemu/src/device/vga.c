@@ -34,6 +34,19 @@ static uint32_t screen_size() {
 static void *vmem = NULL;
 static uint32_t *vgactl_port_base = NULL;
 
+void vga_update_screen();
+
+static void vgactl_io_handler(uint32_t offset, int len, bool is_write) {
+  // offset=0: 屏幕大小寄存器（只读）
+  // offset=4: 同步寄存器（只写）
+  if (is_write && offset == 4) {
+    // 写入同步寄存器时，更新屏幕
+    vga_update_screen();
+    // 清零同步寄存器
+    vgactl_port_base[1] = 0;
+  }
+}
+
 #ifdef CONFIG_VGA_SHOW_SCREEN
 #ifndef CONFIG_TARGET_AM
 #include <SDL2/SDL.h>
@@ -74,15 +87,18 @@ static inline void update_screen() {
 void vga_update_screen() {
   // TODO: call `update_screen()` when the sync register is non-zero,
   // then zero out the sync register
+#ifdef CONFIG_VGA_SHOW_SCREEN
+  update_screen();
+#endif
 }
 
 void init_vga() {
   vgactl_port_base = (uint32_t *)new_space(8);
   vgactl_port_base[0] = (screen_width() << 16) | screen_height();
 #ifdef CONFIG_HAS_PORT_IO
-  add_pio_map ("vgactl", CONFIG_VGA_CTL_PORT, vgactl_port_base, 8, NULL);
+  add_pio_map ("vgactl", CONFIG_VGA_CTL_PORT, vgactl_port_base, 8, vgactl_io_handler);
 #else
-  add_mmio_map("vgactl", CONFIG_VGA_CTL_MMIO, vgactl_port_base, 8, NULL);
+  add_mmio_map("vgactl", CONFIG_VGA_CTL_MMIO, vgactl_port_base, 8, vgactl_io_handler);
 #endif
 
   vmem = new_space(screen_size());
