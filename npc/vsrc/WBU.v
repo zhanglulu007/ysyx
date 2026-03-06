@@ -1,23 +1,18 @@
-// WBU - WriteBack Unit
-// 写回单元：负责选择写回寄存器的数据，并计算下一个PC
-
 module WBU(
-  input [31:0] pc,            // 当前PC
-  input [31:0] alu_result,    // ALU结果
-  input [31:0] mem_rdata,     // 存储器读数据
-  input [31:0] imm_u,         // U型立即数
-  input [31:0] jump_target,   // 跳转目标地址
+  input [31:0] pc,            
+  input [31:0] alu_result,    
+  input [31:0] mem_rdata,     
+  input [31:0] imm_u,         
+  input [31:0] jump_target,   
   
-  // 指令类型
   input is_jalr,
   input is_lui,
   input is_lw,
   input is_lbu,
   input is_ebreak,
   
-  // 输出
-  output [31:0] rd_data,      // 写回寄存器的数据
-  output [31:0] pc_next       // 下一个PC
+  output [31:0] rd_data,      
+  output [31:0] pc_next       
 );
 
   // 写回数据选择

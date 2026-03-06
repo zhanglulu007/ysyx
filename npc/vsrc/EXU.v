@@ -1,17 +1,12 @@
-// EXU - Execution Unit
-// 执行单元：负责ALU运算和跳转地址计算
-
 module EXU(
-  input [31:0] rs1_data,      // 源寄存器1数据
-  input [31:0] rs2_data,      // 源寄存器2数据
-  input [31:0] imm_i,         // I型立即数
-  input [31:0] pc,            // 当前PC
-  
-  // 指令类型
+  input [31:0] rs1_data,      
+  input [31:0] rs2_data,      
+  input [31:0] imm_i,         
+  input [31:0] pc,            
+
   input is_add,
   input is_jalr,
   
-  // 输出
   output [31:0] alu_result,   // ALU计算结果
   output [31:0] jump_target   // 跳转目标地址
 );

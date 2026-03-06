@@ -1,11 +1,7 @@
-// LSU - Load-Store Unit
-// 访存单元：负责存储器的读写操作
-
 module LSU(
   input clk,
   input rst,
   
-  // 控制信号
   input mem_valid,            // 访存有效
   input mem_wen,              // 写使能
   input is_lw,                // 加载字
@@ -13,15 +9,12 @@ module LSU(
   input is_sw,                // 存储字
   input is_sb,                // 存储字节
   
-  // 地址和数据
   input [31:0] mem_addr,      // 访存地址
   input [31:0] wdata,         // 写入数据（来自rs2）
-  
-  // 输出
+
   output [31:0] rdata         // 读出数据
 );
 
-  // DPI-C函数：存储器读写
   import "DPI-C" function int pmem_read(input int raddr);
   import "DPI-C" function void pmem_write(input int waddr, input int wdata, input byte wmask);
   

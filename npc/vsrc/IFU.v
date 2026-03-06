@@ -1,6 +1,3 @@
-// IFU - Instruction Fetch Unit
-// 取指单元：负责根据PC从存储器中取出指令
-
 module IFU(
   input clk,
   input rst,
@@ -8,8 +5,6 @@ module IFU(
   output reg [31:0] pc,      // 当前PC
   output [31:0] inst         // 取出的指令
 );
-
-  // DPI-C函数：从存储器读取指令
   import "DPI-C" function int pmem_read(input int raddr);
   
   // PC寄存器更新
