@@ -65,7 +65,10 @@ sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs -CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp
+	$(VERILATOR) --top-module top -cc --exe \
+	--build -j --trace-fst --trace-structs \
+	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
+	--Mdir $(OBJ_DIR)
 	@echo "-- RUN ---------------------"
 	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
 	obj_dir/Vtop $(PROG) $(HALT)
@@ -83,9 +86,21 @@ build:
 
 # 只运行（需要先build）
 run:
+	@if [ ! -f obj_dir/Vtop ]; then \
+		echo "Error: NPC not built. Please run 'make build' first."; \
+		exit 1; \
+	fi
+	@if [ -z "$(PROG)" ]; then \
+		echo "Error: PROG not specified. Usage: make run PROG=<program.bin>"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(PROG)" ]; then \
+		echo "Error: Program file '$(PROG)' not found."; \
+		exit 1; \
+	fi
 	@echo "-- RUN ---------------------"
-	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
-	obj_dir/Vtop $(PROG) $(HALT)
+	@echo "Running: obj_dir/Vtop $(PROG)"
+	@obj_dir/Vtop $(PROG)
 	@echo "-- DONE --------------------"
 
 

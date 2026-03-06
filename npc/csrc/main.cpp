@@ -12,7 +12,7 @@
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
-#define PMEM_BASE 0x00000000  // 修改为0以兼容Logisim程序
+#define PMEM_BASE 0x80000000  // AM程序从0x80000000开始
 
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
@@ -54,12 +54,15 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
 }
 
 // DPI-C函数：ebreak处理
-extern "C" void ebreak_handler() {
-  // 读取a0寄存器的值（这里简化处理，假设为0表示成功）
-  // 实际应该从寄存器堆读取，这里简化为总是成功
-  printf("\n*** HIT GOOD TRAP ***\n");
+extern "C" void ebreak_handler(int code) {
+  // code是a0寄存器的值，0表示成功，非0表示失败
+  if (code == 0) {
+    printf("\n*** HIT GOOD TRAP ***\n");
+  } else {
+    printf("\n*** HIT BAD TRAP (code=%d) ***\n", code);
+  }
   should_exit = true;
-  exit_code = 0;
+  exit_code = code;
 }
 
 // 加载二进制文件到存储器
@@ -81,11 +84,11 @@ static bool load_program(const char* filename) {
     return false;
   }
   
-  // 读取到存储器
+  // 读取到存储器（从PMEM_BASE对应的位置开始）
   size_t bytes_read = fread(pmem, 1, size, fp);
   fclose(fp);
   
-  printf("Loaded %zu bytes from '%s' into memory at 0x%08x\n", bytes_read, filename, 0);
+  printf("Loaded %zu bytes from '%s' into memory at 0x%08x\n", bytes_read, filename, PMEM_BASE);
   return true;
 }
 
@@ -129,9 +132,8 @@ static uint32_t find_halt_address() {
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin> [halt_address]\n", argv[0]);
-        printf("Example: %s sum.bin\n", argv[0]);
-        printf("Example: %s sum.bin 0x228\n", argv[0]);
+        printf("Usage: %s <program.bin>\n", argv[0]);
+        printf("Example: %s build/dummy-minirv-npc.bin\n", argv[0]);
         return 1;
     }
     
@@ -158,27 +160,6 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    // 处理halt地址
-    uint32_t halt_addr = 0;
-    if (argc >= 3) {
-        // 从命令行参数读取halt地址
-        if (sscanf(argv[2], "%x", &halt_addr) == 1 || 
-            sscanf(argv[2], "0x%x", &halt_addr) == 1) {
-            printf("Using halt address from command line: 0x%08x\n", halt_addr);
-        } else {
-            printf("ERROR: Invalid halt address format: %s\n", argv[2]);
-            return 1;
-        }
-    } else {
-        // 自动查找halt地址
-        halt_addr = find_halt_address();
-    }
-    
-    // 在halt位置写入ebreak
-    if (halt_addr != 0) {
-        write_ebreak_at(halt_addr);
-    }
-    
     printf("\n");
     
     // 复位
@@ -197,8 +178,8 @@ int main(int argc, char** argv) {
     
     // 仿真循环 - 持续运行直到ebreak
     int cycles = 0;
-    int max_cycles = 1000000; // 防止无限循环
-    printf("Starting simulation from PC=0x%08x...\n\n", 0);
+    int max_cycles = 10000000; // 增加最大周期数
+    printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
     while (!contextp->gotFinish() && !should_exit && cycles < max_cycles) {
         // 下降沿
@@ -220,9 +201,11 @@ int main(int argc, char** argv) {
     printf("\nSimulation finished after %d cycles.\n", cycles);
     
     if (should_exit) {
-        printf("Exit reason: EBREAK instruction (program completed successfully)\n");
+        printf("Exit reason: EBREAK instruction (program completed)\n");
+        printf("Exit code: %d\n", exit_code);
     } else if (cycles >= max_cycles) {
         printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
+        exit_code = 1;
     }
     
     // 清理

@@ -15,7 +15,10 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  while (1);
+  // 使用ebreak指令通知NPC程序结束
+  // ebreak指令的机器码是0x00100073
+  asm volatile("ebreak");
+  while (1);  // 防止继续执行
 }
 
 void _trm_init() {
