@@ -15,7 +15,7 @@ module IFU(
   // PC寄存器更新
   always @(posedge clk) begin
     if (rst) begin
-      pc <= 32'h00000000;  
+      pc <= 32'h80000000;  
     end else begin
       pc <= pc_next;
     end

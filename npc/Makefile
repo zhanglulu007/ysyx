@@ -49,7 +49,7 @@ endif
 
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
-	-rm -rf obj_dir *.log *.dmp *.vpd core $(WAVE_DIR)
+	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR)
 	
 all:
 	@echo "Write this Makefile by your self."
@@ -70,7 +70,7 @@ sim:
 	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- RUN ---------------------"
-	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
+	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(HALT)"
 	$(OBJ_DIR)/Vtop $(PROG) $(HALT)
 	@echo "-- OPEN WAVEFORM ------------"
 	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
@@ -86,7 +86,7 @@ build:
 
 # 只运行（需要先build）
 run:
-	@if [ ! -f obj_dir/Vtop ]; then \
+	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
 		echo "Error: NPC not built. Please run 'make build' first."; \
 		exit 1; \
 	fi
@@ -99,8 +99,8 @@ run:
 		exit 1; \
 	fi
 	@echo "-- RUN ---------------------"
-	@echo "Running: obj_dir/Vtop $(PROG)"
-	@obj_dir/Vtop $(PROG)
+	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
+	@$(OBJ_DIR)/Vtop $(PROG)
 	@echo "-- DONE --------------------"
 
 
