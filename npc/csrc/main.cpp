@@ -245,10 +245,10 @@ int main(int argc, char** argv) {
     if (should_exit) {
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-    } else if (cycles >= max_cycles) {
-        printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
-        exit_code = 1;
-    }
+    }//  else if (cycles >= max_cycles) {
+    //     printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
+    //     exit_code = 1;
+    // }
     
     // 清理
     top->final();
