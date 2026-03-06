@@ -57,15 +57,35 @@ all:
 WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
+# 默认程序和halt地址
+PROG ?= csrc/sum.bin
+HALT ?= 0x228
+
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) -cc --exe --build -j --trace-fst --trace-structs vsrc/top.v csrc/main.cpp
+	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs -CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp
 	@echo "-- RUN ---------------------"
-	obj_dir/Vtop
+	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
+	obj_dir/Vtop $(PROG) $(HALT)
 	@echo "-- OPEN WAVEFORM ------------"
 	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
+	@echo "-- DONE --------------------"
+
+# 只编译不运行
+build:
+	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	@echo "-- VERILATE & BUILD --------"
+	@mkdir -p $(WAVE_DIR)
+	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs -CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp
+	@echo "-- BUILD DONE --------------"
+
+# 只运行（需要先build）
+run:
+	@echo "-- RUN ---------------------"
+	@echo "Running: obj_dir/Vtop $(PROG) $(HALT)"
+	obj_dir/Vtop $(PROG) $(HALT)
 	@echo "-- DONE --------------------"
 
 
@@ -107,5 +127,5 @@ $(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
 		$(addprefix -CFLAGS , $(CXXFLAGS)) $(addprefix -LDFLAGS , $(LDFLAGS)) \
 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
 
-run: $(BIN)
-	@$^
+# run: $(BIN)
+# 	@$^

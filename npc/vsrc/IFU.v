@@ -1,0 +1,27 @@
+// IFU - Instruction Fetch Unit
+// 取指单元：负责根据PC从存储器中取出指令
+
+module IFU(
+  input clk,
+  input rst,
+  input [31:0] pc_next,      // 下一个PC值
+  output reg [31:0] pc,      // 当前PC
+  output [31:0] inst         // 取出的指令
+);
+
+  // DPI-C函数：从存储器读取指令
+  import "DPI-C" function int pmem_read(input int raddr);
+  
+  // PC寄存器更新
+  always @(posedge clk) begin
+    if (rst) begin
+      pc <= 32'h80000000;  // minirv-npc约定从0x80000000开始
+    end else begin
+      pc <= pc_next;
+    end
+  end
+  
+  // 取指：从PC地址读取指令
+  assign inst = pmem_read(pc);
+
+endmodule
