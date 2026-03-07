@@ -90,7 +90,7 @@ build:
 	$(VERILATOR) $(VERILATOR_CFLAGS) \
 	$(addprefix -CFLAGS , $(CXXFLAGS)) \
 	--top-module top -cc --exe \
-	--build -j --trace-fst --trace-structs \
+	--build -j \
 	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
