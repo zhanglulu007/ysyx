@@ -13,6 +13,8 @@
 #include "sdb/sdb.h"
 #include "utils/log.h"
 #include "utils/itrace.h"
+#include "utils/mtrace.h"
+#include "utils/ftrace.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -49,6 +51,11 @@ static struct {
 
 // itrace控制：是否输出到控制台
 static bool g_print_itrace = false;
+
+// 寄存器和指令缓存（在C++侧维护）
+static uint32_t reg_cache[32] = {0};
+static uint32_t pc_cache = 0;
+static uint32_t inst_cache = 0;
 
 // RISC-V寄存器名称
 static const char *regs[] = {
@@ -95,7 +102,12 @@ extern "C" int pmem_read(int raddr) {
   }
   
   uint32_t* p = (uint32_t*)guest_to_host(raddr);
-  return *p;
+  uint32_t ret = *p;
+  
+  // mtrace记录
+  mtrace_read(raddr, 4, ret, pc_cache, g_print_itrace);
+  
+  return ret;
 }
 
 // DPI-C函数：写入存储器
@@ -116,6 +128,16 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
            waddr, PMEM_BASE, PMEM_BASE + PMEM_SIZE - 1);
     return;
   }
+  
+  // 计算实际写入的字节数
+  int len = 0;
+  if (wmask & 0x01) len++;
+  if (wmask & 0x02) len++;
+  if (wmask & 0x04) len++;
+  if (wmask & 0x08) len++;
+  
+  // mtrace记录（在写入之前）
+  mtrace_write(waddr, len, wdata, pc_cache, g_print_itrace);
   
   uint8_t* p = guest_to_host(waddr);
   
@@ -140,11 +162,6 @@ extern "C" void ebreak_handler(int code) {
   npc_state.halt_ret = code;
 }
 
-// 寄存器缓存（在C++侧维护）
-static uint32_t reg_cache[32] = {0};
-static uint32_t pc_cache = 0;
-static uint32_t inst_cache = 0;
-
 // DPI-C函数：从Verilog接收寄存器更新
 extern "C" void update_reg_value(int idx, int value) {
   if (idx >= 0 && idx < 32) {
@@ -161,6 +178,16 @@ extern "C" void update_pc_value(int pc_val) {
 extern "C" void update_inst_value(int pc_val, int inst_val) {
   pc_cache = pc_val;
   inst_cache = inst_val;
+}
+
+// DPI-C函数：ftrace函数调用处理
+extern "C" void ftrace_call_handler(int pc_val, int target_val) {
+  ftrace_call(pc_val, target_val, g_print_itrace);
+}
+
+// DPI-C函数：ftrace函数返回处理
+extern "C" void ftrace_ret_handler(int pc_val) {
+  ftrace_ret(pc_val, g_print_itrace);
 }
 
 // 寄存器访问接口（从缓存读取）
@@ -325,9 +352,10 @@ void cpu_exec(uint64_t n) {
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin> [-b] [-l log_file]\n", argv[0]);
+        printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file]\n", argv[0]);
         printf("  -b: batch mode (non-interactive)\n");
         printf("  -l log_file: specify log file (default: npc.log)\n");
+        printf("  -e elf_file: specify ELF file for ftrace\n");
         printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
         return 1;
     }
@@ -335,6 +363,7 @@ int main(int argc, char** argv) {
     const char* program_file = argv[1];
     bool batch_mode = false;
     const char* log_file = NULL;  // NULL表示使用默认文件名npc.log
+    const char* elf_file = NULL;  // ELF文件路径（用于ftrace）
     
     // 解析命令行参数
     for (int i = 2; i < argc; i++) {
@@ -344,14 +373,19 @@ int main(int argc, char** argv) {
         } else if (strcmp(argv[i], "-l") == 0 && i + 1 < argc) {
             log_file = argv[i + 1];
             i++;
+        } else if (strcmp(argv[i], "-e") == 0 && i + 1 < argc) {
+            elf_file = argv[i + 1];
+            i++;
         }
     }
     
     // 初始化日志系统（默认输出到npc.log）
     init_log(log_file);
     
-    // 初始化itrace
+    // 初始化trace系统
     init_itrace();
+    init_mtrace();
+    init_ftrace(elf_file);
     
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
