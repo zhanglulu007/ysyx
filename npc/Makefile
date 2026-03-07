@@ -96,6 +96,15 @@ build:
 
 # 只运行（需要先build）
 run:
+	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	@echo "-- VERILATE & BUILD --------"
+	@mkdir -p $(WAVE_DIR)
+	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
+	-LDFLAGS "-lreadline" \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
+	--Mdir $(OBJ_DIR)
+	@echo "-- BUILD DONE --------------"
 	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
 		echo "Error: NPC not built. Please run 'make build' first."; \
 		exit 1; \
