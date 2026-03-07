@@ -12,6 +12,7 @@
 #include "Vtop.h"
 #include "sdb/sdb.h"
 #include "trace/trace.h"
+#include "utils/log.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -25,6 +26,9 @@
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
 static uint32_t exit_code = 0;
+
+// 全局指令计数器（用于日志和trace）
+uint64_t g_nr_inst = 0;
 
 // 全局变量：顶层模块指针和仿真上下文
 Vtop* g_top = NULL;
@@ -80,10 +84,12 @@ extern "C" int pmem_read(int raddr) {
   // 处理RTC时钟读取
   if (raddr == RTC_ADDR_LO) {
     uint64_t uptime = get_time_us() - boot_time;
+    log_write("[PMEM] RTC_LO read: 0x%08x\n", (uint32_t)(uptime & 0xFFFFFFFF));
     return (uint32_t)(uptime & 0xFFFFFFFF);
   }
   if (raddr == RTC_ADDR_HI) {
     uint64_t uptime = get_time_us() - boot_time;
+    log_write("[PMEM] RTC_HI read: 0x%08x\n", (uint32_t)(uptime >> 32));
     return (uint32_t)(uptime >> 32);
   }
   
@@ -113,6 +119,8 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   if (waddr == SERIAL_PORT) {
     // 串口只使用最低字节
     putchar(wdata & 0xFF);
+    log_write("[SERIAL] output: '%c' (0x%02x)\n", 
+              (wdata & 0xFF) >= 32 ? (wdata & 0xFF) : '.', wdata & 0xFF);
     return;
   }
   
@@ -140,8 +148,10 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
 extern "C" void ebreak_handler(int code) {
   // code是a0寄存器的值，0表示成功，非0表示失败
   if (code == 0) {
+    Log("HIT GOOD TRAP at PC=0x%08x", pc_cache);
     printf("\n*** HIT GOOD TRAP ***\n");
   } else {
+    Log("HIT BAD TRAP (code=%d) at PC=0x%08x", code, pc_cache);
     printf("\n*** HIT BAD TRAP (code=%d) ***\n", code);
 #ifdef CONFIG_ITRACE
     display_iringbuf();
@@ -271,6 +281,9 @@ static void exec_once() {
   if (g_tfp) g_tfp->dump(g_contextp->time());
   
   g_contextp->timeInc(1);
+  
+  // 指令计数器递增
+  g_nr_inst++;
 }
 
 // CPU执行n条指令
@@ -321,22 +334,31 @@ void cpu_exec(uint64_t n) {
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin> [-b]\n", argv[0]);
+        printf("Usage: %s <program.bin> [-b] [-l log_file]\n", argv[0]);
         printf("  -b: batch mode (non-interactive)\n");
+        printf("  -l log_file: write log to file\n");
         printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
+        printf("Example: %s build/dummy-riscv32e-npc.bin -l npc.log\n", argv[0]);
         return 1;
     }
     
     const char* program_file = argv[1];
     bool batch_mode = false;
+    const char* log_file = NULL;
     
     // 解析命令行参数
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-b") == 0) {
             batch_mode = true;
             sdb_set_batch_mode();
+        } else if (strcmp(argv[i], "-l") == 0 && i + 1 < argc) {
+            log_file = argv[i + 1];
+            i++;  // 跳过下一个参数
         }
     }
+    
+    // 初始化日志系统
+    init_log(log_file);
     
     // 初始化Verilator上下文
     g_contextp = new VerilatedContext;
@@ -352,8 +374,8 @@ int main(int argc, char** argv) {
     // g_tfp->open("wave/dump.fst");
     
     // 加载程序
-    printf("NPC - RISC-V processor simulator with Simple Debugger\n");
-    printf("======================================================\n\n");
+    Log("NPC - RISC-V processor simulator with Simple Debugger");
+    Log("======================================================");
     
     if (!load_program(program_file)) {
         return 1;
@@ -362,7 +384,7 @@ int main(int argc, char** argv) {
     // 初始化启动时间
     boot_time = get_time_us();
     
-    printf("\n");
+    Log("Initialization complete");
     
     // 复位
     g_top->rst = 1;
@@ -384,22 +406,23 @@ int main(int argc, char** argv) {
     // 初始化sdb
     init_sdb();
     
-    printf("Starting simulation from PC=0x%08x...\n", PMEM_BASE);
+    Log("Starting simulation from PC=0x%08x", PMEM_BASE);
     
     if (batch_mode) {
-        printf("Running in batch mode...\n\n");
+        Log("Running in batch mode");
     } else {
-        printf("Entering interactive mode. Type 'help' for commands.\n\n");
+        printf("\nEntering interactive mode. Type 'help' for commands.\n\n");
     }
     
     // 进入sdb主循环
     sdb_mainloop();
     
-    printf("\nSimulation finished.\n");
+    Log("Simulation finished");
     
     if (should_exit) {
-        printf("Exit reason: EBREAK instruction (program completed)\n");
-        printf("Exit code: %d\n", exit_code);
+        Log("Exit reason: EBREAK instruction (program completed)");
+        Log("Exit code: %d", exit_code);
+        Log("Total instructions executed: %lu", g_nr_inst);
     }
     
     // 清理
@@ -411,6 +434,10 @@ int main(int argc, char** argv) {
     
     delete g_top;
     delete g_contextp;
+    
+    // 关闭日志文件
+    extern void close_log();
+    close_log();
     
     return exit_code;
 }

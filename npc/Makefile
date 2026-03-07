@@ -100,9 +100,9 @@ run:
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
-	-LDFLAGS "-lreadline" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -DCONFIG_ITRACE -DCONFIG_MTRACE -DCONFIG_LOG" \
+	-LDFLAGS "-lreadline -ldl" \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp csrc/trace/*.cpp csrc/utils/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
