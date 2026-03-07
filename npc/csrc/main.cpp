@@ -115,7 +115,7 @@ extern "C" int pmem_read(int raddr) {
   
   // mtrace记录（去重：同一周期同一地址只记录一次）
   if (g_cycle_cnt != last_read_cycle || raddr != last_read_addr) {
-    mtrace_read(raddr, 4, ret, pc_cache, g_print_itrace);
+    mtrace_read(raddr, 4, ret, pc_cache);
     last_read_cycle = g_cycle_cnt;
     last_read_addr = raddr;
   }
@@ -151,7 +151,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   
   // mtrace记录（去重：同一周期同一地址只记录一次）
   if (g_cycle_cnt != last_write_cycle || waddr != last_write_addr) {
-    mtrace_write(waddr, len, wdata, pc_cache, g_print_itrace);
+    mtrace_write(waddr, len, wdata, pc_cache);
     last_write_cycle = g_cycle_cnt;
     last_write_addr = waddr;
   }
@@ -199,12 +199,12 @@ extern "C" void update_inst_value(int pc_val, int inst_val) {
 
 // DPI-C函数：ftrace函数调用处理
 extern "C" void ftrace_call_handler(int pc_val, int target_val) {
-  ftrace_call(pc_val, target_val, g_print_itrace);
+  ftrace_call(pc_val, target_val);
 }
 
 // DPI-C函数：ftrace函数返回处理
 extern "C" void ftrace_ret_handler(int pc_val) {
-  ftrace_ret(pc_val, g_print_itrace);
+  ftrace_ret(pc_val);
 }
 
 // 寄存器访问接口（从缓存读取）
@@ -310,8 +310,11 @@ static void exec_once() {
   // 增加周期计数
   g_cycle_cnt++;
   
-  // 记录itrace（在时钟上升沿后）
+  // 统一输出trace（按顺序：ftrace -> itrace -> mtrace）
+  // 这样可以避免输出交错，并且保持合理的顺序
+  ftrace_flush(g_print_itrace);
   itrace_log(pc_cache, inst_cache, g_print_itrace);
+  mtrace_flush(g_print_itrace);
 }
 
 // CPU执行n条指令

@@ -4,12 +4,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <elf.h>
+#include <vector>
+#include <string>
 
 // 符号表相关数据结构
 static Elf32_Sym *symtab = NULL;
 static char *strtab = NULL;
 static int symtab_nr = 0;  // 符号表项数量
 static int func_depth = 0;  // 函数调用深度
+
+// ftrace缓冲区（用于延迟输出）
+static std::vector<std::string> ftrace_buffer;
 
 // 根据地址查找函数名
 static const char* find_func_name(uint32_t addr) {
@@ -151,8 +156,8 @@ void init_ftrace(const char *elf_file) {
   Log("ftrace initialized with %d symbols from '%s'", symtab_nr, elf_file);
 }
 
-// 记录函数调用
-void ftrace_call(uint32_t pc, uint32_t target, bool print_to_console) {
+// 记录函数调用（延迟输出）
+void ftrace_call(uint32_t pc, uint32_t target) {
   const char *func_name = find_func_name(target);
   char logbuf[256];
   snprintf(logbuf, sizeof(logbuf), 
@@ -161,17 +166,12 @@ void ftrace_call(uint32_t pc, uint32_t target, bool print_to_console) {
   
   func_depth++;
   
-  // 输出到日志文件（始终）
-  log_write("%s\n", logbuf);
-  
-  // 输出到控制台（仅在si<=10时）
-  if (print_to_console) {
-    printf("%s\n", logbuf);
-  }
+  // 添加到缓冲区，延迟输出
+  ftrace_buffer.push_back(std::string(logbuf));
 }
 
-// 记录函数返回
-void ftrace_ret(uint32_t pc, bool print_to_console) {
+// 记录函数返回（延迟输出）
+void ftrace_ret(uint32_t pc) {
   func_depth--;
   if (func_depth < 0) func_depth = 0;  // 防止深度为负
   
@@ -181,11 +181,21 @@ void ftrace_ret(uint32_t pc, bool print_to_console) {
            "[FTRACE] 0x%08x: %*sret  [%s]",
            pc, func_depth * 2, "", func_name);
   
-  // 输出到日志文件（始终）
-  log_write("%s\n", logbuf);
-  
-  // 输出到控制台（仅在si<=10时）
-  if (print_to_console) {
-    printf("%s\n", logbuf);
+  // 添加到缓冲区，延迟输出
+  ftrace_buffer.push_back(std::string(logbuf));
+}
+
+// 刷新ftrace缓冲区
+void ftrace_flush(bool print_to_console) {
+  for (const auto& line : ftrace_buffer) {
+    // 输出到日志文件（始终）
+    log_write("%s\n", line.c_str());
+    
+    // 输出到控制台（仅在si<=10时）
+    if (print_to_console) {
+      printf("%s\n", line.c_str());
+    }
   }
+  
+  ftrace_buffer.clear();
 }

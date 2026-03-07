@@ -77,6 +77,7 @@ build:
 
 # 编译运行
 run:
+	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
