@@ -119,7 +119,7 @@ run:
 	fi
 	@echo "-- RUN ---------------------"
 	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
-	@$(OBJ_DIR)/Vtop $(PROG) -b
+	@$(OBJ_DIR)/Vtop $(PROG)
 	@echo "-- DONE --------------------"
 
 
