@@ -47,9 +47,11 @@ endif
 
 ######################################################################
 
+.PHONY: build sim run clean
+
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
-	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR)
+	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
 	
 all:
 	@echo "Write this Makefile by your self."
@@ -85,7 +87,12 @@ build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs -CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp
+	$(VERILATOR) $(VERILATOR_CFLAGS) \
+	$(addprefix -CFLAGS , $(CXXFLAGS)) \
+	--top-module top -cc --exe \
+	--build -j --trace-fst --trace-structs \
+	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
+	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 
 # 只运行（需要先build）
