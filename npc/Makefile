@@ -60,14 +60,14 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 # 默认程序和halt地址
 PROG ?= test/mem.bin
 HALT ?= 0x1220
-CXXFLAGS += -O3 -march=native
+#CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) $(VERILATOR_CFLAGS) $(addprefix -CFLAGS , $(CXXFLAGS)) \
+	$(VERILATOR) $(VERILATOR_CFLAGS) \
 	--top-module top -cc --exe \
 	--build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
