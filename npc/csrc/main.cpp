@@ -67,7 +67,7 @@ static uint64_t last_write_cycle = 0;
 static uint32_t last_write_addr = 0;
 
 // 日志记录控制：记录最近N个周期的日志
-#define LOG_WINDOW_SIZE 10000
+#define LOG_WINDOW_SIZE 100000
 static uint64_t log_start_cycle = 0;  // 0表示从头开始记录
 static uint64_t log_end_cycle = 0;    // 0表示记录到结束
 
