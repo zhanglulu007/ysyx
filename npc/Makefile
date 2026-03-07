@@ -99,7 +99,7 @@ run:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
+	$(VERILATOR) -b --top-module top -cc --exe --build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
 	-LDFLAGS "-lreadline" \
 	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
