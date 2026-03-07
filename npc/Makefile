@@ -47,8 +47,6 @@ endif
 
 ######################################################################
 
-.PHONY: build sim run clean
-
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
 	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
@@ -63,7 +61,7 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 PROG ?= test/mem.bin
 HALT ?= 0x1220
 CXXFLAGS += -O3 -march=native
-VERILATOR_FLAGS += --x-assign fast --x-initial fast --threads 8
+VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -73,7 +71,9 @@ sim:
 	$(addprefix -CFLAGS , $(CXXFLAGS)) \
 	--top-module top -cc --exe \
 	--build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
+	-LDFLAGS "-lreadline" \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- RUN ---------------------"
 	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(HALT)"
@@ -87,11 +87,10 @@ build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) $(VERILATOR_CFLAGS) \
-	$(addprefix -CFLAGS , $(CXXFLAGS)) \
-	--top-module top -cc --exe \
-	--build -j \
-	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
+	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
+	-LDFLAGS "-lreadline" \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 
@@ -155,3 +154,5 @@ $(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
 
 # run: $(BIN)
 # 	@$^
+
+.PHONY: build sim run clean

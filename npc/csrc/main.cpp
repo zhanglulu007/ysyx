@@ -10,6 +10,7 @@
 #include <verilated.h>
 #include <verilated_fst_c.h>
 #include "Vtop.h"
+#include "sdb/sdb.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -23,6 +24,34 @@
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
 static uint32_t exit_code = 0;
+
+// 全局变量：顶层模块指针和仿真上下文
+Vtop* g_top = NULL;
+static VerilatedContext* g_contextp = NULL;
+static VerilatedFstC* g_tfp = NULL;
+
+// NPC状态
+enum {
+  NPC_RUNNING,
+  NPC_STOP,
+  NPC_END,
+  NPC_ABORT,
+  NPC_QUIT
+};
+
+static struct {
+  int state;
+  uint32_t halt_pc;
+  uint32_t halt_ret;
+} npc_state = { .state = NPC_STOP };
+
+// RISC-V寄存器名称
+static const char *regs[] = {
+  "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+  "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+  "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+  "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+};
 
 // 地址转换
 static inline uint8_t* guest_to_host(uint32_t paddr) {
@@ -102,6 +131,74 @@ extern "C" void ebreak_handler(int code) {
   }
   should_exit = true;
   exit_code = code;
+  npc_state.state = NPC_END;
+  npc_state.halt_ret = code;
+}
+
+// 寄存器访问接口（通过Verilator访问RTL）
+static uint32_t get_reg_value(int idx) {
+  if (g_top == NULL) return 0;
+  
+  // 通过Verilator访问寄存器堆
+  // 路径：top->u_regfile->rf[idx]
+  if (idx == 0) return 0;  // x0恒为0
+  
+  // 注意：这里需要根据实际的Verilator生成的变量名调整
+  // 可以查看obj_dir/Vtop.h来确定正确的路径
+  return g_top->rootp->top__DOT__u_regfile__DOT__rf[idx];
+}
+
+static uint32_t get_pc() {
+  if (g_top == NULL) return 0;
+  return g_top->rootp->top__DOT__pc;
+}
+
+// 寄存器名称转换为值
+word_t npc_reg_str2val(const char *s, bool *success) {
+  *success = true;
+  
+  if (strcmp(s, "pc") == 0) {
+    return get_pc();
+  }
+  
+  for (int i = 0; i < 32; i++) {
+    if (strcmp(s, regs[i]) == 0) {
+      return get_reg_value(i);
+    }
+    
+    char xname[8];
+    sprintf(xname, "x%d", i);
+    if (strcmp(s, xname) == 0) {
+      return get_reg_value(i);
+    }
+  }
+  
+  *success = false;
+  return 0;
+}
+
+// 打印所有寄存器
+void npc_reg_display() {
+  for (int i = 0; i < 32; i++) {
+    printf("%-4s  0x%08x\n", regs[i], get_reg_value(i));
+  }
+  printf("%-4s  0x%08x\n", "pc", get_pc());
+}
+
+// 内存访问接口
+word_t pmem_read_word(uint32_t addr) {
+  addr = addr & ~0x3u;
+  
+  if (addr < PMEM_BASE || addr >= PMEM_BASE + PMEM_SIZE) {
+    return 0;
+  }
+  
+  uint32_t* p = (uint32_t*)guest_to_host(addr);
+  return *p;
+}
+
+bool in_pmem(uint32_t addr) {
+  return addr >= PMEM_BASE && addr < PMEM_BASE + PMEM_SIZE;
 }
 
 // 加载二进制文件到存储器
@@ -112,7 +209,6 @@ static bool load_program(const char* filename) {
     return false;
   }
   
-  // 读取文件大小
   fseek(fp, 0, SEEK_END);
   long size = ftell(fp);
   fseek(fp, 0, SEEK_SET);
@@ -123,7 +219,6 @@ static bool load_program(const char* filename) {
     return false;
   }
   
-  // 读取到存储器（从PMEM_BASE对应的位置开始）
   size_t bytes_read = fread(pmem, 1, size, fp);
   fclose(fp);
   
@@ -131,72 +226,104 @@ static bool load_program(const char* filename) {
   return true;
 }
 
-// 在指定地址写入ebreak指令
-static void write_ebreak_at(uint32_t addr) {
-  if (addr >= PMEM_SIZE) {
-    printf("ERROR: EBREAK address out of range: 0x%08x\n", addr);
+// 单步执行
+static void exec_once() {
+  // 下降沿
+  g_top->clk = 0;
+  g_top->eval();
+  if (g_tfp) g_tfp->dump(g_contextp->time());
+  
+  g_contextp->timeInc(1);
+  
+  // 上升沿
+  g_top->clk = 1;
+  g_top->eval();
+  if (g_tfp) g_tfp->dump(g_contextp->time());
+  
+  g_contextp->timeInc(1);
+}
+
+// CPU执行n条指令
+void cpu_exec(uint64_t n) {
+  if (npc_state.state == NPC_END || npc_state.state == NPC_ABORT) {
+    printf("Program has already exited. Use 'q' to quit.\n");
     return;
   }
   
-  uint32_t ebreak_inst = 0x00100073;
-  uint8_t* p = guest_to_host(addr);
+  npc_state.state = NPC_RUNNING;
   
-  p[0] = ebreak_inst & 0xFF;
-  p[1] = (ebreak_inst >> 8) & 0xFF;
-  p[2] = (ebreak_inst >> 16) & 0xFF;
-  p[3] = (ebreak_inst >> 24) & 0xFF;
+  uint64_t cycles = 0;
+  bool hit_watchpoint = false;
   
-  printf("Wrote EBREAK instruction at address 0x%08x\n", addr);
-}
-
-// 查找halt函数地址（简化版本：查找特定的指令模式）
-// halt函数通常是一个死循环：jalr x0, x0, 0 (0x00000067)
-static uint32_t find_halt_address() {
-  uint32_t halt_pattern = 0x00000067; // jalr x0, x0, 0
-  
-  // 在前64KB范围内搜索
-  for (uint32_t offset = 0; offset < 64 * 1024; offset += 4) {
-    uint32_t* p = (uint32_t*)(pmem + offset);
-    if (*p == halt_pattern) {
-      uint32_t addr = offset;
-      printf("Found halt() at address 0x%08x\n", addr);
-      return addr;
+  while (cycles < n || n == (uint64_t)-1) {
+    exec_once();
+    cycles++;
+    
+    // 检查是否遇到ebreak
+    if (should_exit || npc_state.state != NPC_RUNNING) {
+      break;
+    }
+    
+    // 检查监视点
+    if (check_watchpoints()) {
+      hit_watchpoint = true;
+      npc_state.state = NPC_STOP;
+      printf("Program stopped due to watchpoint.\n");
+      break;
+    }
+    
+    // 避免无限循环
+    if (cycles % 1000000 == 0 && n == (uint64_t)-1) {
+      printf("Executed %lu cycles...\n", cycles);
     }
   }
   
-  printf("WARNING: halt() function not found, using default address\n");
-  return 0;
+  if (npc_state.state == NPC_RUNNING) {
+    npc_state.state = NPC_STOP;
+  }
+  
+  if (!hit_watchpoint && npc_state.state == NPC_STOP) {
+    printf("Executed %lu cycles.\n", cycles);
+  }
 }
+
 
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin>\n", argv[0]);
-        printf("Example: %s build/dummy-minirv-npc.bin\n", argv[0]);
+        printf("Usage: %s <program.bin> [-b]\n", argv[0]);
+        printf("  -b: batch mode (non-interactive)\n");
+        printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
         return 1;
     }
     
     const char* program_file = argv[1];
+    bool batch_mode = false;
+    
+    // 解析命令行参数
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "-b") == 0) {
+            batch_mode = true;
+            sdb_set_batch_mode();
+        }
+    }
     
     // 初始化Verilator上下文
-    VerilatedContext* const contextp = new VerilatedContext;
-    contextp->commandArgs(argc, argv);
+    g_contextp = new VerilatedContext;
+    g_contextp->commandArgs(argc, argv);
     
     // 创建顶层模块
-    Vtop* const top = new Vtop{contextp};
+    g_top = new Vtop{g_contextp};
     
-    // 启用波形追踪Verilated::traceEverOn(true);
-    // VerilatedFstC* tfp = new VerilatedFstC;
-    // top->trace(tfp, 99); 
-    // tfp->open("wave/dump.fst");
+    // 启用波形追踪（可选）
     // Verilated::traceEverOn(true);
-    // VerilatedFstC* tfp = new VerilatedFstC;
-    // top->trace(tfp, 99); 
-    // tfp->open("wave/dump.fst");
+    // g_tfp = new VerilatedFstC;
+    // g_top->trace(g_tfp, 99); 
+    // g_tfp->open("wave/dump.fst");
     
     // 加载程序
-    printf("NPC - minirv processor simulator\n");
-    printf("=================================\n\n");
+    printf("NPC - RISC-V processor simulator with Simple Debugger\n");
+    printf("======================================================\n\n");
     
     if (!load_program(program_file)) {
         return 1;
@@ -208,58 +335,47 @@ int main(int argc, char** argv) {
     printf("\n");
     
     // 复位
-    top->rst = 1;
-    top->clk = 0;
-    top->eval();
-    //tfp->dump(contextp->time());
+    g_top->rst = 1;
+    g_top->clk = 0;
+    g_top->eval();
     
-    contextp->timeInc(1);
-    top->clk = 1;
-    top->eval();
-    //tfp->dump(contextp->time());
+    g_contextp->timeInc(1);
+    g_top->clk = 1;
+    g_top->eval();
     
-    contextp->timeInc(1);
-    top->rst = 0;
+    g_contextp->timeInc(1);
+    g_top->rst = 0;
     
-    // 仿真循环 - 持续运行直到ebreak
-    //int cycles = 0;
-    //int max_cycles = 10000000; // 增加最大周期数
-    printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
+    // 初始化sdb
+    init_sdb();
     
-    while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
-        // 下降沿
-        top->clk = 0;
-        top->eval();
-        //tfp->dump(contextp->time());
-        
-        contextp->timeInc(1);
-        
-        // 上升沿
-        top->clk = 1;
-        top->eval();
-        //tfp->dump(contextp->time());
-        
-        contextp->timeInc(1);
-        //cycles++;
+    printf("Starting simulation from PC=0x%08x...\n", PMEM_BASE);
+    
+    if (batch_mode) {
+        printf("Running in batch mode...\n\n");
+    } else {
+        printf("Entering interactive mode. Type 'help' for commands.\n\n");
     }
     
-    printf("\nSimulation finished after %d cycles.\n", cycles);
+    // 进入sdb主循环
+    sdb_mainloop();
+    
+    printf("\nSimulation finished.\n");
     
     if (should_exit) {
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-    }//  else if (cycles >= max_cycles) {
-    //     printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
-    //     exit_code = 1;
-    // }
+    }
     
     // 清理
-    top->final();
-    //tfp->close();
+    g_top->final();
+    if (g_tfp) {
+        g_tfp->close();
+        delete g_tfp;
+    }
     
-    delete top;
-    //delete tfp;
-    delete contextp;
+    delete g_top;
+    delete g_contextp;
     
     return exit_code;
 }
