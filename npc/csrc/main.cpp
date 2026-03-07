@@ -11,6 +11,7 @@
 #include <verilated_fst_c.h>
 #include "Vtop.h"
 #include "sdb/sdb.h"
+#include "trace/trace.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -29,6 +30,10 @@ static uint32_t exit_code = 0;
 Vtop* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
 static VerilatedFstC* g_tfp = NULL;
+
+// 寄存器和PC缓存（在C++侧维护）
+static uint32_t reg_cache[32] = {0};
+static uint32_t pc_cache = 0;
 
 // NPC状态
 enum {
@@ -90,7 +95,13 @@ extern "C" int pmem_read(int raddr) {
   }
   
   uint32_t* p = (uint32_t*)guest_to_host(raddr);
-  return *p;
+  uint32_t data = *p;
+  
+#ifdef CONFIG_MTRACE
+  mtrace_read(raddr, 4, data, pc_cache);
+#endif
+  
+  return data;
 }
 
 // DPI-C函数：写入存储器
@@ -112,6 +123,10 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     return;
   }
   
+#ifdef CONFIG_MTRACE
+  mtrace_write(waddr, 4, wdata, pc_cache);
+#endif
+  
   uint8_t* p = guest_to_host(waddr);
   
   // 根据写掩码写入数据
@@ -128,16 +143,15 @@ extern "C" void ebreak_handler(int code) {
     printf("\n*** HIT GOOD TRAP ***\n");
   } else {
     printf("\n*** HIT BAD TRAP (code=%d) ***\n", code);
+#ifdef CONFIG_ITRACE
+    display_iringbuf();
+#endif
   }
   should_exit = true;
   exit_code = code;
   npc_state.state = NPC_END;
   npc_state.halt_ret = code;
 }
-
-// 寄存器缓存（在C++侧维护）
-static uint32_t reg_cache[32] = {0};
-static uint32_t pc_cache = 0;
 
 // DPI-C函数：从Verilog接收寄存器更新
 extern "C" void update_reg_value(int idx, int value) {
@@ -149,6 +163,13 @@ extern "C" void update_reg_value(int idx, int value) {
 // DPI-C函数：从Verilog接收PC更新
 extern "C" void update_pc_value(int pc_val) {
   pc_cache = pc_val;
+}
+
+// DPI-C函数：从Verilog接收指令（用于itrace）
+extern "C" void trace_inst(int pc, int inst) {
+#ifdef CONFIG_ITRACE
+  itrace_write(pc, inst);
+#endif
 }
 
 // 寄存器访问接口（从缓存读取）
@@ -354,6 +375,11 @@ int main(int argc, char** argv) {
     
     g_contextp->timeInc(1);
     g_top->rst = 0;
+    
+    // 初始化trace
+#ifdef CONFIG_ITRACE
+    init_disasm();
+#endif
     
     // 初始化sdb
     init_sdb();
