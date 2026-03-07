@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cassert>
 #include <sys/time.h>
+#include <string>
 #include <verilated.h>
 #include <verilated_fst_c.h>
 #include "Vtop.h"
@@ -46,7 +47,7 @@ static const uint64_t CPU_FREQ_HZ = 50000000;  // 假设CPU频率50MHz
 
 // 输出缓冲（优化终端I/O性能）
 static std::string output_buffer;
-static const size_t BUFFER_SIZE = 4096;  // 4KB缓冲
+static const size_t BUFFER_SIZE = 1024;  // 减小到1KB，更频繁刷新
 
 // 刷新输出缓冲
 static void flush_output() {
@@ -262,7 +263,8 @@ int main(int argc, char** argv) {
     int cycles = 0;
     //int max_cycles = 10000000; // 增加最大周期数
     printf("Starting simulation from PC=0x%08x...\n", PMEM_BASE);
-    printf("Using virtual clock with CPU frequency: %llu Hz\n\n", CPU_FREQ_HZ);
+    printf("Using virtual clock with CPU frequency: %llu Hz\n", CPU_FREQ_HZ);
+    printf("Output buffering enabled (buffer size: %zu bytes)\n\n", BUFFER_SIZE);
     
     while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
         // 下降沿
@@ -280,7 +282,16 @@ int main(int argc, char** argv) {
         contextp->timeInc(1);
         cycles++;
         sim_cycles++;  // 更新虚拟周期计数
+        
+        // 定期刷新输出（避免缓冲太久）
+        // 每100个周期刷新一次，确保及时显示
+        if (sim_cycles % 100 == 0) {
+          flush_output();
+        }
     }
+    
+    // 程序结束时刷新剩余输出
+    flush_output();
     
     printf("\nSimulation finished after %d cycles.\n", cycles);
     
