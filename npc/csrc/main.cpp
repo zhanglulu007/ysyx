@@ -33,7 +33,7 @@ static inline uint8_t* guest_to_host(uint32_t paddr) {
 static uint64_t get_time_us() {
   struct timeval tv;
   gettimeofday(&tv, NULL);
-  return (uint64_t)tv.tv_sec * 10000 + tv.tv_usec;
+  return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 static uint64_t boot_time = 0;  // 启动时间
