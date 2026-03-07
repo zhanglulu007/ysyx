@@ -7,7 +7,6 @@
 #include <cstring>
 #include <cassert>
 #include <sys/time.h>
-#include <string>
 #include <verilated.h>
 #include <verilated_fst_c.h>
 #include "Vtop.h"
@@ -37,48 +36,21 @@ static uint64_t get_time_us() {
   return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-static uint64_t boot_time = 0;  // 启动时间（仅用于初始化）
-static uint32_t rtc_lo = 0;    // RTC低32位锁存值
-static uint32_t rtc_hi = 0;    // RTC高32位锁存值
-
-// 虚拟时钟配置
-static uint64_t sim_cycles = 0;  // 仿真周期计数
-static const uint64_t CPU_FREQ_HZ = 50000000;  // 假设CPU频率50MHz
-
-// 输出缓冲（优化终端I/O性能）
-static std::string output_buffer;
-static const size_t BUFFER_SIZE = 1024;  // 减小到1KB，更频繁刷新
-
-// 刷新输出缓冲
-static void flush_output() {
-  if (!output_buffer.empty()) {
-    std::cout << output_buffer;
-    std::cout.flush();
-    output_buffer.clear();
-  }
-}
-
-// 计算虚拟时间（微秒）
-static uint64_t get_virtual_time_us() {
-  return (sim_cycles * 1000000) / CPU_FREQ_HZ;
-}
+static uint64_t boot_time = 0;  // 启动时间
 
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
   // 按4字节对齐读取
   raddr = raddr & ~0x3u;
   
-  // 处理RTC时钟读取 - 使用虚拟时钟
+  // 处理RTC时钟读取
   if (raddr == RTC_ADDR_LO) {
-    // 读取低位时，锁存完整的64位虚拟时间
-    uint64_t virtual_us = get_virtual_time_us();
-    rtc_lo = (uint32_t)(virtual_us & 0xFFFFFFFF);
-    rtc_hi = (uint32_t)(virtual_us >> 32);
-    return rtc_lo;
+    uint64_t uptime = get_time_us() - boot_time;
+    return (uint32_t)(uptime & 0xFFFFFFFF);
   }
   if (raddr == RTC_ADDR_HI) {
-    // 读取高位时不更新，直接返回已锁存的值
-    return rtc_hi;
+    uint64_t uptime = get_time_us() - boot_time;
+    return (uint32_t)(uptime >> 32);
   }
   
   // 检查地址是否在有效范围内
@@ -97,20 +69,10 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   // 按4字节对齐写入
   waddr = waddr & ~0x3u;
   
-  // 处理串口输出 - 使用缓冲优化性能
+  // 处理串口输出
   if (waddr == SERIAL_PORT) {
-    char ch = wdata & 0xFF;
-    output_buffer += ch;
-    
-    // 策略1：缓冲区满时输出
-    if (output_buffer.size() >= BUFFER_SIZE) {
-      flush_output();
-    }
-    // 策略2：遇到换行时输出（保持行的完整性）
-    else if (ch == '\n') {
-      flush_output();
-    }
-    
+    // 串口只使用最低字节
+    putchar(wdata & 0xFF);
     return;
   }
   
@@ -262,9 +224,7 @@ int main(int argc, char** argv) {
     // 仿真循环 - 持续运行直到ebreak
     int cycles = 0;
     //int max_cycles = 10000000; // 增加最大周期数
-    printf("Starting simulation from PC=0x%08x...\n", PMEM_BASE);
-    printf("Using virtual clock with CPU frequency: %llu Hz\n", CPU_FREQ_HZ);
-    printf("Output buffering enabled (buffer size: %zu bytes)\n\n", BUFFER_SIZE);
+    printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
     while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
         // 下降沿
@@ -281,24 +241,9 @@ int main(int argc, char** argv) {
         
         contextp->timeInc(1);
         cycles++;
-        sim_cycles++;  // 更新虚拟周期计数
-        
-        // 定期刷新输出（避免缓冲太久）
-        // 每100个周期刷新一次，确保及时显示
-        if (sim_cycles % 100 == 0) {
-          flush_output();
-        }
     }
     
-    // 程序结束时刷新剩余输出
-    flush_output();
-    
     printf("\nSimulation finished after %d cycles.\n", cycles);
-    
-    // 输出虚拟时间统计
-    uint64_t virtual_time_us = get_virtual_time_us();
-    printf("Virtual time elapsed: %llu.%03llu seconds\n", 
-           virtual_time_us / 1000000, (virtual_time_us % 1000000) / 1000);
     
     if (should_exit) {
         printf("Exit reason: EBREAK instruction (program completed)\n");
