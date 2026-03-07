@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
         // 下降沿
         top->clk = 0;
         top->eval();
-        tfp->dump(contextp->time());
+        //tfp->dump(contextp->time());
         
         contextp->timeInc(1);
         
