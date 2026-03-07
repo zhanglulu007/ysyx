@@ -63,25 +63,6 @@ HALT ?= 0x1220
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
-sim:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD --------"
-	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) $(VERILATOR_CFLAGS) \
-	$(addprefix -CFLAGS , $(CXXFLAGS)) \
-	--top-module top -cc --exe \
-	--build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
-	-LDFLAGS "-lreadline" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
-	--Mdir $(OBJ_DIR)
-	@echo "-- RUN ---------------------"
-	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(HALT)"
-	$(OBJ_DIR)/Vtop $(PROG) $(HALT)
-	@echo "-- OPEN WAVEFORM ------------"
-	gtkwave $(WAVE_FILE) > /dev/null 2>&1 &
-	@echo "-- DONE --------------------"
-
 # 只编译不运行
 build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -90,11 +71,11 @@ build:
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
 	-LDFLAGS "-lreadline" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp csrc/utils/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 
-# 只运行（需要先build）
+# 编译运行
 run:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
@@ -102,7 +83,7 @@ run:
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc" \
 	-LDFLAGS "-lreadline" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp \
+	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp csrc/utils/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
