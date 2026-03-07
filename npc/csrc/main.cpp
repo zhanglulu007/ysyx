@@ -11,10 +11,6 @@
 #include <verilated_fst_c.h>
 #include "Vtop.h"
 
-// 设备更新相关定义
-#define TIMER_HZ 60                    // 60Hz更新频率
-#define CYCLES_PER_CHECK 1000          // 每1000个周期检查一次
-
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
 #define PMEM_BASE 0x80000000  // AM程序从0x80000000开始
@@ -27,13 +23,6 @@
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
 static uint32_t exit_code = 0;
-
-// 时钟锁存变量
-static uint32_t rtc_lo = 0;
-static uint32_t rtc_hi = 0;
-
-// 设备更新时间变量
-static uint64_t last_update_time = 0;
 
 // 地址转换
 static inline uint8_t* guest_to_host(uint32_t paddr) {
@@ -49,36 +38,19 @@ static uint64_t get_time_us() {
 
 static uint64_t boot_time = 0;  // 启动时间
 
-// 设备更新函数
-static void device_update() {
-  uint64_t now = get_time_us();
-  
-  // 限制更新频率：只有距离上次更新超过16.67ms才真正更新
-  if (now - last_update_time < 1000000 / TIMER_HZ) {
-    return;  // 不到16.67ms，直接返回
-  }
-  last_update_time = now;
-  
-  // 刷新终端输出
-  fflush(stdout);
-}
-
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
   // 按4字节对齐读取
   raddr = raddr & ~0x3u;
   
-  // 处理RTC时钟读取 - 使用锁存机制
+  // 处理RTC时钟读取
   if (raddr == RTC_ADDR_LO) {
-    // 读取低位时，锁存完整的64位时间
     uint64_t uptime = get_time_us() - boot_time;
-    rtc_lo = (uint32_t)(uptime & 0xFFFFFFFF);
-    rtc_hi = (uint32_t)(uptime >> 32);
-    return rtc_lo;
+    return (uint32_t)(uptime & 0xFFFFFFFF);
   }
   if (raddr == RTC_ADDR_HI) {
-    // 读取高位时返回锁存值
-    return rtc_hi;
+    uint64_t uptime = get_time_us() - boot_time;
+    return (uint32_t)(uptime >> 32);
   }
   
   // 检查地址是否在有效范围内
@@ -230,9 +202,8 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    // 初始化启动时间和更新时间
+    // 初始化启动时间
     boot_time = get_time_us();
-    last_update_time = boot_time;
     
     printf("\n");
     
@@ -270,11 +241,6 @@ int main(int argc, char** argv) {
         
         contextp->timeInc(1);
         cycles++;
-        
-        // 定期检查是否需要更新设备
-        if (cycles % CYCLES_PER_CHECK == 0) {
-            device_update();
-        }
     }
     
     printf("\nSimulation finished after %d cycles.\n", cycles);
