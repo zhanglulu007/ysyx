@@ -186,10 +186,10 @@ int main(int argc, char** argv) {
     Vtop* const top = new Vtop{contextp};
     
     // 启用波形追踪
-    Verilated::traceEverOn(true);
-    VerilatedFstC* tfp = new VerilatedFstC;
-    top->trace(tfp, 99); 
-    tfp->open("wave/dump.fst");
+    // Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
     
     // 加载程序
     printf("NPC - minirv processor simulator\n");
@@ -208,12 +208,12 @@ int main(int argc, char** argv) {
     top->rst = 1;
     top->clk = 0;
     top->eval();
-    tfp->dump(contextp->time());
+    //tfp->dump(contextp->time());
     
     contextp->timeInc(1);
     top->clk = 1;
     top->eval();
-    tfp->dump(contextp->time());
+    //tfp->dump(contextp->time());
     
     contextp->timeInc(1);
     top->rst = 0;
@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
         // 上升沿
         top->clk = 1;
         top->eval();
-        tfp->dump(contextp->time());
+        //tfp->dump(contextp->time());
         
         contextp->timeInc(1);
         cycles++;
