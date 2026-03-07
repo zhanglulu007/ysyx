@@ -66,11 +66,6 @@ static uint32_t last_read_addr = 0;
 static uint64_t last_write_cycle = 0;
 static uint32_t last_write_addr = 0;
 
-// 日志记录控制：记录最近N个周期的日志
-#define LOG_WINDOW_SIZE 10000
-static uint64_t log_start_cycle = 0;  // 0表示从头开始记录
-static uint64_t log_end_cycle = 0;    // 0表示记录到结束
-
 // RISC-V寄存器名称
 static const char *regs[] = {
   "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
@@ -120,14 +115,7 @@ extern "C" int pmem_read(int raddr) {
   
   // mtrace记录（去重：同一周期同一地址只记录一次）
   if (g_cycle_cnt != last_read_cycle || raddr != last_read_addr) {
-    // 检查是否在日志记录窗口内
-    bool should_log = (log_end_cycle == 0 || g_cycle_cnt <= log_end_cycle) &&
-                      (log_start_cycle == 0 || g_cycle_cnt >= log_start_cycle);
-    
-    if (should_log) {
-      mtrace_read(raddr, 4, ret, pc_cache, g_print_itrace);
-    }
-    
+    mtrace_read(raddr, 4, ret, pc_cache, g_print_itrace);
     last_read_cycle = g_cycle_cnt;
     last_read_addr = raddr;
   }
@@ -163,14 +151,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   
   // mtrace记录（去重：同一周期同一地址只记录一次）
   if (g_cycle_cnt != last_write_cycle || waddr != last_write_addr) {
-    // 检查是否在日志记录窗口内
-    bool should_log = (log_end_cycle == 0 || g_cycle_cnt <= log_end_cycle) &&
-                      (log_start_cycle == 0 || g_cycle_cnt >= log_start_cycle);
-    
-    if (should_log) {
-      mtrace_write(waddr, len, wdata, pc_cache, g_print_itrace);
-    }
-    
+    mtrace_write(waddr, len, wdata, pc_cache, g_print_itrace);
     last_write_cycle = g_cycle_cnt;
     last_write_addr = waddr;
   }
@@ -329,14 +310,8 @@ static void exec_once() {
   // 增加周期计数
   g_cycle_cnt++;
   
-  // 检查是否在日志记录窗口内
-  bool should_log = (log_end_cycle == 0 || g_cycle_cnt <= log_end_cycle) &&
-                    (log_start_cycle == 0 || g_cycle_cnt >= log_start_cycle);
-  
   // 记录itrace（在时钟上升沿后）
-  if (should_log) {
-    itrace_log(pc_cache, inst_cache, g_print_itrace);
-  }
+  itrace_log(pc_cache, inst_cache, g_print_itrace);
 }
 
 // CPU执行n条指令
@@ -357,29 +332,14 @@ void cpu_exec(uint64_t n) {
   
   Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);
   
-  // 设置日志记录窗口：只记录最近LOG_WINDOW_SIZE个周期
-  // 对于si命令，记录所有周期；对于c命令，只记录最近的周期
-  if (n <= 10) {
-    // si命令：记录所有
-    log_start_cycle = 0;
-    log_end_cycle = 0;
-  } else {
-    // c命令或si>10：只记录最近的周期
-    // 初始时从当前周期开始记录
-    if (log_start_cycle == 0) {
-      log_start_cycle = g_cycle_cnt;
-    }
-    log_end_cycle = 0;  // 持续更新
+  // 对于长时间运行（c命令或si>10），启用日志缓冲区
+  if (n > 10) {
+    enable_log_buffer();
   }
   
   while (cycles < n || n == (uint64_t)-1) {
     exec_once();
     cycles++;
-    
-    // 动态更新日志窗口起始位置（保持窗口大小为LOG_WINDOW_SIZE）
-    if (n > 10 && g_cycle_cnt > LOG_WINDOW_SIZE) {
-      log_start_cycle = g_cycle_cnt - LOG_WINDOW_SIZE;
-    }
     
     // 检查是否遇到ebreak
     if (should_exit || npc_state.state != NPC_RUNNING) {
@@ -401,6 +361,11 @@ void cpu_exec(uint64_t n) {
       Log("Executed %lu cycles...", cycles);
       printf("Executed %lu cycles...\n", cycles);
     }
+  }
+  
+  // 刷新日志缓冲区到文件
+  if (n > 10) {
+    flush_log_buffer();
   }
   
   if (npc_state.state == NPC_RUNNING) {

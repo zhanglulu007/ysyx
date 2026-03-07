@@ -54,6 +54,8 @@ extern FILE* log_fp;
 void init_log(const char *log_file);
 void _Log(const char *format, ...);
 void log_write(const char *format, ...);  // 只写入日志文件，不输出到stdout
+void enable_log_buffer();  // 启用日志缓冲区
+void flush_log_buffer();   // 刷新日志缓冲区到文件
 void assert_fail_msg();
 
 #endif
