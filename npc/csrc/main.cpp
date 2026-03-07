@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
     top->rst = 0;
     
     // 仿真循环 - 持续运行直到ebreak
-    int cycles = 0;
+    //int cycles = 0;
     //int max_cycles = 10000000; // 增加最大周期数
     printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
         //tfp->dump(contextp->time());
         
         contextp->timeInc(1);
-        cycles++;
+        //cycles++;
     }
     
     printf("\nSimulation finished after %d cycles.\n", cycles);
