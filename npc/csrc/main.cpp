@@ -20,16 +20,9 @@
 #define RTC_ADDR_LO 0x10000048  // RTC低32位
 #define RTC_ADDR_HI 0x1000004c  // RTC高32位
 
-// 虚拟时钟配置
-#define USE_VIRTUAL_CLOCK 1     // 1=使用虚拟时钟，0=使用真实时钟
-#define CPU_FREQ_MHZ 100        // 假设CPU频率100MHz
-
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
 static uint32_t exit_code = 0;
-
-// 虚拟时钟相关
-static uint64_t sim_cycles = 0;  // 仿真周期计数器
 
 // 地址转换
 static inline uint8_t* guest_to_host(uint32_t paddr) {
@@ -43,14 +36,7 @@ static uint64_t get_time_us() {
   return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-static uint64_t boot_time = 0;  // 启动时间（真实时钟用）
-
-// 获取虚拟时间（微秒）
-static uint64_t get_virtual_time_us() {
-  // 虚拟时间 = 仿真周期数 / CPU频率
-  // 例如：100,000 cycles / 100 MHz = 1,000 us = 1 ms
-  return (sim_cycles * 1000000ULL) / (CPU_FREQ_MHZ * 1000000ULL);
-}
+static uint64_t boot_time = 0;  // 启动时间
 
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
@@ -59,25 +45,11 @@ extern "C" int pmem_read(int raddr) {
   
   // 处理RTC时钟读取
   if (raddr == RTC_ADDR_LO) {
-    uint64_t uptime;
-#if USE_VIRTUAL_CLOCK
-    // 使用虚拟时钟：基于仿真周期
-    uptime = get_virtual_time_us();
-#else
-    // 使用真实时钟：基于系统时间
-    uptime = get_time_us() - boot_time;
-#endif
+    uint64_t uptime = get_time_us() - boot_time;
     return (uint32_t)(uptime & 0xFFFFFFFF);
   }
   if (raddr == RTC_ADDR_HI) {
-    uint64_t uptime;
-#if USE_VIRTUAL_CLOCK
-    // 使用虚拟时钟：基于仿真周期
-    uptime = get_virtual_time_us();
-#else
-    // 使用真实时钟：基于系统时间
-    uptime = get_time_us() - boot_time;
-#endif
+    uint64_t uptime = get_time_us() - boot_time;
     return (uint32_t)(uptime >> 32);
   }
   
@@ -213,11 +185,14 @@ int main(int argc, char** argv) {
     // 创建顶层模块
     Vtop* const top = new Vtop{contextp};
     
-    // 启用波形追踪
-    //Verilated::traceEverOn(true);
-    //VerilatedFstC* tfp = new VerilatedFstC;
-    //top->trace(tfp, 99); 
-    //tfp->open("wave/dump.fst");
+    // 启用波形追踪Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
+    // Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
     
     // 加载程序
     printf("NPC - minirv processor simulator\n");
@@ -227,17 +202,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    // 初始化启动时间和虚拟时钟
+    // 初始化启动时间
     boot_time = get_time_us();
-    sim_cycles = 0;
     
-#if USE_VIRTUAL_CLOCK
-    printf("Virtual clock enabled: CPU frequency = %d MHz\n", CPU_FREQ_MHZ);
-    printf("Time will advance based on simulation cycles\n");
-#else
-    printf("Real-time clock enabled\n");
-    printf("Time will advance based on wall clock\n");
-#endif
     printf("\n");
     
     // 复位
@@ -256,15 +223,10 @@ int main(int argc, char** argv) {
     
     // 仿真循环 - 持续运行直到ebreak
     int cycles = 0;
-    int max_cycles = 10000000; // 增加最大周期数
-    uint64_t real_start_time = get_time_us();  // 记录真实开始时间
-    
+    //int max_cycles = 10000000; // 增加最大周期数
     printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
-    while (!contextp->gotFinish() 
-            && !should_exit 
-            //&& cycles < max_cycles
-      ) {
+    while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
         // 下降沿
         top->clk = 0;
         top->eval();
@@ -279,42 +241,17 @@ int main(int argc, char** argv) {
         
         contextp->timeInc(1);
         cycles++;
-        sim_cycles++;  // 更新虚拟时钟周期计数
     }
-    
-    uint64_t real_end_time = get_time_us();
-    uint64_t real_elapsed_us = real_end_time - real_start_time;
-    double real_elapsed_sec = real_elapsed_us / 1000000.0;
     
     printf("\nSimulation finished after %d cycles.\n", cycles);
-    printf("Real time elapsed: %.3f seconds\n", real_elapsed_sec);
-    
-#if USE_VIRTUAL_CLOCK
-    uint64_t virtual_time_us = get_virtual_time_us();
-    double virtual_time_sec = virtual_time_us / 1000000.0;
-    printf("Virtual time elapsed: %.6f seconds\n", virtual_time_sec);
-    if (real_elapsed_sec > 0) {
-        printf("Simulation speed: %.0f cycles/sec (%.3f MIPS)\n", 
-               cycles / real_elapsed_sec, cycles / real_elapsed_sec / 1000000.0);
-        if (virtual_time_sec > 0) {
-            printf("Time compression ratio: %.1fx (virtual time runs %.1fx faster)\n",
-                   real_elapsed_sec / virtual_time_sec, real_elapsed_sec / virtual_time_sec);
-        }
-    }
-#else
-    if (real_elapsed_sec > 0) {
-        printf("Simulation speed: %.0f cycles/sec (%.3f MIPS)\n", 
-               cycles / real_elapsed_sec, cycles / real_elapsed_sec / 1000000.0);
-    }
-#endif
     
     if (should_exit) {
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-    } //else if (cycles >= max_cycles) {
-    //    printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
-    //    exit_code = 1;
-    //}
+    }//  else if (cycles >= max_cycles) {
+    //     printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
+    //     exit_code = 1;
+    // }
     
     // 清理
     top->final();
