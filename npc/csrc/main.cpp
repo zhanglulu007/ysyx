@@ -37,6 +37,8 @@ static uint64_t get_time_us() {
 }
 
 static uint64_t boot_time = 0;  // 启动时间
+static uint32_t rtc_lo = 0;    // RTC低32位锁存值
+static uint32_t rtc_hi = 0;    // RTC高32位锁存值
 
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
@@ -45,12 +47,15 @@ extern "C" int pmem_read(int raddr) {
   
   // 处理RTC时钟读取
   if (raddr == RTC_ADDR_LO) {
+    // 读取低位时，锁存完整的64位时间（模拟真实硬件的锁存机制）
     uint64_t uptime = get_time_us() - boot_time;
-    return (uint32_t)(uptime & 0xFFFFFFFF);
+    rtc_lo = (uint32_t)(uptime & 0xFFFFFFFF);
+    rtc_hi = (uint32_t)(uptime >> 32);
+    return rtc_lo;
   }
   if (raddr == RTC_ADDR_HI) {
-    uint64_t uptime = get_time_us() - boot_time;
-    return (uint32_t)(uptime >> 32);
+    // 读取高位时不更新，直接返回已锁存的值
+    return rtc_hi;
   }
   
   // 检查地址是否在有效范围内
