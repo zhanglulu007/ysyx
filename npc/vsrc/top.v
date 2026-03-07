@@ -144,6 +144,13 @@ module top(
       ebreak_handler(a0_value);
     end
   end
+  
+  // ========== DPI-C导出函数：供sdb访问 ==========
+  
+  export "DPI-C" function get_pc_value;
+  function int get_pc_value();
+    get_pc_value = pc;
+  endfunction
 
 endmodule
 

@@ -135,22 +135,18 @@ extern "C" void ebreak_handler(int code) {
   npc_state.halt_ret = code;
 }
 
-// 寄存器访问接口（通过Verilator访问RTL）
-static uint32_t get_reg_value(int idx) {
-  if (g_top == NULL) return 0;
-  
-  // 通过Verilator访问寄存器堆
-  // 路径：top->u_regfile->rf[idx]
+// DPI-C导入函数：从Verilog中读取寄存器和PC
+extern "C" int get_reg_value(int idx);
+extern "C" int get_pc_value();
+
+// 寄存器访问接口（通过DPI-C）
+static uint32_t get_reg(int idx) {
   if (idx == 0) return 0;  // x0恒为0
-  
-  // 注意：这里需要根据实际的Verilator生成的变量名调整
-  // 可以查看obj_dir/Vtop.h来确定正确的路径
-  return g_top->rootp->top__DOT__u_regfile__DOT__rf[idx];
+  return get_reg_value(idx);
 }
 
 static uint32_t get_pc() {
-  if (g_top == NULL) return 0;
-  return g_top->rootp->top__DOT__pc;
+  return get_pc_value();
 }
 
 // 寄存器名称转换为值
@@ -163,13 +159,13 @@ word_t npc_reg_str2val(const char *s, bool *success) {
   
   for (int i = 0; i < 32; i++) {
     if (strcmp(s, regs[i]) == 0) {
-      return get_reg_value(i);
+      return get_reg(i);
     }
     
     char xname[8];
     sprintf(xname, "x%d", i);
     if (strcmp(s, xname) == 0) {
-      return get_reg_value(i);
+      return get_reg(i);
     }
   }
   
@@ -180,7 +176,7 @@ word_t npc_reg_str2val(const char *s, bool *success) {
 // 打印所有寄存器
 void npc_reg_display() {
   for (int i = 0; i < 32; i++) {
-    printf("%-4s  0x%08x\n", regs[i], get_reg_value(i));
+    printf("%-4s  0x%08x\n", regs[i], get_reg(i));
   }
   printf("%-4s  0x%08x\n", "pc", get_pc());
 }
