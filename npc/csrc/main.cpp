@@ -11,6 +11,7 @@
 #include <verilated_fst_c.h>
 #include "Vtop.h"
 #include "sdb/sdb.h"
+#include "utils/log.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -214,7 +215,7 @@ bool in_pmem(uint32_t addr) {
 static bool load_program(const char* filename) {
   FILE* fp = fopen(filename, "rb");
   if (!fp) {
-    printf("ERROR: Cannot open file '%s'\n", filename);
+    Log("ERROR: Cannot open file '%s'", filename);
     return false;
   }
   
@@ -223,7 +224,7 @@ static bool load_program(const char* filename) {
   fseek(fp, 0, SEEK_SET);
   
   if (size > PMEM_SIZE) {
-    printf("ERROR: Program size (%ld bytes) exceeds memory size (%d bytes)\n", size, PMEM_SIZE);
+    Log("ERROR: Program size (%ld bytes) exceeds memory size (%d bytes)", size, PMEM_SIZE);
     fclose(fp);
     return false;
   }
@@ -231,7 +232,7 @@ static bool load_program(const char* filename) {
   size_t bytes_read = fread(pmem, 1, size, fp);
   fclose(fp);
   
-  printf("Loaded %zu bytes from '%s' into memory at 0x%08x\n", bytes_read, filename, PMEM_BASE);
+  Log("Loaded %zu bytes from '%s' into memory at 0x%08x", bytes_read, filename, PMEM_BASE);
   return true;
 }
 
@@ -255,6 +256,7 @@ static void exec_once() {
 // CPU执行n条指令
 void cpu_exec(uint64_t n) {
   if (npc_state.state == NPC_END || npc_state.state == NPC_ABORT) {
+    Log("Program has already exited. Use 'q' to quit.");
     printf("Program has already exited. Use 'q' to quit.\n");
     return;
   }
@@ -264,12 +266,15 @@ void cpu_exec(uint64_t n) {
   uint64_t cycles = 0;
   bool hit_watchpoint = false;
   
+  Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);
+  
   while (cycles < n || n == (uint64_t)-1) {
     exec_once();
     cycles++;
     
     // 检查是否遇到ebreak
     if (should_exit || npc_state.state != NPC_RUNNING) {
+      Log("Execution stopped at cycle %lu due to EBREAK", cycles);
       break;
     }
     
@@ -277,12 +282,14 @@ void cpu_exec(uint64_t n) {
     if (check_watchpoints()) {
       hit_watchpoint = true;
       npc_state.state = NPC_STOP;
+      Log("Execution stopped at cycle %lu due to watchpoint", cycles);
       printf("Program stopped due to watchpoint.\n");
       break;
     }
     
     // 避免无限循环
     if (cycles % 1000000 == 0 && n == (uint64_t)-1) {
+      Log("Executed %lu cycles...", cycles);
       printf("Executed %lu cycles...\n", cycles);
     }
   }
@@ -292,6 +299,7 @@ void cpu_exec(uint64_t n) {
   }
   
   if (!hit_watchpoint && npc_state.state == NPC_STOP) {
+    Log("Executed %lu cycles", cycles);
     printf("Executed %lu cycles.\n", cycles);
   }
 }
@@ -300,22 +308,33 @@ void cpu_exec(uint64_t n) {
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin> [-b]\n", argv[0]);
+        printf("Usage: %s <program.bin> [-b] [-l log_file]\n", argv[0]);
         printf("  -b: batch mode (non-interactive)\n");
+        printf("  -l log_file: specify log file (default: npc.log)\n");
         printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
         return 1;
     }
     
     const char* program_file = argv[1];
     bool batch_mode = false;
+    const char* log_file = NULL;  // NULL表示使用默认文件名npc.log
     
     // 解析命令行参数
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-b") == 0) {
             batch_mode = true;
             sdb_set_batch_mode();
+        } else if (strcmp(argv[i], "-l") == 0 && i + 1 < argc) {
+            log_file = argv[i + 1];
+            i++;
         }
     }
+    
+    // 初始化日志系统（默认输出到npc.log）
+    init_log(log_file);
+    
+    Log("NPC - RISC-V processor simulator with Simple Debugger");
+    Log("Build time: %s, %s", __TIME__, __DATE__);
     
     // 初始化Verilator上下文
     g_contextp = new VerilatedContext;
@@ -344,6 +363,7 @@ int main(int argc, char** argv) {
     printf("\n");
     
     // 复位
+    Log("Resetting NPC...");
     g_top->rst = 1;
     g_top->clk = 0;
     g_top->eval();
@@ -354,13 +374,15 @@ int main(int argc, char** argv) {
     
     g_contextp->timeInc(1);
     g_top->rst = 0;
+    Log("Reset complete");
     
     // 初始化sdb
     init_sdb();
     
-    printf("Starting simulation from PC=0x%08x...\n", PMEM_BASE);
+    Log("Starting simulation from PC=0x%08x", PMEM_BASE);
     
     if (batch_mode) {
+        Log("Running in batch mode");
         printf("Running in batch mode...\n\n");
     } else {
         printf("Entering interactive mode. Type 'help' for commands.\n\n");
@@ -369,9 +391,12 @@ int main(int argc, char** argv) {
     // 进入sdb主循环
     sdb_mainloop();
     
+    Log("Simulation finished");
     printf("\nSimulation finished.\n");
     
     if (should_exit) {
+        Log("Exit reason: EBREAK instruction (program completed)");
+        Log("Exit code: %d", exit_code);
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
     }

@@ -12,33 +12,37 @@
 FILE *log_fp = NULL;
 
 void init_log(const char *log_file) {
-  log_fp = stdout;
-  if (log_file != NULL) {
-    FILE *fp = fopen(log_file, "w");
-    if (fp == NULL) {
-      fprintf(stderr, "Can not open log file '%s'\n", log_file);
-      exit(1);
-    }
+  // 默认日志文件名
+  const char *default_log = "npc.log";
+  const char *actual_log_file = log_file ? log_file : default_log;
+  
+  // 打开日志文件
+  FILE *fp = fopen(actual_log_file, "w");
+  if (fp == NULL) {
+    fprintf(stderr, "Can not open log file '%s', using stdout\n", actual_log_file);
+    log_fp = stdout;
+  } else {
     log_fp = fp;
   }
-  Log("Log is written to %s", log_file ? log_file : "stdout");
+  
+  Log("Log is written to %s", actual_log_file);
 }
 
 void _Log(const char *format, ...) {
   va_list args;
   
-  // 输出到stdout
-  va_start(args, format);
-  vprintf(format, args);
-  va_end(args);
-  
   // 输出到日志文件
-  if (log_fp != NULL && log_fp != stdout) {
+  if (log_fp != NULL) {
     va_start(args, format);
     vfprintf(log_fp, format, args);
     va_end(args);
     fflush(log_fp);
   }
+  
+  // 同时输出到stdout（用户可见）
+  va_start(args, format);
+  vprintf(format, args);
+  va_end(args);
 }
 
 void assert_fail_msg() {
