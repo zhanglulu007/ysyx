@@ -44,9 +44,22 @@ static uint32_t rtc_hi = 0;    // RTC高32位锁存值
 static uint64_t sim_cycles = 0;  // 仿真周期计数
 static const uint64_t CPU_FREQ_HZ = 50000000;  // 假设CPU频率50MHz
 
+// 输出缓冲（优化终端I/O性能）
+static std::string output_buffer;
+static const size_t BUFFER_SIZE = 4096;  // 4KB缓冲
+
+// 刷新输出缓冲
+static void flush_output() {
+  if (!output_buffer.empty()) {
+    std::cout << output_buffer;
+    std::cout.flush();
+    output_buffer.clear();
+  }
+}
+
 // 计算虚拟时间（微秒）
 static uint64_t get_virtual_time_us() {
-  return (sim_cycles * 10000000) / CPU_FREQ_HZ;
+  return (sim_cycles * 1000000) / CPU_FREQ_HZ;
 }
 
 // DPI-C函数：读取存储器
@@ -83,10 +96,20 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   // 按4字节对齐写入
   waddr = waddr & ~0x3u;
   
-  // 处理串口输出
+  // 处理串口输出 - 使用缓冲优化性能
   if (waddr == SERIAL_PORT) {
-    // 串口只使用最低字节
-    putchar(wdata & 0xFF);
+    char ch = wdata & 0xFF;
+    output_buffer += ch;
+    
+    // 策略1：缓冲区满时输出
+    if (output_buffer.size() >= BUFFER_SIZE) {
+      flush_output();
+    }
+    // 策略2：遇到换行时输出（保持行的完整性）
+    else if (ch == '\n') {
+      flush_output();
+    }
+    
     return;
   }
   
