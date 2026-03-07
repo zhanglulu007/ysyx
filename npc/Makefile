@@ -63,7 +63,7 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 PROG ?= test/mem.bin
 HALT ?= 0x1220
 CXXFLAGS += -O3 -march=native
-VERILATOR_FLAGS += --x-assign fast --x-initial fast
+VERILATOR_FLAGS += --x-assign fast --x-initial fast --threads 8
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
