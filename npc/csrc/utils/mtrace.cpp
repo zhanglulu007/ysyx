@@ -36,14 +36,21 @@ void mtrace_write(uint32_t addr, int len, uint32_t data, uint32_t pc) {
 
 // 刷新mtrace缓冲区
 void mtrace_flush(bool print_to_console) {
+  if (mtrace_buffer.empty()) return;
+  
+  // 先收集所有输出到一个字符串，确保原子性
+  std::string output;
   for (const auto& line : mtrace_buffer) {
-    // 输出到日志文件（始终）
-    log_write("%s\n", line.c_str());
-    
-    // 输出到控制台（仅在si<=10时）
-    if (print_to_console) {
-      printf("%s\n", line.c_str());
-    }
+    output += line + "\n";
+  }
+  
+  // 一次性输出到日志文件
+  log_write("%s", output.c_str());
+  
+  // 一次性输出到控制台
+  if (print_to_console) {
+    printf("%s", output.c_str());
+    fflush(stdout);  // 立即刷新，避免缓冲
   }
   
   mtrace_buffer.clear();

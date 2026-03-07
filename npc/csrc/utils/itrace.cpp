@@ -140,6 +140,7 @@ void itrace_log(uint32_t pc, uint32_t inst, bool print_to_console) {
   // 输出到控制台（仅在si<=10时）
   if (print_to_console) {
     printf("%s\n", logbuf);
+    fflush(stdout);  // 立即刷新，避免缓冲
   }
 }
 
