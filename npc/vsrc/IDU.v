@@ -43,10 +43,10 @@ module IDU(
   
   // 指令识别
   assign is_addi   = (opcode == 7'b0010011) && (funct3 == 3'b000);
-  assign is_jalr   = (opcode == 7'b1100111) && (funct3 == 3'b000);
+  assign is_jalr   = (opcode == 7'b1111111) && (funct3 == 3'b000);
   assign is_ebreak = (inst == 32'h00100073);
   assign is_lui    = (opcode == 7'b0110111);
-  assign is_add    = (opcode == 7'b0000000) && (funct3 == 3'b000) && (funct7 == 7'b0000000);
+  assign is_add    = (opcode == 7'b0110011) && (funct3 == 3'b000) && (funct7 == 7'b0000000);
   assign is_lw     = (opcode == 7'b0000011) && (funct3 == 3'b010);
   assign is_lbu    = (opcode == 7'b0000011) && (funct3 == 3'b100);
   assign is_sw     = (opcode == 7'b0100011) && (funct3 == 3'b010);
