@@ -5,6 +5,7 @@
 
 #include "log.h"
 #include <cstdint>
+#include <cstdarg>
 
 // 全局日志文件指针
 FILE *log_fp = NULL;
@@ -14,19 +15,20 @@ extern uint64_t g_nr_inst;
 
 // 初始化日志系统
 void init_log(const char *log_file) {
-  log_fp = stdout;
+  // 默认输出到文件npc.log，而不是stdout
+  if (log_file == NULL) {
+    log_file = "npc.log";
+  }
   
-  if (log_file != NULL) {
-    FILE *fp = fopen(log_file, "w");
-    if (fp == NULL) {
-      printf("Warning: Cannot open log file '%s', using stdout\n", log_file);
-      log_fp = stdout;
-    } else {
-      log_fp = fp;
-      Log("Log is written to %s", log_file);
-    }
+  FILE *fp = fopen(log_file, "w");
+  if (fp == NULL) {
+    printf("Warning: Cannot open log file '%s', using stdout\n", log_file);
+    log_fp = stdout;
   } else {
-    Log("Log is written to stdout");
+    log_fp = fp;
+    // 不使用Log宏，避免循环
+    fprintf(log_fp, "[init_log] Log is written to %s\n", log_file);
+    fflush(log_fp);
   }
 }
 
@@ -55,6 +57,17 @@ void close_log() {
   if (log_fp != NULL && log_fp != stdout && log_fp != stderr) {
     fclose(log_fp);
     log_fp = NULL;
+  }
+}
+
+// 内部日志写入函数（供mtrace使用，不打印到stdout）
+void log_write_internal(const char* format, ...) {
+  if (log_enable() && log_fp != NULL) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(log_fp, format, args);
+    va_end(args);
+    fflush(log_fp);
   }
 }
 

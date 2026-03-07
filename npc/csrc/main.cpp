@@ -149,14 +149,18 @@ extern "C" void ebreak_handler(int code) {
   // code是a0寄存器的值，0表示成功，非0表示失败
   if (code == 0) {
     Log("HIT GOOD TRAP at PC=0x%08x", pc_cache);
-    printf("\n*** HIT GOOD TRAP ***\n");
   } else {
     Log("HIT BAD TRAP (code=%d) at PC=0x%08x", code, pc_cache);
-    printf("\n*** HIT BAD TRAP (code=%d) ***\n", code);
-#ifdef CONFIG_ITRACE
-    display_iringbuf();
-#endif
   }
+  
+  // 在交互模式下显示简单信息
+  printf("\nEBREAK detected at PC=0x%08x, a0=0x%08x\n", pc_cache, code);
+  if (code == 0) {
+    printf("*** HIT GOOD TRAP ***\n");
+  } else {
+    printf("*** HIT BAD TRAP (code=%d) ***\n", code);
+  }
+  
   should_exit = true;
   exit_code = code;
   npc_state.state = NPC_END;
@@ -336,9 +340,9 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         printf("Usage: %s <program.bin> [-b] [-l log_file]\n", argv[0]);
         printf("  -b: batch mode (non-interactive)\n");
-        printf("  -l log_file: write log to file\n");
+        printf("  -l log_file: write log to file (default: npc.log)\n");
         printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
-        printf("Example: %s build/dummy-riscv32e-npc.bin -l npc.log\n", argv[0]);
+        printf("Example: %s build/dummy-riscv32e-npc.bin -l debug.log\n", argv[0]);
         return 1;
     }
     
@@ -357,7 +361,7 @@ int main(int argc, char** argv) {
         }
     }
     
-    // 初始化日志系统
+    // 初始化日志系统（默认输出到npc.log）
     init_log(log_file);
     
     // 初始化Verilator上下文
@@ -410,6 +414,7 @@ int main(int argc, char** argv) {
     
     if (batch_mode) {
         Log("Running in batch mode");
+        // 批处理模式：静默运行，只在结束时输出
     } else {
         printf("\nEntering interactive mode. Type 'help' for commands.\n\n");
     }
@@ -423,6 +428,18 @@ int main(int argc, char** argv) {
         Log("Exit reason: EBREAK instruction (program completed)");
         Log("Exit code: %d", exit_code);
         Log("Total instructions executed: %lu", g_nr_inst);
+        
+        // 只在程序结束时输出关键信息到stdout
+        if (batch_mode) {
+            if (exit_code == 0) {
+                printf("*** HIT GOOD TRAP ***\n");
+            } else {
+                printf("*** HIT BAD TRAP (code=%d) ***\n", exit_code);
+#ifdef CONFIG_ITRACE
+                display_iringbuf();
+#endif
+            }
+        }
     }
     
     // 清理
