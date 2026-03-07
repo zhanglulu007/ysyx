@@ -42,7 +42,7 @@ static uint32_t rtc_hi = 0;    // RTC高32位锁存值
 
 // 虚拟时钟配置
 static uint64_t sim_cycles = 0;  // 仿真周期计数
-static const uint64_t CPU_FREQ_HZ = 50000000;  // 假设CPU频率50MHz
+static const uint64_t CPU_FREQ_HZ = 500000000;  // 假设CPU频率50MHz
 
 // 计算虚拟时间（微秒）
 static uint64_t get_virtual_time_us() {
