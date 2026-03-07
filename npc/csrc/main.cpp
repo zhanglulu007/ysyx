@@ -135,18 +135,31 @@ extern "C" void ebreak_handler(int code) {
   npc_state.halt_ret = code;
 }
 
-// DPI-C导入函数：从Verilog中读取寄存器和PC
-extern "C" int get_reg_value(int idx);
-extern "C" int get_pc_value();
+// 寄存器缓存（在C++侧维护）
+static uint32_t reg_cache[32] = {0};
+static uint32_t pc_cache = 0;
 
-// 寄存器访问接口（通过DPI-C）
+// DPI-C函数：从Verilog接收寄存器更新
+extern "C" void update_reg_value(int idx, int value) {
+  if (idx >= 0 && idx < 32) {
+    reg_cache[idx] = value;
+  }
+}
+
+// DPI-C函数：从Verilog接收PC更新
+extern "C" void update_pc_value(int pc_val) {
+  pc_cache = pc_val;
+}
+
+// 寄存器访问接口（从缓存读取）
 static uint32_t get_reg(int idx) {
   if (idx == 0) return 0;  // x0恒为0
-  return get_reg_value(idx);
+  if (idx < 0 || idx >= 32) return 0;
+  return reg_cache[idx];
 }
 
 static uint32_t get_pc() {
-  return get_pc_value();
+  return pc_cache;
 }
 
 // 寄存器名称转换为值

@@ -137,20 +137,18 @@ module top(
   // ========== ebreak处理 ==========
   
   import "DPI-C" function void ebreak_handler(input int a0_value);
+  import "DPI-C" function void update_pc_value(input int pc_val);
   
   always @(posedge clk) begin
     if (!rst && is_ebreak) begin
       $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
       ebreak_handler(a0_value);
     end
+    // 每个时钟周期更新PC到C++侧
+    if (!rst) begin
+      update_pc_value(pc);
+    end
   end
-  
-  // ========== DPI-C导出函数：供sdb访问 ==========
-  
-  export "DPI-C" function get_pc_value;
-  function int get_pc_value();
-    get_pc_value = pc;
-  endfunction
 
 endmodule
 

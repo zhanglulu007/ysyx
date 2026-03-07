@@ -16,11 +16,16 @@ module RegisterFile(
   // 32个寄存器（实际只使用前16个，RV32E）
   reg [31:0] rf [31:0];
   
+  // DPI-C导入函数：通知C++侧寄存器更新
+  import "DPI-C" function void update_reg_value(input int idx, input int value);
+  
   // 写操作 - 时序逻辑
   always @(posedge clk) begin
     if (wen && waddr != 5'b0) begin
       // x0寄存器恒为0，不可写
       rf[waddr] <= wdata;
+      // 通知C++侧更新
+      update_reg_value(waddr, wdata);
     end
   end
   
@@ -31,14 +36,5 @@ module RegisterFile(
   
   // 读取a0寄存器（x10）的值
   assign a0_value = rf[10];
-  
-  // DPI-C导出函数：供C++代码读取寄存器
-  export "DPI-C" function get_reg_value;
-  function int get_reg_value(input int idx);
-    if (idx == 0)
-      get_reg_value = 0;
-    else
-      get_reg_value = rf[idx];
-  endfunction
 
 endmodule
