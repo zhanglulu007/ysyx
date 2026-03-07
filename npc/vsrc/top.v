@@ -134,19 +134,21 @@ module top(
     .pc_next(pc_next)
   );
   
-  // ========== ebreak处理 ==========
+  // ========== ebreak处理和itrace ==========
   
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void update_pc_value(input int pc_val);
+  import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   
   always @(posedge clk) begin
     if (!rst && is_ebreak) begin
       $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
       ebreak_handler(a0_value);
     end
-    // 每个时钟周期更新PC到C++侧
+    // 每个时钟周期更新PC和指令到C++侧
     if (!rst) begin
       update_pc_value(pc);
+      update_inst_value(pc, inst);
     end
   end
 

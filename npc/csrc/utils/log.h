@@ -53,6 +53,7 @@
 extern FILE* log_fp;
 void init_log(const char *log_file);
 void _Log(const char *format, ...);
+void log_write(const char *format, ...);  // 只写入日志文件，不输出到stdout
 void assert_fail_msg();
 
 #endif

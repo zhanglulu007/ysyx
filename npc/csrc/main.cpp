@@ -12,6 +12,7 @@
 #include "Vtop.h"
 #include "sdb/sdb.h"
 #include "utils/log.h"
+#include "utils/itrace.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -45,6 +46,9 @@ static struct {
   uint32_t halt_pc;
   uint32_t halt_ret;
 } npc_state = { .state = NPC_STOP };
+
+// itrace控制：是否输出到控制台
+static bool g_print_itrace = false;
 
 // RISC-V寄存器名称
 static const char *regs[] = {
@@ -139,6 +143,7 @@ extern "C" void ebreak_handler(int code) {
 // 寄存器缓存（在C++侧维护）
 static uint32_t reg_cache[32] = {0};
 static uint32_t pc_cache = 0;
+static uint32_t inst_cache = 0;
 
 // DPI-C函数：从Verilog接收寄存器更新
 extern "C" void update_reg_value(int idx, int value) {
@@ -150,6 +155,12 @@ extern "C" void update_reg_value(int idx, int value) {
 // DPI-C函数：从Verilog接收PC更新
 extern "C" void update_pc_value(int pc_val) {
   pc_cache = pc_val;
+}
+
+// DPI-C函数：从Verilog接收指令更新
+extern "C" void update_inst_value(int pc_val, int inst_val) {
+  pc_cache = pc_val;
+  inst_cache = inst_val;
 }
 
 // 寄存器访问接口（从缓存读取）
@@ -251,6 +262,9 @@ static void exec_once() {
   if (g_tfp) g_tfp->dump(g_contextp->time());
   
   g_contextp->timeInc(1);
+  
+  // 记录itrace（在时钟上升沿后）
+  itrace_log(pc_cache, inst_cache, g_print_itrace);
 }
 
 // CPU执行n条指令
@@ -262,6 +276,9 @@ void cpu_exec(uint64_t n) {
   }
   
   npc_state.state = NPC_RUNNING;
+  
+  // 设置itrace输出模式：si命令且n<=10时输出到控制台
+  g_print_itrace = (n <= 10);
   
   uint64_t cycles = 0;
   bool hit_watchpoint = false;
@@ -333,6 +350,9 @@ int main(int argc, char** argv) {
     // 初始化日志系统（默认输出到npc.log）
     init_log(log_file);
     
+    // 初始化itrace
+    init_itrace();
+    
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
     
@@ -399,6 +419,11 @@ int main(int argc, char** argv) {
         Log("Exit code: %d", exit_code);
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
+        
+        // 如果程序异常退出，显示iringbuf
+        if (exit_code != 0) {
+            display_iringbuf();
+        }
     }
     
     // 清理

@@ -45,6 +45,18 @@ void _Log(const char *format, ...) {
   va_end(args);
 }
 
+// 只写入日志文件，不输出到stdout
+void log_write(const char *format, ...) {
+  va_list args;
+  
+  if (log_fp != NULL) {
+    va_start(args, format);
+    vfprintf(log_fp, format, args);
+    va_end(args);
+    fflush(log_fp);
+  }
+}
+
 void assert_fail_msg() {
   fprintf(stderr, ANSI_FMT("Assertion failed!\n", ANSI_FG_RED));
   fflush(stderr);
