@@ -261,7 +261,10 @@ int main(int argc, char** argv) {
     
     printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
-    while (!contextp->gotFinish() && !should_exit && cycles < max_cycles) {
+    while (!contextp->gotFinish() 
+            && !should_exit 
+            //&& cycles < max_cycles
+      ) {
         // 下降沿
         top->clk = 0;
         top->eval();
