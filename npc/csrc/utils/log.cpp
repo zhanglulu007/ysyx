@@ -6,6 +6,8 @@
 #include "log.h"
 #include <cstdint>
 #include <cstdarg>
+#include <cstdlib>
+#include <climits>
 
 // 全局日志文件指针
 FILE *log_fp = NULL;
@@ -26,9 +28,19 @@ void init_log(const char *log_file) {
     log_fp = stdout;
   } else {
     log_fp = fp;
-    // 不使用Log宏，避免循环
-    fprintf(log_fp, "[init_log] Log is written to %s\n", log_file);
+    // 打印日志文件的绝对路径
+    char abs_path[1024];
+    if (realpath(log_file, abs_path) != NULL) {
+      fprintf(log_fp, "[init_log] Log is written to %s\n", abs_path);
+    } else {
+      fprintf(log_fp, "[init_log] Log is written to %s\n", log_file);
+    }
     fflush(log_fp);
+    
+    // 同时在stdout提示日志文件位置
+    if (realpath(log_file, abs_path) != NULL) {
+      printf("Log file: %s\n", abs_path);
+    }
   }
 }
 
