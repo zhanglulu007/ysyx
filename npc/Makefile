@@ -47,9 +47,11 @@ endif
 
 ######################################################################
 
+.PHONY: build sim run clean
+
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
-	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR)
+	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
 	
 all:
 	@echo "Write this Makefile by your self."
@@ -60,12 +62,16 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 # 默认程序和halt地址
 PROG ?= test/mem.bin
 HALT ?= 0x1220
+CXXFLAGS += -O3 -march=native
+VERILATOR_FLAGS += --x-assign fast --x-initial fast --threads 8
 
 sim:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe \
+	$(VERILATOR) $(VERILATOR_CFLAGS) \
+	$(addprefix -CFLAGS , $(CXXFLAGS)) \
+	--top-module top -cc --exe \
 	--build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
 	--Mdir $(OBJ_DIR)
@@ -81,7 +87,12 @@ build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs -CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp
+	$(VERILATOR) $(VERILATOR_CFLAGS) \
+	$(addprefix -CFLAGS , $(CXXFLAGS)) \
+	--top-module top -cc --exe \
+	--build -j \
+	-CFLAGS "-std=c++14" vsrc/*.v csrc/main.cpp \
+	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 
 # 只运行（需要先build）
@@ -109,7 +120,7 @@ TOPNAME = top
 NXDC_FILES = constr/top.nxdc
 INC_PATH ?=
 
-VERILATOR_CFLAGS += -MMD --build -cc  \
+#VERILATOR_CFLAGS += -MMD --build -cc  \
 				-O3 --x-assign fast --x-initial fast --noassert
 
 BUILD_DIR = ./build
@@ -133,7 +144,7 @@ include $(NVBOARD_HOME)/scripts/nvboard.mk
 
 # rules for verilator
 INCFLAGS = $(addprefix -I, $(INC_PATH))
-CXXFLAGS += $(INCFLAGS) -DTOP_NAME="\"V$(TOPNAME)\""
+#CXXFLAGS += $(INCFLAGS) -DTOP_NAME="\"V$(TOPNAME)\""
 
 $(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
 	@rm -rf $(OBJ_DIR)

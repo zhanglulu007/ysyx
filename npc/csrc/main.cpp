@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
+#include <sys/time.h>
 #include <verilated.h>
 #include <verilated_fst_c.h>
 #include "Vtop.h"
@@ -13,6 +14,11 @@
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
 #define PMEM_BASE 0x80000000  // AM程序从0x80000000开始
+
+// 设备地址定义
+#define SERIAL_PORT 0x10000000  // 串口地址
+#define RTC_ADDR_LO 0x10000048  // RTC低32位
+#define RTC_ADDR_HI 0x1000004c  // RTC高32位
 
 static uint8_t pmem[PMEM_SIZE];
 static bool should_exit = false;
@@ -23,10 +29,29 @@ static inline uint8_t* guest_to_host(uint32_t paddr) {
   return pmem + (paddr - PMEM_BASE);
 }
 
+// 获取系统时间（微秒）
+static uint64_t get_time_us() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
+static uint64_t boot_time = 0;  // 启动时间
+
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
   // 按4字节对齐读取
   raddr = raddr & ~0x3u;
+  
+  // 处理RTC时钟读取
+  if (raddr == RTC_ADDR_LO) {
+    uint64_t uptime = get_time_us() - boot_time;
+    return (uint32_t)(uptime & 0xFFFFFFFF);
+  }
+  if (raddr == RTC_ADDR_HI) {
+    uint64_t uptime = get_time_us() - boot_time;
+    return (uint32_t)(uptime >> 32);
+  }
   
   // 检查地址是否在有效范围内
   if (raddr < PMEM_BASE || raddr >= PMEM_BASE + PMEM_SIZE) {
@@ -43,6 +68,13 @@ extern "C" int pmem_read(int raddr) {
 extern "C" void pmem_write(int waddr, int wdata, char wmask) {
   // 按4字节对齐写入
   waddr = waddr & ~0x3u;
+  
+  // 处理串口输出
+  if (waddr == SERIAL_PORT) {
+    // 串口只使用最低字节
+    putchar(wdata & 0xFF);
+    return;
+  }
   
   // 检查地址是否在有效范围内
   if (waddr < PMEM_BASE || waddr >= PMEM_BASE + PMEM_SIZE) {
@@ -153,11 +185,14 @@ int main(int argc, char** argv) {
     // 创建顶层模块
     Vtop* const top = new Vtop{contextp};
     
-    // 启用波形追踪
-    Verilated::traceEverOn(true);
-    VerilatedFstC* tfp = new VerilatedFstC;
-    top->trace(tfp, 99); 
-    tfp->open("wave/dump.fst");
+    // 启用波形追踪Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
+    // Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
     
     // 加载程序
     printf("NPC - minirv processor simulator\n");
@@ -167,42 +202,45 @@ int main(int argc, char** argv) {
         return 1;
     }
     
+    // 初始化启动时间
+    boot_time = get_time_us();
+    
     printf("\n");
     
     // 复位
     top->rst = 1;
     top->clk = 0;
     top->eval();
-    tfp->dump(contextp->time());
+    //tfp->dump(contextp->time());
     
     contextp->timeInc(1);
     top->clk = 1;
     top->eval();
-    tfp->dump(contextp->time());
+    //tfp->dump(contextp->time());
     
     contextp->timeInc(1);
     top->rst = 0;
     
     // 仿真循环 - 持续运行直到ebreak
-    int cycles = 0;
-    int max_cycles = 10000000; // 增加最大周期数
+    //int cycles = 0;
+    //int max_cycles = 10000000; // 增加最大周期数
     printf("Starting simulation from PC=0x%08x...\n\n", PMEM_BASE);
     
-    while (!contextp->gotFinish() && !should_exit && cycles < max_cycles) {
+    while (!contextp->gotFinish() && !should_exit /*&& cycles < max_cycles*/) {
         // 下降沿
         top->clk = 0;
         top->eval();
-        tfp->dump(contextp->time());
+        //tfp->dump(contextp->time());
         
         contextp->timeInc(1);
         
         // 上升沿
         top->clk = 1;
         top->eval();
-        tfp->dump(contextp->time());
+        //tfp->dump(contextp->time());
         
         contextp->timeInc(1);
-        cycles++;
+        //cycles++;
     }
     
     printf("\nSimulation finished after %d cycles.\n", cycles);
@@ -210,17 +248,17 @@ int main(int argc, char** argv) {
     if (should_exit) {
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-    } else if (cycles >= max_cycles) {
-        printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
-        exit_code = 1;
-    }
+    }//  else if (cycles >= max_cycles) {
+    //     printf("Exit reason: Maximum cycles reached (possible infinite loop)\n");
+    //     exit_code = 1;
+    // }
     
     // 清理
     top->final();
-    tfp->close();
+    //tfp->close();
     
     delete top;
-    delete tfp;
+    //delete tfp;
     delete contextp;
     
     return exit_code;
