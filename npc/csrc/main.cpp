@@ -185,7 +185,10 @@ int main(int argc, char** argv) {
     // 创建顶层模块
     Vtop* const top = new Vtop{contextp};
     
-    // 启用波形追踪
+    // 启用波形追踪Verilated::traceEverOn(true);
+    // VerilatedFstC* tfp = new VerilatedFstC;
+    // top->trace(tfp, 99); 
+    // tfp->open("wave/dump.fst");
     // Verilated::traceEverOn(true);
     // VerilatedFstC* tfp = new VerilatedFstC;
     // top->trace(tfp, 99); 
@@ -252,10 +255,10 @@ int main(int argc, char** argv) {
     
     // 清理
     top->final();
-    tfp->close();
+    //tfp->close();
     
     delete top;
-    delete tfp;
+    //delete tfp;
     delete contextp;
     
     return exit_code;
