@@ -24,8 +24,8 @@ module RegisterFile(
     if (wen && waddr != 5'b0) begin
       // x0寄存器恒为0，不可写
       rf[waddr] <= wdata;
-      // 通知C++侧更新
-      update_reg_value(waddr, wdata);
+      // 通知C++侧更新（扩展到32位）
+      update_reg_value({27'b0, waddr}, wdata);
     end
   end
   
