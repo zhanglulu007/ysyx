@@ -30,4 +30,17 @@ static inline const char* reg_name(int idx) {
   return regs[check_reg_idx(idx)];
 }
 
+// CSR register access helper
+#define csr(addr) (*({ \
+  word_t *__csr_ptr = NULL; \
+  switch (addr) { \
+    case 0x300: __csr_ptr = &cpu.mstatus; break;  \
+    case 0x305: __csr_ptr = &cpu.mtvec; break;    \
+    case 0x341: __csr_ptr = &cpu.mepc; break;     \
+    case 0x342: __csr_ptr = &cpu.mcause; break;   \
+    default: panic("Unknown CSR register: 0x%x", addr); \
+  } \
+  __csr_ptr; \
+}))
+
 #endif
