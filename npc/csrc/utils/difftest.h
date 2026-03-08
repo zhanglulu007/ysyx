@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h> 
+#include <cstdlib>  
 
 // DiffTest 方向定义
 enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
