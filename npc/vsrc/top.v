@@ -81,6 +81,7 @@ module top(
   // RegisterFile - 寄存器堆
   RegisterFile u_regfile(
     .clk(clk),
+    .rst(rst),
     .waddr(rd),
     .wdata(rd_data),
     .wen(reg_wen),
