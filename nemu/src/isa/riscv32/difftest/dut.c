@@ -24,10 +24,24 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
   }
   
   // 检查32个通用寄存器
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < MUXDEF(CONFIG_RVE, 16, 32); i++) {
     if (!difftest_check_reg(reg_name(i), pc, ref_r->gpr[i], cpu.gpr[i])) {
       return false;
     }
+  }
+  
+  // 检查CSR寄存器
+  if (!difftest_check_reg("mstatus", pc, ref_r->mstatus, cpu.mstatus)) {
+    return false;
+  }
+  if (!difftest_check_reg("mcause", pc, ref_r->mcause, cpu.mcause)) {
+    return false;
+  }
+  if (!difftest_check_reg("mepc", pc, ref_r->mepc, cpu.mepc)) {
+    return false;
+  }
+  if (!difftest_check_reg("mtvec", pc, ref_r->mtvec, cpu.mtvec)) {
+    return false;
   }
   
   return true;

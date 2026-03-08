@@ -34,7 +34,7 @@ static void restart() {
   cpu.gpr[0] = 0;
   
   /* Initialize CSR registers for DiffTest */
-  cpu.mstatus = 0x1800;  // Set MPP to 11 (Machine mode)
+  cpu.mstatus = 0x1800;  // Set MPP to machine mode for DiffTest
   cpu.mtvec = 0;
   cpu.mepc = 0;
   cpu.mcause = 0;

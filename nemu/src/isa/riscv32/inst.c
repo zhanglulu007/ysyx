@@ -27,24 +27,6 @@ extern void ftrace_ret(vaddr_t pc);
 #define Mr vaddr_read
 #define Mw vaddr_write
 
-// CSR register addresses
-#define CSR_MSTATUS  0x300
-#define CSR_MTVEC    0x305
-#define CSR_MEPC     0x341
-#define CSR_MCAUSE   0x342
-
-// CSR register access functions
-static inline word_t* csr_decode(word_t csr_addr) {
-  switch (csr_addr) {
-    case CSR_MSTATUS: return &cpu.mstatus;
-    case CSR_MTVEC:   return &cpu.mtvec;
-    case CSR_MEPC:    return &cpu.mepc;
-    case CSR_MCAUSE:  return &cpu.mcause;
-    default: panic("Unknown CSR register: 0x%x", csr_addr);
-  }
-  return NULL;
-}
-
 enum {
   TYPE_I, TYPE_U, TYPE_S, TYPE_J, TYPE_R, TYPE_B,
   TYPE_N, // none
@@ -158,99 +140,28 @@ static int decode_exec(Decode *s) {
   INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal    , J, 
     R(rd) = s->snpc; 
     s->dnpc = s->pc + imm;
-#ifdef CONFIG_FTRACE
+    #ifdef CONFIG_FTRACE
     if (rd == 1) {  // rd == ra (x1)，表示函数调用
       ftrace_call(s->pc, s->dnpc);
     }
-#endif
+    #endif
   );
   
   INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr   , I, 
     s->dnpc = (src1 + imm) & ~1; 
     R(rd) = s->snpc;
-#ifdef CONFIG_FTRACE
+    #ifdef CONFIG_FTRACE
     int rs1 = BITS(s->isa.inst, 19, 15);
     if (rd == 0 && rs1 == 1) {  // jalr zero, ra, 0 (ret)
       ftrace_ret(s->pc);
     } else if (rd == 1) {  // jalr ra, rs1, offset (call)
       ftrace_call(s->pc, s->dnpc);
     }
-#endif
+    #endif
   );
-  
+
   // System instructions
   INSTPAT("0000000 00001 00000 000 00000 11100 11", ebreak , N, NEMUTRAP(s->pc, R(10))); // R(10) is $a0
-  
-  // ecall instruction - trigger exception
-  INSTPAT("0000000 00000 00000 000 00000 11100 11", ecall  , N, 
-    s->dnpc = isa_raise_intr(11, s->pc);  // 11 is the exception number for ecall from M-mode
-  );
-  
-  // mret instruction - return from exception
-  INSTPAT("0011000 00010 00000 000 00000 11100 11", mret   , N, 
-    s->dnpc = cpu.mepc + 4;  // Return to mepc + 4 (next instruction after ecall)
-  );
-  
-  // CSR instructions
-  INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw  , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    *csr = src1;
-    R(rd) = t;
-  );
-  
-  INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs  , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    if (BITS(s->isa.inst, 19, 15) != 0) {  // rs1 != 0
-      *csr = t | src1;
-    }
-    R(rd) = t;
-  );
-  
-  INSTPAT("??????? ????? ????? 011 ????? 11100 11", csrrc  , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    if (BITS(s->isa.inst, 19, 15) != 0) {  // rs1 != 0
-      *csr = t & ~src1;
-    }
-    R(rd) = t;
-  );
-  
-  INSTPAT("??????? ????? ????? 101 ????? 11100 11", csrrwi , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    word_t zimm = BITS(s->isa.inst, 19, 15);  // zero-extended immediate
-    *csr = zimm;
-    R(rd) = t;
-  );
-  
-  INSTPAT("??????? ????? ????? 110 ????? 11100 11", csrrsi , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    word_t zimm = BITS(s->isa.inst, 19, 15);  // zero-extended immediate
-    if (zimm != 0) {
-      *csr = t | zimm;
-    }
-    R(rd) = t;
-  );
-  
-  INSTPAT("??????? ????? ????? 111 ????? 11100 11", csrrci , I, 
-    word_t csr_addr = imm;
-    word_t *csr = csr_decode(csr_addr);
-    word_t t = *csr;
-    word_t zimm = BITS(s->isa.inst, 19, 15);  // zero-extended immediate
-    if (zimm != 0) {
-      *csr = t & ~zimm;
-    }
-    R(rd) = t;
-  );
-  
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, INV(s->pc));
   INSTPAT_END();
 

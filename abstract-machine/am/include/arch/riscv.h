@@ -9,16 +9,11 @@
 
 struct Context {
   // TODO: fix the order of these members to match trap.S
-  // Order must match trap.S:
-  // 1. General purpose registers (x0 is at offset 0, but not saved/restored)
-  // 2. mcause at OFFSET_CAUSE = (NR_REGS + 0) * XLEN
-  // 3. mstatus at OFFSET_STATUS = (NR_REGS + 1) * XLEN  
-  // 4. mepc at OFFSET_EPC = (NR_REGS + 2) * XLEN
-  // 5. pdir (address space) shares space with x0
+  // The order must match the stack layout in trap.S:
+  // First: x1, x3-x15 (and x16-x31 for RV32)
+  // Then: mcause, mstatus, mepc
   uintptr_t gpr[NR_REGS];
-  uintptr_t mcause;
-  uintptr_t mstatus;
-  uintptr_t mepc;
+  uintptr_t mcause, mstatus, mepc;
   void *pdir;
 };
 
