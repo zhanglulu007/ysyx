@@ -17,8 +17,10 @@
 #include <cpu/difftest.h>
 #include "../local-include/reg.h"
 
+#ifdef CONFIG_DIFFTEST
 // External reference to difftest functions
 extern void (*ref_difftest_regcpy)(void *dut, bool direction);
+#endif
 
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
   // 检查PC寄存器
