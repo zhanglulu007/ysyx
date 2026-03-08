@@ -484,9 +484,18 @@ int main(int argc, char** argv) {
     
     g_contextp->timeInc(1);
     g_top->rst = 0;
-    Log("Reset complete");
     
-    // 初始化DiffTest（在复位之后）
+    // 复位后再执行一个周期，让PC更新
+    g_top->clk = 0;
+    g_top->eval();
+    g_contextp->timeInc(1);
+    g_top->clk = 1;
+    g_top->eval();
+    g_contextp->timeInc(1);
+    
+    Log("Reset complete, PC = 0x%08x", pc_cache);
+    
+    // 初始化DiffTest（在复位之后，确保PC已经正确初始化）
     if (ref_so_file != NULL) {
         init_difftest(ref_so_file, img_size);
     } else {
