@@ -57,6 +57,10 @@ all:
 WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
+BUILD_DIR = ./build
+OBJ_DIR = $(BUILD_DIR)/obj_dir
+
+
 # 默认程序和halt地址
 PROG ?= test/mem.bin
 HALT ?= 0x1220
@@ -72,7 +76,7 @@ build:
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
 	-LDFLAGS "-lreadline -ldl" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp csrc/utils/*.cpp \
+	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 
@@ -84,7 +88,7 @@ run:
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
 	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
 	-LDFLAGS "-lreadline -ldl" \
-	vsrc/*.v csrc/main.cpp csrc/sdb/*.cpp csrc/utils/*.cpp \
+	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
 	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
@@ -104,46 +108,5 @@ run:
 	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST)
 	@echo "-- DONE --------------------"
 
-
-
-TOPNAME = top
-NXDC_FILES = constr/top.nxdc
-INC_PATH ?=
-
-#VERILATOR_CFLAGS += -MMD --build -cc  \
-				-O3 --x-assign fast --x-initial fast --noassert
-
-BUILD_DIR = ./build
-OBJ_DIR = $(BUILD_DIR)/obj_dir
-BIN = $(BUILD_DIR)/$(TOPNAME)
-
-$(shell mkdir -p $(BUILD_DIR))
-
-# constraint file
-SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
-$(SRC_AUTO_BIND): $(NXDC_FILES)
-	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
-
-# project source
-VSRCS = $(shell find $(abspath ./vsrc) -name "*.v")
-CSRCS = $(shell find $(abspath ./csrc) -name "*.c" -or -name "*.cc" -or -name "*.cpp")
-CSRCS += $(SRC_AUTO_BIND)
-
-# rules for NVBoard
-include $(NVBOARD_HOME)/scripts/nvboard.mk
-
-# rules for verilator
-INCFLAGS = $(addprefix -I, $(INC_PATH))
-#CXXFLAGS += $(INCFLAGS) -DTOP_NAME="\"V$(TOPNAME)\""
-
-$(BIN): $(VSRCS) $(CSRCS) $(NVBOARD_ARCHIVE)
-	@rm -rf $(OBJ_DIR)
-	$(VERILATOR) $(VERILATOR_CFLAGS) \
-		--top-module $(TOPNAME) $^ \
-		$(addprefix -CFLAGS , $(CXXFLAGS)) $(addprefix -LDFLAGS , $(LDFLAGS)) \
-		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
-
-# run: $(BIN)
-# 	@$^
 
 .PHONY: build sim run clean

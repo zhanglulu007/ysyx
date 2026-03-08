@@ -1,5 +1,5 @@
 #include "itrace.h"
-#include "log.h"
+#include "../utils/log.h"
 #include <stdio.h>
 #include <string.h>
 #include <dlfcn.h>

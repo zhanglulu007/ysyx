@@ -1,5 +1,5 @@
 #include "ftrace.h"
-#include "log.h"
+#include "../utils/log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

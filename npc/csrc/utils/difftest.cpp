@@ -6,6 +6,10 @@
 
 #include "difftest.h"
 #include "log.h"
+#include "../core/npc.h"
+#include "../core/memory.h"
+#include "../core/reg.h"
+#include "../trace/itrace.h"
 #include <dlfcn.h>
 #include <cstdio>
 #include <cstring>
@@ -22,27 +26,6 @@ void (*ref_difftest_init)(int port) = NULL;
 // DiffTest 状态
 static bool is_difftest_enabled = false;
 static bool is_skip_ref = false;
-
-// 外部函数声明
-extern uint32_t get_reg(int idx);
-extern uint32_t get_pc();
-extern uint8_t* guest_to_host(uint32_t paddr);
-extern void npc_reg_display();
-extern void display_iringbuf();
-
-// 寄存器名称
-static const char *reg_name(int idx) {
-  static const char *regs[] = {
-    "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
-    "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
-    "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
-    "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
-  };
-  if (idx >= 0 && idx < 32) {
-    return regs[idx];
-  }
-  return "???";
-}
 
 // 初始化 DiffTest
 void init_difftest(const char *ref_so_file, long img_size) {
@@ -78,24 +61,15 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  // 同步内存（从 0x80000000 开始）
+  // 同步内存
   ref_difftest_memcpy(0x80000000, guest_to_host(0x80000000), img_size, DIFFTEST_TO_REF);
   
-  // 同步寄存器状态
+  // 同步寄存器
   DiffTestState dut_state;
   for (int i = 0; i < 32; i++) {
-    dut_state.gpr[i] = get_reg(i);
+    dut_state.gpr[i] = npc_get_reg(i);
   }
-  dut_state.pc = get_pc();
-  
-  Log("Syncing initial state to REF:");
-  Log("  PC = 0x%08x", dut_state.pc);
-  for (int i = 0; i < 32; i++) {
-    if (dut_state.gpr[i] != 0) {
-      Log("  %s = 0x%08x", reg_name(i), dut_state.gpr[i]);
-    }
-  }
-  
+  dut_state.pc = npc_get_pc();
   ref_difftest_regcpy(&dut_state, DIFFTEST_TO_REF);
   
   is_difftest_enabled = true;
@@ -140,7 +114,7 @@ bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t du
 // 检查所有寄存器
 static bool checkregs(DiffTestState *ref, uint32_t pc) {
   // 检查 PC
-  if (!difftest_check_reg("pc", pc, ref->pc, get_pc())) {
+  if (!difftest_check_reg("pc", pc, ref->pc, npc_get_pc())) {
     npc_reg_display();
     display_iringbuf();
     return false;
@@ -155,7 +129,7 @@ static bool checkregs(DiffTestState *ref, uint32_t pc) {
   };
   
   for (int i = 0; i < 32; i++) {
-    if (!difftest_check_reg(regs[i], pc, ref->gpr[i], get_reg(i))) {
+    if (!difftest_check_reg(regs[i], pc, ref->gpr[i], npc_get_reg(i))) {
       npc_reg_display();
       display_iringbuf();
       return false;
@@ -175,9 +149,9 @@ void difftest_step(uint32_t pc, uint32_t npc) {
   if (is_skip_ref) {
     // 将 DUT 的状态同步到 REF
     for (int i = 0; i < 32; i++) {
-      ref_state.gpr[i] = get_reg(i);
+      ref_state.gpr[i] = npc_get_reg(i);
     }
-    ref_state.pc = get_pc();
+    ref_state.pc = npc_get_pc();
     ref_difftest_regcpy(&ref_state, DIFFTEST_TO_REF);
     is_skip_ref = false;
     return;
