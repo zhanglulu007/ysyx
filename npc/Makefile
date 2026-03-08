@@ -60,7 +60,6 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 BUILD_DIR = ./build
 OBJ_DIR = $(BUILD_DIR)/obj_dir
 
-
 # 默认程序和halt地址
 PROG ?= test/mem.bin
 HALT ?= 0x1220
@@ -107,6 +106,5 @@ run:
 	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
 	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST)
 	@echo "-- DONE --------------------"
-
 
 .PHONY: build sim run clean
