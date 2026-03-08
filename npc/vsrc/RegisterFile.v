@@ -3,7 +3,6 @@
 
 module RegisterFile(
   input clk,
-  input rst,                  // 复位信号
   input [31:0] wdata,         // 写入数据
   input [4:0] waddr,          // 写入地址
   input wen,                  // 写使能
@@ -20,22 +19,9 @@ module RegisterFile(
   // DPI-C导入函数：通知C++侧寄存器更新
   import "DPI-C" function void update_reg_value(input int idx, input int value);
   
-  // 初始化所有寄存器为0
-  integer i;
-  initial begin
-    for (i = 0; i < 32; i = i + 1) begin
-      rf[i] = 32'h0;
-    end
-  end
-  
   // 写操作 - 时序逻辑
   always @(posedge clk) begin
-    if (rst) begin
-      // 复位时清零所有寄存器
-      for (i = 0; i < 32; i = i + 1) begin
-        rf[i] <= 32'h0;
-      end
-    end else if (wen && waddr != 5'b0) begin
+    if (wen && waddr != 5'b0) begin
       // x0寄存器恒为0，不可写
       rf[waddr] <= wdata;
       // 通知C++侧更新（扩展到32位）
