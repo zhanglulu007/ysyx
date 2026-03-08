@@ -33,10 +33,10 @@ module RegisterFile(
     if (rst) begin
       // 复位时清零所有寄存器
       for (int i = 0; i < 32; i = i + 1) begin
-        regs[i] <= 32'h0;
+        rf[i] <= 32'h0;
       end
     end else if (wen && rd != 0) begin
-      regs[rd] <= wdata;
+      rf[rd] <= wdata;
     end
   end
 
