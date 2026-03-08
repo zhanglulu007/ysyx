@@ -1,0 +1,208 @@
+#include "ftrace.h"
+#include "../utils/log.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <elf.h>
+#include <vector>
+#include <string>
+
+// 符号表相关数据结构
+static Elf32_Sym *symtab = NULL;
+static char *strtab = NULL;
+static int symtab_nr = 0;  // 符号表项数量
+static int func_depth = 0;  // 函数调用深度
+
+// ftrace缓冲区（用于延迟输出）
+static std::vector<std::string> ftrace_buffer;
+
+// 根据地址查找函数名
+static const char* find_func_name(uint32_t addr) {
+  if (symtab == NULL || strtab == NULL) {
+    return "???";
+  }
+  
+  for (int i = 0; i < symtab_nr; i++) {
+    // 只关心函数符号
+    if (ELF32_ST_TYPE(symtab[i].st_info) != STT_FUNC) {
+      continue;
+    }
+    
+    // 检查地址是否在函数范围内
+    uint32_t func_start = symtab[i].st_value;
+    uint32_t func_end = func_start + symtab[i].st_size;
+    
+    if (addr >= func_start && addr < func_end) {
+      return strtab + symtab[i].st_name;
+    }
+  }
+  
+  return "???";  // 未找到
+}
+
+// 初始化ftrace
+void init_ftrace(const char *elf_file) {
+  if (elf_file == NULL) {
+    Log("No ELF file for ftrace");
+    return;
+  }
+  
+  FILE *fp = fopen(elf_file, "rb");
+  if (fp == NULL) {
+    Log("Warning: Cannot open ELF file '%s' for ftrace", elf_file);
+    return;
+  }
+  
+  // 1. 读取 ELF Header
+  Elf32_Ehdr ehdr;
+  int ret = fread(&ehdr, sizeof(ehdr), 1, fp);
+  if (ret != 1) {
+    Log("Warning: Failed to read ELF header");
+    fclose(fp);
+    return;
+  }
+  
+  // 验证 ELF 魔数
+  if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0) {
+    Log("Warning: Not an ELF file");
+    fclose(fp);
+    return;
+  }
+  
+  // 2. 读取 Section Header Table
+  Elf32_Shdr *shdr = (Elf32_Shdr*)malloc(sizeof(Elf32_Shdr) * ehdr.e_shnum);
+  if (shdr == NULL) {
+    Log("Warning: Failed to allocate memory for section headers");
+    fclose(fp);
+    return;
+  }
+  
+  fseek(fp, ehdr.e_shoff, SEEK_SET);
+  ret = fread(shdr, sizeof(Elf32_Shdr), ehdr.e_shnum, fp);
+  if (ret != ehdr.e_shnum) {
+    Log("Warning: Failed to read section headers");
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  // 3. 找到 .symtab 和 .strtab
+  Elf32_Shdr *symtab_shdr = NULL;
+  Elf32_Shdr *strtab_shdr = NULL;
+  
+  for (int i = 0; i < ehdr.e_shnum; i++) {
+    if (shdr[i].sh_type == SHT_SYMTAB) {
+      symtab_shdr = &shdr[i];
+      strtab_shdr = &shdr[shdr[i].sh_link];  // 字符串表索引
+      break;
+    }
+  }
+  
+  if (symtab_shdr == NULL) {
+    Log("Warning: No symbol table found in ELF file");
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  // 4. 读取符号表
+  symtab_nr = symtab_shdr->sh_size / sizeof(Elf32_Sym);
+  symtab = (Elf32_Sym*)malloc(symtab_shdr->sh_size);
+  if (symtab == NULL) {
+    Log("Warning: Failed to allocate memory for symbol table");
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  fseek(fp, symtab_shdr->sh_offset, SEEK_SET);
+  ret = fread(symtab, symtab_shdr->sh_size, 1, fp);
+  if (ret != 1) {
+    Log("Warning: Failed to read symbol table");
+    free(symtab);
+    symtab = NULL;
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  // 5. 读取字符串表
+  strtab = (char*)malloc(strtab_shdr->sh_size);
+  if (strtab == NULL) {
+    Log("Warning: Failed to allocate memory for string table");
+    free(symtab);
+    symtab = NULL;
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  fseek(fp, strtab_shdr->sh_offset, SEEK_SET);
+  ret = fread(strtab, strtab_shdr->sh_size, 1, fp);
+  if (ret != 1) {
+    Log("Warning: Failed to read string table");
+    free(strtab);
+    strtab = NULL;
+    free(symtab);
+    symtab = NULL;
+    free(shdr);
+    fclose(fp);
+    return;
+  }
+  
+  free(shdr);
+  fclose(fp);
+  
+  Log("ftrace initialized with %d symbols from '%s'", symtab_nr, elf_file);
+}
+
+// 记录函数调用（延迟输出）
+void ftrace_call(uint32_t pc, uint32_t target) {
+  const char *func_name = find_func_name(target);
+  char logbuf[256];
+  snprintf(logbuf, sizeof(logbuf), 
+           "[FTRACE] 0x%08x: %*scall [%s@0x%08x]",
+           pc, func_depth * 2, "", func_name, target);
+  
+  func_depth++;
+  
+  // 添加到缓冲区，延迟输出
+  ftrace_buffer.push_back(std::string(logbuf));
+}
+
+// 记录函数返回（延迟输出）
+void ftrace_ret(uint32_t pc) {
+  func_depth--;
+  if (func_depth < 0) func_depth = 0;  // 防止深度为负
+  
+  const char *func_name = find_func_name(pc);
+  char logbuf[256];
+  snprintf(logbuf, sizeof(logbuf), 
+           "[FTRACE] 0x%08x: %*sret  [%s]",
+           pc, func_depth * 2, "", func_name);
+  
+  // 添加到缓冲区，延迟输出
+  ftrace_buffer.push_back(std::string(logbuf));
+}
+
+// 刷新ftrace缓冲区
+void ftrace_flush(bool print_to_console) {
+  if (ftrace_buffer.empty()) return;
+  
+  // 先收集所有输出到一个字符串，确保原子性
+  std::string output;
+  for (const auto& line : ftrace_buffer) {
+    output += line + "\n";
+  }
+  
+  // 一次性输出到日志文件
+  log_write("%s", output.c_str());
+  
+  // 一次性输出到控制台
+  if (print_to_console) {
+    printf("%s", output.c_str());
+    fflush(stdout);  // 立即刷新，避免缓冲
+  }
+  
+  ftrace_buffer.clear();
+}
