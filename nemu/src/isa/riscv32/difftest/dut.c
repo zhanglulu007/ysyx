@@ -53,8 +53,11 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
 }
 
 void isa_difftest_attach() {
+#ifdef CONFIG_DIFFTEST
   // Sync CSR registers from reference (Spike) to DUT (NEMU)
   // This is called after difftest initialization to get the correct initial CSR values
+  Log("isa_difftest_attach() called");
+  
   if (ref_difftest_regcpy == NULL) {
     Log("Warning: ref_difftest_regcpy is NULL, cannot sync CSR registers");
     return;
@@ -74,4 +77,5 @@ void isa_difftest_attach() {
   
   Log("NEMU CSR registers after sync: mstatus=0x%08x, mtvec=0x%08x, mepc=0x%08x, mcause=0x%08x",
       cpu.mstatus, cpu.mtvec, cpu.mepc, cpu.mcause);
+#endif
 }
