@@ -17,6 +17,9 @@
 #include <cpu/difftest.h>
 #include "../local-include/reg.h"
 
+// External reference to difftest functions
+extern void (*ref_difftest_regcpy)(void *dut, bool direction);
+
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
   // 检查PC寄存器
   if (!difftest_check_reg("pc", pc, ref_r->pc, cpu.pc)) {
@@ -48,4 +51,25 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
 }
 
 void isa_difftest_attach() {
+  // Sync CSR registers from reference (Spike) to DUT (NEMU)
+  // This is called after difftest initialization to get the correct initial CSR values
+  if (ref_difftest_regcpy == NULL) {
+    Log("Warning: ref_difftest_regcpy is NULL, cannot sync CSR registers");
+    return;
+  }
+  
+  CPU_state ref_r;
+  ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+  
+  Log("Syncing CSR registers from Spike: mstatus=0x%08x, mtvec=0x%08x, mepc=0x%08x, mcause=0x%08x",
+      ref_r.mstatus, ref_r.mtvec, ref_r.mepc, ref_r.mcause);
+  
+  // Copy CSR registers from reference
+  cpu.mstatus = ref_r.mstatus;
+  cpu.mtvec = ref_r.mtvec;
+  cpu.mepc = ref_r.mepc;
+  cpu.mcause = ref_r.mcause;
+  
+  Log("NEMU CSR registers after sync: mstatus=0x%08x, mtvec=0x%08x, mepc=0x%08x, mcause=0x%08x",
+      cpu.mstatus, cpu.mtvec, cpu.mepc, cpu.mcause);
 }
