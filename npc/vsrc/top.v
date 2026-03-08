@@ -147,25 +147,29 @@ module top(
   assign jalr_target = (rs1_data + imm_i) & ~32'h1;
   
   always @(posedge clk) begin
-    if (!rst && is_ebreak) begin
-      $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
-      ebreak_handler(a0_value);
-    end
-    
-    // ftrace检测
-    if (!rst && is_jalr) begin
-      // jalr ra, rs1, offset (rd == 1) 是函数调用
-      if (rd == 5'd1) begin
-        ftrace_call_handler(pc, jalr_target);
+    if (rst) begin
+      // 复位时，同步初始PC值到C++侧
+      update_pc_value(32'h80000000);
+    end else begin
+      if (is_ebreak) begin
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
+        ebreak_handler(a0_value);
       end
-      // jalr zero, ra, 0 (rd == 0 && rs1 == 1) 是函数返回
-      else if (rd == 5'd0 && rs1 == 5'd1) begin
-        ftrace_ret_handler(pc);
+      
+      // ftrace检测
+      if (is_jalr) begin
+        // jalr ra, rs1, offset (rd == 1) 是函数调用
+        if (rd == 5'd1) begin
+          ftrace_call_handler(pc, jalr_target);
+        end
+        // jalr zero, ra, 0 (rd == 0 && rs1 == 1) 是函数返回
+        else if (rd == 5'd0 && rs1 == 5'd1) begin
+          ftrace_ret_handler(pc);
+        end
       end
-    end
-    
-    // 每个时钟周期更新PC和指令到C++侧
-    if (!rst) begin
+      
+      // 每个时钟周期更新PC和指令到C++侧
+      // 注意：这里更新的是当前周期执行的指令的PC和指令
       update_pc_value(pc);
       update_inst_value(pc, inst);
     end
