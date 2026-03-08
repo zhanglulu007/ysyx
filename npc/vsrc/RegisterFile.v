@@ -28,6 +28,19 @@ module RegisterFile(
       update_reg_value({27'b0, waddr}, wdata);
     end
   end
+
+  always @(posedge clk) begin
+    if (rst) begin
+      // 复位时清零所有寄存器
+      for (int i = 0; i < 32; i = i + 1) begin
+        regs[i] <= 32'h0;
+      end
+    end else if (wen && rd != 0) begin
+      regs[rd] <= wdata;
+    end
+  end
+
+
   
   // 读操作 - 组合逻辑
   // x0寄存器恒为0
