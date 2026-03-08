@@ -60,6 +60,7 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 # 默认程序和halt地址
 PROG ?= test/mem.bin
 HALT ?= 0x1220
+DIFFTEST ?= -d ../nemu/build/riscv32-nemu-interpreter-so
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
@@ -100,7 +101,7 @@ run:
 	fi
 	@echo "-- RUN ---------------------"
 	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
-	@$(OBJ_DIR)/Vtop $(PROG) -d ../nemu/build/riscv32-nemu-interpreter-so
+	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST)
 	@echo "-- DONE --------------------"
 
 
