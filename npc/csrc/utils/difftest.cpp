@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cassert>
+#include <cstdlib>  // for exit()
 
 // REF API 函数指针
 void (*ref_difftest_memcpy)(uint32_t addr, void *buf, size_t n, bool direction) = NULL;
@@ -28,6 +29,20 @@ extern uint32_t get_pc();
 extern uint8_t* guest_to_host(uint32_t paddr);
 extern void npc_reg_display();
 extern void display_iringbuf();
+
+// 寄存器名称
+static const char *reg_name(int idx) {
+  static const char *regs[] = {
+    "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+    "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+    "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+    "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+  };
+  if (idx >= 0 && idx < 32) {
+    return regs[idx];
+  }
+  return "???";
+}
 
 // 初始化 DiffTest
 void init_difftest(const char *ref_so_file, long img_size) {
@@ -63,15 +78,24 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  // 同步内存
+  // 同步内存（从 0x80000000 开始）
   ref_difftest_memcpy(0x80000000, guest_to_host(0x80000000), img_size, DIFFTEST_TO_REF);
   
-  // 同步寄存器
+  // 同步寄存器状态
   DiffTestState dut_state;
   for (int i = 0; i < 32; i++) {
     dut_state.gpr[i] = get_reg(i);
   }
   dut_state.pc = get_pc();
+  
+  Log("Syncing initial state to REF:");
+  Log("  PC = 0x%08x", dut_state.pc);
+  for (int i = 0; i < 32; i++) {
+    if (dut_state.gpr[i] != 0) {
+      Log("  %s = 0x%08x", reg_name(i), dut_state.gpr[i]);
+    }
+  }
+  
   ref_difftest_regcpy(&dut_state, DIFFTEST_TO_REF);
   
   is_difftest_enabled = true;
