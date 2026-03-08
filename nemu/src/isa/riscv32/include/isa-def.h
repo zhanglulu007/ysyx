@@ -21,11 +21,6 @@
 typedef struct {
   word_t gpr[MUXDEF(CONFIG_RVE, 16, 32)];
   vaddr_t pc;
-  // CSR registers for exception handling
-  word_t mtvec;   // Machine Trap-Vector Base-Address Register
-  word_t mepc;    // Machine Exception Program Counter
-  word_t mcause;  // Machine Cause Register
-  word_t mstatus; // Machine Status Register
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 // decode

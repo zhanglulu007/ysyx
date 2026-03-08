@@ -9,11 +9,7 @@
 
 struct Context {
   // TODO: fix the order of these members to match trap.S
-  // The order must match the stack layout in trap.S:
-  // First: x1, x3-x15 (and x16-x31 for RV32)
-  // Then: mcause, mstatus, mepc
-  uintptr_t gpr[NR_REGS];
-  uintptr_t mcause, mstatus, mepc;
+  uintptr_t mepc, mcause, gpr[NR_REGS], mstatus;
   void *pdir;
 };
 

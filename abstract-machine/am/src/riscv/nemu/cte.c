@@ -8,22 +8,6 @@ Context* __am_irq_handle(Context *c) {
   if (user_handler) {
     Event ev = {0};
     switch (c->mcause) {
-      case 11: // ecall from M-mode
-        // Check if it's a yield (a7 or a5 == -1)
-#ifdef __riscv_e
-        if (c->GPR1 == (uintptr_t)-1) {
-          ev.event = EVENT_YIELD;
-        } else {
-          ev.event = EVENT_ERROR;
-        }
-#else
-        if (c->GPR1 == (uintptr_t)-1) {
-          ev.event = EVENT_YIELD;
-        } else {
-          ev.event = EVENT_ERROR;
-        }
-#endif
-        break;
       default: ev.event = EVENT_ERROR; break;
     }
 

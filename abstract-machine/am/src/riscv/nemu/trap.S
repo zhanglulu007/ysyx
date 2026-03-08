@@ -62,10 +62,6 @@ __am_asm_trap:
 
   LOAD t1, OFFSET_STATUS(sp)
   LOAD t2, OFFSET_EPC(sp)
-  
-  # For ecall, we need to return to next instruction (PC + 4)
-  addi t2, t2, 4
-  
   csrw mstatus, t1
   csrw mepc, t2
 

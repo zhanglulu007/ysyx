@@ -32,14 +32,6 @@ static void restart() {
 
   /* The zero register is always 0. */
   cpu.gpr[0] = 0;
-  
-  /* Initialize CSR registers for DiffTest */
-  // mstatus initial value should match Spike's initialization
-  // We don't set it here, let it be initialized by difftest
-  cpu.mtvec = 0;
-  cpu.mepc = 0;
-  cpu.mcause = 0;
-  cpu.mstatus = 0;
 }
 
 void init_isa() {
