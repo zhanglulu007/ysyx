@@ -67,6 +67,8 @@ DIFFTEST ?= -d ../nemu/build/riscv32-nemu-interpreter-so
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
+$(shell mkdir -p $(BUILD_DIR))
+
 # 只编译不运行
 build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
