@@ -15,6 +15,7 @@
 #include "utils/itrace.h"
 #include "utils/mtrace.h"
 #include "utils/ftrace.h"
+#include "utils/difftest.h"
 
 // 存储器定义 - 128MB
 #define PMEM_SIZE (128 * 1024 * 1024)
@@ -75,7 +76,7 @@ static const char *regs[] = {
 };
 
 // 地址转换
-static inline uint8_t* guest_to_host(uint32_t paddr) {
+uint8_t* guest_to_host(uint32_t paddr) {
   return pmem + (paddr - PMEM_BASE);
 }
 
@@ -168,6 +169,10 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
 // DPI-C函数：ebreak处理
 extern "C" void ebreak_handler(int code) {
   // code是a0寄存器的值，0表示成功，非0表示失败
+  
+  // ebreak是特殊指令，需要跳过DiffTest
+  difftest_skip_ref();
+  
   if (code == 0) {
     printf("\n*** HIT GOOD TRAP ***\n");
   } else {
@@ -208,13 +213,13 @@ extern "C" void ftrace_ret_handler(int pc_val) {
 }
 
 // 寄存器访问接口（从缓存读取）
-static uint32_t get_reg(int idx) {
+uint32_t get_reg(int idx) {
   if (idx == 0) return 0;  // x0恒为0
   if (idx < 0 || idx >= 32) return 0;
   return reg_cache[idx];
 }
 
-static uint32_t get_pc() {
+uint32_t get_pc() {
   return pc_cache;
 }
 
@@ -293,6 +298,9 @@ static bool load_program(const char* filename) {
 
 // 单步执行
 static void exec_once() {
+  // 保存当前PC用于DiffTest
+  uint32_t current_pc = pc_cache;
+  
   // 下降沿
   g_top->clk = 0;
   g_top->eval();
@@ -315,6 +323,10 @@ static void exec_once() {
   ftrace_flush(g_print_itrace);
   itrace_log(pc_cache, inst_cache, g_print_itrace);
   mtrace_flush(g_print_itrace);
+  
+  // DiffTest：对比执行结果
+  uint32_t next_pc = pc_cache;
+  difftest_step(current_pc, next_pc);
 }
 
 // CPU执行n条指令
@@ -385,10 +397,11 @@ void cpu_exec(uint64_t n) {
 int main(int argc, char** argv) {
     // 检查命令行参数
     if (argc < 2) {
-        printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file]\n", argv[0]);
+        printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file] [-d ref_so]\n", argv[0]);
         printf("  -b: batch mode (non-interactive)\n");
         printf("  -l log_file: specify log file (default: npc.log)\n");
         printf("  -e elf_file: specify ELF file for ftrace\n");
+        printf("  -d ref_so: specify REF shared object for DiffTest\n");
         printf("Example: %s build/dummy-riscv32e-npc.bin\n", argv[0]);
         return 1;
     }
@@ -397,6 +410,7 @@ int main(int argc, char** argv) {
     bool batch_mode = false;
     const char* log_file = NULL;  // NULL表示使用默认文件名npc.log
     const char* elf_file = NULL;  // ELF文件路径（用于ftrace）
+    const char* ref_so_file = NULL;  // REF动态库路径（用于DiffTest）
     
     // 解析命令行参数
     for (int i = 2; i < argc; i++) {
@@ -408,6 +422,9 @@ int main(int argc, char** argv) {
             i++;
         } else if (strcmp(argv[i], "-e") == 0 && i + 1 < argc) {
             elf_file = argv[i + 1];
+            i++;
+        } else if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
+            ref_so_file = argv[i + 1];
             i++;
         }
     }
@@ -444,6 +461,12 @@ int main(int argc, char** argv) {
         return 1;
     }
     
+    // 获取程序大小（用于DiffTest）
+    FILE* fp = fopen(program_file, "rb");
+    fseek(fp, 0, SEEK_END);
+    long img_size = ftell(fp);
+    fclose(fp);
+    
     // 初始化启动时间
     boot_time = get_time_us();
     
@@ -462,6 +485,14 @@ int main(int argc, char** argv) {
     g_contextp->timeInc(1);
     g_top->rst = 0;
     Log("Reset complete");
+    
+    // 初始化DiffTest（在复位之后）
+    if (ref_so_file != NULL) {
+        init_difftest(ref_so_file, img_size);
+    } else {
+        Log("DiffTest is disabled (no REF specified)");
+        printf("DiffTest: OFF\n\n");
+    }
     
     // 初始化sdb
     init_sdb();
