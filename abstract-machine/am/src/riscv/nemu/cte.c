@@ -39,7 +39,17 @@ bool cte_init(Context*(*handler)(Event, Context*)) {
 }
 
 Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
-  return NULL;
+  uintptr_t stack_top = (uintptr_t)kstack.end;
+  stack_top &= ~(sizeof(uintptr_t) - 1);
+  Context *ctx = (Context *)(stack_top - sizeof(Context));
+  memset(ctx, 0, sizeof(Context));
+  
+  // Set up the context for the kernel thread
+  ctx->mepc = (uintptr_t)entry;  // Entry point - where to jump when mret is executed
+  ctx->mstatus = 0x1800;          // MPP=11 (Machine mode) for difftest
+  ctx->gpr[10] = (uintptr_t)arg;
+
+  return ctx;
 }
 
 void yield() {
