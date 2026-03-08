@@ -60,6 +60,10 @@ __am_asm_trap:
   mv a0, sp
   call __am_irq_handle
 
+  # Context switch: __am_irq_handle returns the new context pointer in a0
+  # Switch stack pointer to the new context
+  mv sp, a0
+
   LOAD t1, OFFSET_STATUS(sp)
   LOAD t2, OFFSET_EPC(sp)
   csrw mstatus, t1
