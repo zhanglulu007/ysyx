@@ -315,18 +315,22 @@ static void exec_once() {
   
   g_contextp->timeInc(1);
   
+  // 再次eval以触发PC更新（update_pc_value会在posedge clk时被调用）
+  // 这样pc_cache会被更新为新的PC值
+  g_top->eval();
+  
   // 增加周期计数
   g_cycle_cnt++;
   
   // 统一输出trace（按顺序：ftrace -> itrace -> mtrace）
   // 这样可以避免输出交错，并且保持合理的顺序
   ftrace_flush(g_print_itrace);
-  itrace_log(pc_cache, inst_cache, g_print_itrace);
+  itrace_log(current_pc, inst_cache, g_print_itrace);  // 使用current_pc记录执行的指令
   mtrace_flush(g_print_itrace);
   
   // DiffTest：对比执行结果
-  uint32_t next_pc = pc_cache;
-  difftest_step(current_pc, next_pc);
+  // current_pc是执行前的PC，pc_cache是执行后的PC
+  difftest_step(current_pc, pc_cache);
 }
 
 // CPU执行n条指令
