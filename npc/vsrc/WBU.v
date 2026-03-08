@@ -35,6 +35,21 @@ module WBU(
   
   // 系统指令
   input is_ebreak,
+  input is_ecall,
+  input is_mret,
+  
+  // CSR指令
+  input is_csrrw,
+  input is_csrrs,
+  input [31:0] csr_rdata,     // CSR读数据
+  
+  // 异常处理
+  input [31:0] mtvec,         // 异常入口地址
+  input [31:0] mepc,          // 异常返回地址
+  output exception_en,        // 异常使能
+  output [31:0] exception_pc, // 异常发生时的PC
+  output [31:0] exception_cause, // 异常原因
+  output mret_en,             // mret使能
   
   // 输出
   output [31:0] rd_data,      // 写回寄存器的数据
@@ -45,15 +60,26 @@ module WBU(
   wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
   wire is_jump = is_jal || is_jalr;
   wire is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
+  wire is_csr = is_csrrw || is_csrrs;
   
-  assign rd_data = is_jump ? (pc + 4) :           // jal/jalr：保存返回地址
-                   is_lui ? imm_u :                // lui：加载立即数
-                   is_auipc ? (pc + imm_u) :       // auipc：PC + 立即数
-                   is_load ? mem_rdata :           // load：存储器数据
-                   alu_result;                     // 其他：ALU结果
+  assign rd_data = is_csr ? csr_rdata :           // CSR指令：返回旧的CSR值
+                   is_jump ? (pc + 4) :           // jal/jalr：保存返回地址
+                   is_lui ? imm_u :               // lui：加载立即数
+                   is_auipc ? (pc + imm_u) :      // auipc：PC + 立即数
+                   is_load ? mem_rdata :          // load：存储器数据
+                   alu_result;                    // 其他：ALU结果
+  
+  // ========== 异常处理 ==========
+  // ecall触发异常，异常号为11（M-mode环境调用）
+  assign exception_en = is_ecall;
+  assign exception_pc = pc;
+  assign exception_cause = 32'd11;  // Environment call from M-mode
+  assign mret_en = is_mret;
   
   // ========== PC更新逻辑 ==========
   assign pc_next = is_ebreak ? pc :                           // ebreak：PC不变
+                   is_ecall ? mtvec :                         // ecall：跳转到异常入口
+                   is_mret ? mepc :                           // mret：返回到mepc
                    is_jalr ? jump_target :                    // jalr：跳转到jump_target
                    is_jal ? branch_target :                   // jal：跳转到branch_target
                    (is_branch && branch_taken) ? branch_target : // 分支跳转
