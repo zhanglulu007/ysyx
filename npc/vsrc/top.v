@@ -137,7 +137,6 @@ module top(
   // ========== ebreak处理和itrace ==========
   
   import "DPI-C" function void ebreak_handler(input int a0_value);
-  import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val);
@@ -147,10 +146,7 @@ module top(
   assign jalr_target = (rs1_data + imm_i) & ~32'h1;
   
   always @(posedge clk) begin
-    if (rst) begin
-      // 复位时，同步初始PC值到C++侧
-      update_pc_value(32'h80000000);
-    end else begin
+    if (!rst) begin
       if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
         ebreak_handler(a0_value);
@@ -168,9 +164,8 @@ module top(
         end
       end
       
-      // 每个时钟周期更新PC和指令到C++侧
-      // 注意：这里更新的是当前周期执行的指令的PC和指令
-      update_pc_value(pc);
+      // 每个时钟周期更新指令到C++侧
+      // 注意：PC已经在IFU中更新了
       update_inst_value(pc, inst);
     end
   end
