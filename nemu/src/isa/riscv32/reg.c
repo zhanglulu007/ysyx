@@ -24,24 +24,45 @@ const char *regs[] = {
 };
 
 void isa_reg_display() {
+  // 打印32个通用寄存器
   for (int i = 0; i < 32; i++) {
     printf("%-4s  0x%08x\n", regs[i], cpu.gpr[i]);
   }
+  // 打印PC寄存器
   printf("%-4s  0x%08x\n", "pc", cpu.pc);
+  // 打印CSR寄存器
+  printf("%-8s  0x%08x\n", "mtvec", cpu.mtvec);
+  printf("%-8s  0x%08x\n", "mepc", cpu.mepc);
+  printf("%-8s  0x%08x\n", "mcause", cpu.mcause);
+  printf("%-8s  0x%08x\n", "mstatus", cpu.mstatus);
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {
   *success = true;
   
+  // 特殊寄存器：pc
   if (strcmp(s, "pc") == 0) {
     return cpu.pc;
   }
   
+  // CSR寄存器
+  if (strcmp(s, "mtvec") == 0) return cpu.mtvec;
+  if (strcmp(s, "mepc") == 0) return cpu.mepc;
+  if (strcmp(s, "mcause") == 0) return cpu.mcause;
+  if (strcmp(s, "mstatus") == 0) return cpu.mstatus;
+  
+  // 通用寄存器：按名字匹配
   for (int i = 0; i < 32; i++) {
     if (strcmp(s, regs[i]) == 0) {
       return cpu.gpr[i];
     }
     
+    // 也支持 x0-x31 的形式
+    char xname[8];
+    sprintf(xname, "x%d", i);
+    if (strcmp(s, xname) == 0) {
+      return cpu.gpr[i];
+    }
   }
   
   // 未找到寄存器

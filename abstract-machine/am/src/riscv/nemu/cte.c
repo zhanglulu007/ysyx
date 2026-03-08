@@ -7,8 +7,18 @@ static Context* (*user_handler)(Event, Context*) = NULL;
 Context* __am_irq_handle(Context *c) {
   if (user_handler) {
     Event ev = {0};
-    switch (c->mcause) {
-      default: ev.event = EVENT_ERROR; break;
+    // Check if this is a yield event
+    // yield() sets a7 (x17) to -1 before ecall
+    // mcause for ecall from M-mode is 11
+    if (c->mcause == 11) {
+      // Check if a7 register is -1 (yield)
+      if (c->GPR1 == (uintptr_t)-1) {
+        ev.event = EVENT_YIELD;
+      } else {
+        ev.event = EVENT_SYSCALL;
+      }
+    } else {
+      ev.event = EVENT_ERROR;
     }
 
     c = user_handler(ev, c);
