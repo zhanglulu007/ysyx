@@ -134,14 +134,39 @@ module top(
     .pc_next(pc_next)
   );
   
-  // ========== ebreak处理 ==========
+  // ========== ebreak处理和itrace ==========
   
   import "DPI-C" function void ebreak_handler(input int a0_value);
+  import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
+  import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
+  import "DPI-C" function void ftrace_ret_handler(input int pc_val);
+  
+  // 计算jalr的目标地址
+  wire [31:0] jalr_target;
+  assign jalr_target = (rs1_data + imm_i) & ~32'h1;
   
   always @(posedge clk) begin
-    if (!rst && is_ebreak) begin
-      $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
-      ebreak_handler(a0_value);
+    if (!rst) begin
+      if (is_ebreak) begin
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
+        ebreak_handler(a0_value);
+      end
+      
+      // ftrace检测
+      if (is_jalr) begin
+        // jalr ra, rs1, offset (rd == 1) 是函数调用
+        if (rd == 5'd1) begin
+          ftrace_call_handler(pc, jalr_target);
+        end
+        // jalr zero, ra, 0 (rd == 0 && rs1 == 1) 是函数返回
+        else if (rd == 5'd0 && rs1 == 5'd1) begin
+          ftrace_ret_handler(pc);
+        end
+      end
+      
+      // 每个时钟周期更新指令到C++侧
+      // 注意：PC已经在IFU中更新了
+      update_inst_value(pc, inst);
     end
   end
 
