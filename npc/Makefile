@@ -64,6 +64,7 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 PROG ?= test/mem.bin
 HALT ?= 0x1220
 DIFFTEST ?= -d ../nemu/build/riscv32-nemu-interpreter-so
+BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
@@ -106,7 +107,7 @@ run:
 	fi
 	@echo "-- RUN ---------------------"
 	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
-	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST)
+	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST) $(BATCH)
 	@echo "-- DONE --------------------"
 
 .PHONY: build sim run clean
