@@ -39,26 +39,17 @@ bool cte_init(Context*(*handler)(Event, Context*)) {
 }
 
 Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
-  // The context should be placed at the top of the stack
-  // kstack.end points to the top of the stack (higher address)
   uintptr_t stack_top = (uintptr_t)kstack.end;
   
-  // Align stack_top to sizeof(uintptr_t)
   stack_top &= ~(sizeof(uintptr_t) - 1);
   
-  // Place Context structure at the top of the stack
   Context *ctx = (Context *)(stack_top - sizeof(Context));
   
-  // Initialize the context to all zeros
   memset(ctx, 0, sizeof(Context));
   
-  // Set up the context for the kernel thread
-  ctx->mepc = (uintptr_t)entry;  // Entry point - where to jump when mret is executed
-  ctx->mstatus = 0x1800;          // MPP=11 (Machine mode) for difftest
+  ctx->mepc = (uintptr_t)entry;  
+  ctx->mstatus = 0x1800;         
   
-  // Set up argument according to RISC-V calling convention
-  // For RV32E: a0 is x10 (gpr[10])
-  // For RV32I: a0 is x10 (gpr[10])
   ctx->gpr[10] = (uintptr_t)arg;
   
   return ctx;
