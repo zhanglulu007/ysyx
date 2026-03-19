@@ -23,19 +23,16 @@ module CSR(
 );
 
   // ========== CSR寄存器定义 ==========
-  // Machine-mode CSRs
-  reg [31:0] mstatus;   // 0x300 - Machine status register
-  reg [31:0] mtvec;     // 0x305 - Machine trap-handler base address
-  reg [31:0] mepc;      // 0x341 - Machine exception program counter
-  reg [31:0] mcause;    // 0x342 - Machine trap cause
-  reg [63:0] mcycle;    // 0xB00/0xB80 - Machine cycle counter (64-bit)
+  reg [31:0] mstatus;   // 0x300 
+  reg [31:0] mtvec;     // 0x305 
+  reg [31:0] mepc;      // 0x341 
+  reg [31:0] mcause;    // 0x342 
+  reg [63:0] mcycle;    
   
-  // Read-only identification CSRs
-  wire [31:0] mvendorid = 32'h79737978;  // 0xF11 - "ysyx" in ASCII
-  wire [31:0] marchid   = 32'h26020070;  // 0xF12 - 学号（需要根据实际学号修改）
+  wire [31:0] mvendorid = 32'h79737978;  
+  wire [31:0] marchid   = 32'h26020070;
   
   // ========== mcycle计数器 ==========
-  // mcycle每个时钟周期自动加1
   always @(posedge clk) begin
     if (rst) begin
       mcycle <= 64'b0;
@@ -47,14 +44,14 @@ module CSR(
   // ========== CSR读操作 ==========
   always @(*) begin
     case (csr_addr)
-      12'h300: csr_rdata = mstatus;           // mstatus
-      12'h305: csr_rdata = mtvec;             // mtvec
-      12'h341: csr_rdata = mepc;              // mepc
-      12'h342: csr_rdata = mcause;            // mcause
-      12'hB00: csr_rdata = mcycle[31:0];      // mcycle (low 32 bits)
-      12'hB80: csr_rdata = mcycle[63:32];     // mcycleh (high 32 bits)
-      12'hF11: csr_rdata = mvendorid;         // mvendorid
-      12'hF12: csr_rdata = marchid;           // marchid
+      12'h300: csr_rdata = mstatus;           
+      12'h305: csr_rdata = mtvec;             
+      12'h341: csr_rdata = mepc;              
+      12'h342: csr_rdata = mcause;            
+      12'hB00: csr_rdata = mcycle[31:0];      
+      12'hB80: csr_rdata = mcycle[63:32];     
+      12'hF11: csr_rdata = mvendorid;         
+      12'hF12: csr_rdata = marchid;           
       default: csr_rdata = 32'b0;
     endcase
   end
@@ -62,7 +59,7 @@ module CSR(
   // ========== CSR写操作 ==========
   always @(posedge clk) begin
     if (rst) begin
-      mstatus <= 32'h1800;  // 初始化：MPP=11 (Machine mode)
+      mstatus <= 32'h1800;  
       mtvec   <= 32'b0;
       mepc    <= 32'b0;
       mcause  <= 32'b0;
@@ -75,12 +72,10 @@ module CSR(
       // CSR写操作
       else if (csr_wen) begin
         case (csr_addr)
-          12'h300: mstatus <= csr_wdata;  // mstatus
-          12'h305: mtvec   <= csr_wdata;  // mtvec
-          12'h341: mepc    <= csr_wdata;  // mepc
-          12'h342: mcause  <= csr_wdata;  // mcause
-          // mcycle是只读的，通过硬件自动递增
-          // mvendorid和marchid是只读的
+          12'h300: mstatus <= csr_wdata;  
+          12'h305: mtvec   <= csr_wdata;  
+          12'h341: mepc    <= csr_wdata;  
+          12'h342: mcause  <= csr_wdata;  
           default: ;
         endcase
       end
