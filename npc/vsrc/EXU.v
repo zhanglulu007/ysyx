@@ -74,7 +74,7 @@ module EXU(
   always @(*) begin
     case (1'b1)
       // 加法
-      is_add || is_addi: alu_out = alu_src1 - alu_src2;
+      is_add || is_addi: alu_out = alu_src1 + alu_src2;
       
       // 减法
       is_sub: alu_out = alu_src1 - alu_src2;
