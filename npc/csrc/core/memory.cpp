@@ -5,6 +5,7 @@
 
 #include "memory.h"
 #include "device.h"
+#include "../utils/difftest.h"
 #include "npc.h"
 #include "../utils/log.h"
 #include "../trace/mtrace.h"
