@@ -45,10 +45,13 @@ module top(
   wire is_jal, is_jalr;
   
   // IDU输出 - 系统指令
-  wire is_ebreak;
+  wire is_ebreak, is_ecall, is_mret;
+  
+  // IDU输出 - CSR指令
+  wire is_csrrw, is_csrrs;
   
   // IDU输出 - 控制信号
-  wire reg_wen, mem_valid, mem_wen;
+  wire reg_wen, mem_valid, mem_wen, csr_wen;
   
   // RegisterFile输出
   wire [31:0] rs1_data, rs2_data;
@@ -59,6 +62,12 @@ module top(
   wire [31:0] jump_target;
   wire [31:0] branch_target;
   wire branch_taken;
+  wire [31:0] csr_wdata;
+  
+  // CSR输出
+  wire [31:0] csr_rdata;
+  wire [31:0] mepc_out;
+  wire [31:0] mtvec_out;
   
   // LSU输出
   wire [31:0] mem_rdata;
@@ -66,6 +75,10 @@ module top(
   // WBU输出
   wire [31:0] rd_data;
   wire [31:0] pc_next;
+  wire exception_en;
+  wire [31:0] exception_pc;
+  wire [31:0] exception_cause;
+  wire mret_en;
   
   // 访存地址计算
   wire [31:0] mem_addr;
@@ -144,10 +157,16 @@ module top(
     .is_jalr(is_jalr),
     // 系统指令
     .is_ebreak(is_ebreak),
+    .is_ecall(is_ecall),
+    .is_mret(is_mret),
+    // CSR指令
+    .is_csrrw(is_csrrw),
+    .is_csrrs(is_csrrs),
     // 控制信号
     .reg_wen(reg_wen),
     .mem_valid(mem_valid),
-    .mem_wen(mem_wen)
+    .mem_wen(mem_wen),
+    .csr_wen(csr_wen)
   );
   
   // RegisterFile - 寄存器堆
@@ -202,11 +221,35 @@ module top(
     // J型指令
     .is_jal(is_jal),
     .is_jalr(is_jalr),
+    // CSR指令
+    .is_csrrw(is_csrrw),
+    .is_csrrs(is_csrrs),
+    .csr_rdata(csr_rdata),
+    .csr_wdata(csr_wdata),
     // 输出
     .alu_result(alu_result),
     .jump_target(jump_target),
     .branch_target(branch_target),
     .branch_taken(branch_taken)
+  );
+  
+  // CSR - 控制状态寄存器
+  CSR u_csr(
+    .clk(clk),
+    .rst(rst),
+    // CSR读写接口
+    .csr_addr(imm_i[11:0]),  // CSR地址来自I型立即数的低12位
+    .csr_wdata(csr_wdata),
+    .csr_wen(csr_wen),
+    .csr_rdata(csr_rdata),
+    // 异常处理接口
+    .exception_en(exception_en),
+    .exception_pc(exception_pc),
+    .exception_cause(exception_cause),
+    // mret指令接口
+    .mret_en(mret_en),
+    .mepc_out(mepc_out),
+    .mtvec_out(mtvec_out)
   );
   
   // LSU - 访存单元
@@ -261,6 +304,19 @@ module top(
     .is_jalr(is_jalr),
     // 系统指令
     .is_ebreak(is_ebreak),
+    .is_ecall(is_ecall),
+    .is_mret(is_mret),
+    // CSR指令
+    .is_csrrw(is_csrrw),
+    .is_csrrs(is_csrrs),
+    .csr_rdata(csr_rdata),
+    // 异常处理
+    .mtvec(mtvec_out),
+    .mepc(mepc_out),
+    .exception_en(exception_en),
+    .exception_pc(exception_pc),
+    .exception_cause(exception_cause),
+    .mret_en(mret_en),
     // 输出
     .rd_data(rd_data),
     .pc_next(pc_next)

@@ -44,6 +44,12 @@ module EXU(
   input is_jal,
   input is_jalr,
   
+  // CSR指令
+  input is_csrrw,
+  input is_csrrs,
+  input [31:0] csr_rdata,     // CSR读数据
+  output [31:0] csr_wdata,    // CSR写数据
+  
   // 输出
   output [31:0] alu_result,   // ALU计算结果
   output [31:0] jump_target,  // 跳转目标地址
@@ -117,5 +123,10 @@ module EXU(
   
   // jal和分支: PC + imm
   assign branch_target = pc + (is_jal ? imm_j : imm_b);
+  
+  // ========== CSR指令处理 ==========
+  // csrrw: CSR = rs1, rd = old_CSR
+  // csrrs: CSR = CSR | rs1, rd = old_CSR
+  assign csr_wdata = is_csrrw ? rs1_data : (csr_rdata | rs1_data);
 
 endmodule

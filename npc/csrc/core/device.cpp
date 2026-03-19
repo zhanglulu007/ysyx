@@ -43,7 +43,6 @@ uint32_t device_read(uint32_t addr) {
 // 设备写入
 void device_write(uint32_t addr, uint32_t data, uint8_t wmask) {
     if (addr == SERIAL_PORT) {
-        // 串口只使用最低字节
-        putchar(data & 0xFF);
+        putc(data & 0xFF, stderr);
     }
 }

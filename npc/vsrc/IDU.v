@@ -72,11 +72,18 @@ module IDU(
   
   // 系统指令
   output is_ebreak,
+  output is_ecall,
+  output is_mret,
+  
+  // CSR指令
+  output is_csrrw,
+  output is_csrrs,
   
   // 控制信号
   output reg_wen,             // 寄存器写使能
   output mem_valid,           // 访存有效
-  output mem_wen              // 存储器写使能
+  output mem_wen,             // 存储器写使能
+  output csr_wen              // CSR写使能
 );
 
   // 提取指令字段
@@ -146,17 +153,24 @@ module IDU(
   assign is_jalr = (opcode == 7'b1100111) && (funct3 == 3'b000);
   
   // ========== 系统指令 ==========
-  assign is_ebreak = (inst == 32'h00100073);
+  assign is_ebreak = (inst == 32'h00100073);  // ebreak
+  assign is_ecall  = (inst == 32'h00000073);  // ecall
+  assign is_mret   = (inst == 32'h30200073);  // mret
+  
+  // ========== CSR指令 ==========
+  assign is_csrrw = (opcode == 7'b1110011) && (funct3 == 3'b001);  // csrrw
+  assign is_csrrs = (opcode == 7'b1110011) && (funct3 == 3'b010);  // csrrs
   
   // ========== 控制信号生成 ==========
-  // 寄存器写使能：所有需要写回rd的指令（除了分支、存储、ebreak）
+  // 寄存器写使能：所有需要写回rd的指令（除了分支、存储、ebreak、ecall、mret）
   wire is_r_type = is_add || is_sub || is_and || is_or || is_xor || is_sll || is_srl || is_sra || is_slt || is_sltu;
   wire is_i_arith = is_addi || is_slti || is_sltiu || is_xori || is_ori || is_andi || is_slli || is_srli || is_srai;
   wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
   wire is_jump = is_jal || is_jalr;
   wire is_u_type = is_lui || is_auipc;
+  wire is_csr = is_csrrw || is_csrrs;
   
-  assign reg_wen = ((is_r_type || is_i_arith || is_load || is_jump || is_u_type) && (rd != 5'b0));
+  assign reg_wen = ((is_r_type || is_i_arith || is_load || is_jump || is_u_type || is_csr) && (rd != 5'b0));
   
   // 访存有效：所有加载和存储指令
   wire is_store = is_sb || is_sh || is_sw;
@@ -164,5 +178,8 @@ module IDU(
   
   // 存储器写使能：所有存储指令
   assign mem_wen = is_store;
+  
+  // CSR写使能：csrrw总是写，csrrs当rs1!=0时写
+  assign csr_wen = is_csrrw || (is_csrrs && (rs1 != 5'b0));
 
 endmodule

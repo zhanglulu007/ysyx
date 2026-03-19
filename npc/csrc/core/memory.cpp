@@ -5,6 +5,7 @@
 
 #include "memory.h"
 #include "device.h"
+#include "../utils/difftest.h"
 #include "npc.h"
 #include "../utils/log.h"
 #include "../trace/mtrace.h"
@@ -32,6 +33,7 @@ extern "C" int pmem_read(int raddr) {
     
     // 处理设备读取
     if (is_device_addr(raddr)) {
+        difftest_skip_ref(); 
         return device_read(raddr);
     }
     
@@ -64,6 +66,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     
     // 处理设备写入
     if (is_device_addr(waddr)) {
+        difftest_skip_ref(); 
         device_write(waddr, wdata, wmask);
         return;
     }
