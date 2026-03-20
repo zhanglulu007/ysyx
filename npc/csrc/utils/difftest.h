@@ -14,9 +14,9 @@
 // DiffTest 方向定义
 enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
 
-// CPU 状态结构（与 NEMU 的 riscv32_CPU_state 对应）
+// CPU 状态结构
 typedef struct {
-  uint32_t gpr[32];  // 32个通用寄存器
+  uint32_t gpr[16];  // 16个通用寄存器
   uint32_t pc;       // 程序计数器
 } DiffTestState;
 
