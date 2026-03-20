@@ -12,10 +12,13 @@
 #include "core/reg.h"
 #include "sdb/sdb.h"
 #include "utils/log.h"
+#include "utils/difftest.h"
+
+#ifdef ENABLE_TRACE
 #include "trace/itrace.h"
 #include "trace/mtrace.h"
 #include "trace/ftrace.h"
-#include "utils/difftest.h"
+#endif
 
 // 打印使用说明
 static void print_usage(const char* prog_name) {
@@ -64,20 +67,16 @@ static bool parse_args(int argc, char** argv,
 
 // 初始化所有子系统
 static bool init_subsystems(const char* log_file, const char* elf_file) {
-    // 初始化日志系统
     init_log(log_file);
-    
-    // 初始化trace系统
+
+#ifdef ENABLE_TRACE
     init_itrace();
     init_mtrace();
     init_ftrace(elf_file);
-    
-    // 初始化设备
+#endif
+
     init_device();
-    
-    // 初始化sdb
     init_sdb();
-    
     return true;
 }
 
