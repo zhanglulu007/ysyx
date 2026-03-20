@@ -65,7 +65,6 @@ static bool parse_args(int argc, char** argv,
     return true;
 }
 
-// 初始化所有子系统
 static bool init_subsystems(const char* log_file, const char* elf_file) {
     init_log(log_file);
 
@@ -97,13 +96,11 @@ static void init_difftest_if_needed(const char* ref_so_file, const char* program
     }
 }
 
-// 打印欢迎信息
 static void print_welcome() {
     printf("NPC - RISC-V processor simulator with Simple Debugger\n");
     printf("======================================================\n\n");
 }
 
-// 打印退出信息
 static void print_exit_info() {
     if (npc_should_exit()) {
         uint32_t exit_code = npc_get_exit_code();

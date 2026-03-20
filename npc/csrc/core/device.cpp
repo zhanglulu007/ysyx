@@ -10,7 +10,6 @@
 #include <sys/time.h>
 #include <SDL2/SDL.h>
 
-// ── 时间 ─────────────────────────────────────────────────────────────────
 static uint64_t boot_time = 0;
 
 static uint64_t get_time_us() {
@@ -19,7 +18,7 @@ static uint64_t get_time_us() {
     return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-// ── 键盘 ─────────────────────────────────────────────────────────────────
+//  键盘 
 #define KEYDOWN_MASK  0x8000
 #define KEY_QUEUE_LEN 256
 
@@ -64,7 +63,7 @@ static uint32_t key_dequeue() {
     return v;
 }
 
-// ── VGA / SDL ─────────────────────────────────────────────────────────────
+// VGA / SDL 
 static SDL_Window   *g_window   = NULL;
 static SDL_Renderer *g_renderer = NULL;
 static SDL_Texture  *g_texture  = NULL;
@@ -92,7 +91,6 @@ static void sdl_update_screen() {
     SDL_RenderPresent(g_renderer);
 }
 
-// ── 公共接口 ──────────────────────────────────────────────────────────────
 
 void init_device() {
     boot_time = get_time_us();
@@ -168,10 +166,10 @@ void fb_write(uint32_t addr, uint32_t data, uint8_t wmask) {
 }
 
 void device_update() {
-    // 限流：每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
+    // 每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
     static uint64_t last_update = 0;
     uint64_t now = get_time_us();
-    if (now - last_update < 1000) return;  // 不足 1ms 直接返回
+    if (now - last_update < 1000) return;  
     last_update = now;
 
     SDL_Event ev;
