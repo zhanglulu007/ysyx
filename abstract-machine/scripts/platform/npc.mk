@@ -28,6 +28,6 @@ image: image-dep
 
 run: insert-arg
 	@echo "Running on NPC..."
-	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin
+	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin  ELF=$(abspath $(IMAGE).elf)
 
 .PHONY: insert-arg
