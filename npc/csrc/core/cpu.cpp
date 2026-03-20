@@ -6,6 +6,7 @@
 #include "cpu.h"
 #include "npc.h"
 #include "memory.h"
+#include "device.h"
 #include "../utils/log.h"
 #include "../trace/itrace.h"
 #include "../trace/mtrace.h"
@@ -79,7 +80,10 @@ void exec_once() {
     
     // 增加周期计数
     npc_inc_cycle();
-    
+
+    // 处理 SDL 事件（键盘输入、窗口关闭等）
+    device_update();
+
     // 统一输出trace（按顺序：ftrace -> itrace -> mtrace）
     ftrace_flush(g_print_itrace);
     itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
@@ -170,4 +174,5 @@ void cleanup_cpu() {
     }
     delete g_top;
     delete g_contextp;
+    device_cleanup();
 }

@@ -76,8 +76,8 @@ build:
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
-	-LDFLAGS "-lreadline -ldl" \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include $(shell sdl2-config --cflags)" \
+	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
@@ -88,8 +88,8 @@ run:
 	@echo "-- VERILATE & BUILD --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
-	-LDFLAGS "-lreadline -ldl" \
+	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include $(shell sdl2-config --cflags)" \
+	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
 	--Mdir $(OBJ_DIR)
 	@echo "-- BUILD DONE --------------"
