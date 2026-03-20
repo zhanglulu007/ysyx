@@ -7,11 +7,16 @@
 #include "../trace/ftrace.h"
 
 // DPI-C函数：ftrace函数调用处理
+// 注意：Verilog 侧无条件调用此函数，必须在 C++ 侧做 TRACE 开关判断
 extern "C" void ftrace_call_handler(int pc_val, int target_val) {
+#ifdef ENABLE_TRACE
     ftrace_call(pc_val, target_val);
+#endif
 }
 
 // DPI-C函数：ftrace函数返回处理
 extern "C" void ftrace_ret_handler(int pc_val, int target_val) {
+#ifdef ENABLE_TRACE
     ftrace_ret(pc_val, target_val);
+#endif
 }
