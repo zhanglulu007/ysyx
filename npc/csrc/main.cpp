@@ -111,10 +111,11 @@ static void print_exit_info() {
         Log("Exit code: %d", exit_code);
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-        
-        // 如果程序异常退出，显示iringbuf
+
         if (exit_code != 0) {
+#ifdef ENABLE_TRACE
             display_iringbuf();
+#endif
         }
     }
 }

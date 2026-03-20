@@ -9,12 +9,15 @@
 #include "../core/npc.h"
 #include "../core/memory.h"
 #include "../core/reg.h"
-#include "../trace/itrace.h"
 #include <dlfcn.h>
 #include <cstdio>
 #include <cstring>
 #include <cassert>
-#include <cstdlib>  // for exit()
+#include <cstdlib>
+
+#ifdef ENABLE_TRACE
+#include "../trace/itrace.h"
+#endif
 
 // REF API 函数指针
 void (*ref_difftest_memcpy)(uint32_t addr, void *buf, size_t n, bool direction) = NULL;
