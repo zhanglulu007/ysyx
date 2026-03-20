@@ -168,11 +168,16 @@ void fb_write(uint32_t addr, uint32_t data, uint8_t wmask) {
 }
 
 void device_update() {
+    // 限流：每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
+    static uint64_t last_update = 0;
+    uint64_t now = get_time_us();
+    if (now - last_update < 1000) return;  // 不足 1ms 直接返回
+    last_update = now;
+
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
         switch (ev.type) {
             case SDL_QUIT:
-                // 用户关闭窗口，注入 ESC 键
                 key_enqueue(AM_KEY_ESCAPE | KEYDOWN_MASK);
                 break;
             case SDL_KEYDOWN:
