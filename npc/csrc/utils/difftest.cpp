@@ -9,12 +9,15 @@
 #include "../core/npc.h"
 #include "../core/memory.h"
 #include "../core/reg.h"
-#include "../trace/itrace.h"
 #include <dlfcn.h>
 #include <cstdio>
 #include <cstring>
 #include <cassert>
-#include <cstdlib>  // for exit()
+#include <cstdlib>
+
+#ifdef ENABLE_TRACE
+#include "../trace/itrace.h"
+#endif
 
 // REF API 函数指针
 void (*ref_difftest_memcpy)(uint32_t addr, void *buf, size_t n, bool direction) = NULL;
@@ -113,29 +116,31 @@ bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t du
 
 // 检查所有寄存器
 static bool checkregs(DiffTestState *ref, uint32_t pc) {
-  // 检查 PC
   if (!difftest_check_reg("pc", pc, ref->pc, npc_get_pc())) {
     npc_reg_display();
+#ifdef ENABLE_TRACE
     display_iringbuf();
+#endif
     return false;
   }
-  
-  // 检查通用寄存器
+
   static const char *regs[] = {
     "$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
     "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
     "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
     "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
   };
-  
+
   for (int i = 0; i < 32; i++) {
     if (!difftest_check_reg(regs[i], pc, ref->gpr[i], npc_get_reg(i))) {
       npc_reg_display();
+#ifdef ENABLE_TRACE
       display_iringbuf();
+#endif
       return false;
     }
   }
-  
+
   return true;
 }
 

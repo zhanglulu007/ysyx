@@ -60,54 +60,84 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 BUILD_DIR = ./build
 OBJ_DIR = $(BUILD_DIR)/obj_dir
 
-# 默认程序和halt地址
-PROG ?= test/mem.bin
-HALT ?= 0x1220
-DIFFTEST ?= -d ../nemu/build/riscv32-nemu-interpreter-so
+FST     ?= 0
+TRACE   ?= 0
+DIFFTEST_SO ?=
+
+ifeq ($(FST), 1)
+  VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs
+  EXTRA_CFLAGS += -DENABLE_FST
+else
+  VERILATOR_TRACE_FLAGS =
+endif
+
+# Trace：只需向 C++ 传宏
+ifeq ($(TRACE), 1)
+  EXTRA_CFLAGS += -DENABLE_TRACE
+endif
+
+ifneq ($(DIFFTEST_SO),)
+  DIFFTEST_ARG = -d $(DIFFTEST_SO)
+else
+  DIFFTEST_ARG =
+endif
+
+PROG  ?= test/mem.bin
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
 
 $(shell mkdir -p $(BUILD_DIR))
 
+# 打印当前功能开关状态
+show-config:
+	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)"
+	@echo "Usage examples:"
+	@echo "  make build                          # 全关（最快）"
+	@echo "  make build TRACE=1                  # 开 trace"
+	@echo "  make build FST=1                    # 开波形"
+	@echo "  make build FST=1 TRACE=1            # 全开"
+	@echo "  make run PROG=x.bin                 # 不带 difftest 运行"
+	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
+
+define VERILATE_CMD
+	$(VERILATOR) --top-module top -cc --exe --build -j \
+	$(VERILATOR_TRACE_FLAGS) \
+	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
+	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
+	  -I$(shell pwd)/../nemu/include \
+	  $(shell sdl2-config --cflags) \
+	  $(EXTRA_CFLAGS)" \
+	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
+	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
+	csrc/utils/*.cpp csrc/trace/*.cpp \
+	--Mdir $(OBJ_DIR)
+endef
+
 # 只编译不运行
 build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
-	-LDFLAGS "-lreadline -ldl" \
-	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
-	--Mdir $(OBJ_DIR)
+	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
 
-# 编译运行
+# 编译并运行
 run:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)
-	$(VERILATOR) --top-module top -cc --exe --build -j --trace-fst --trace-structs \
-	-CFLAGS "-std=c++14 -I$(shell pwd)/csrc -I$(shell pwd)/../nemu/tools/capstone/repo/include -I$(shell pwd)/../nemu/include" \
-	-LDFLAGS "-lreadline -ldl" \
-	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp csrc/utils/*.cpp csrc/trace/*.cpp \
-	--Mdir $(OBJ_DIR)
+	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
 	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
-		echo "Error: NPC not built. Please run 'make build' first."; \
-		exit 1; \
-	fi
-	@if [ -z "$(PROG)" ]; then \
-		echo "Error: PROG not specified. Usage: make run PROG=<program.bin>"; \
-		exit 1; \
+		echo "Error: Vtop not found after build."; exit 1; \
 	fi
 	@if [ ! -f "$(PROG)" ]; then \
-		echo "Error: Program file '$(PROG)' not found."; \
-		exit 1; \
+		echo "Error: Program file '$(PROG)' not found."; exit 1; \
 	fi
-	@echo "-- RUN ---------------------"
-	@echo "Running: $(OBJ_DIR)/Vtop $(PROG)"
-	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST) $(BATCH)
+	@echo "-- RUN [DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
+	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST_ARG) $(BATCH)"
+	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
 .PHONY: build sim run clean

@@ -12,10 +12,13 @@
 #include "core/reg.h"
 #include "sdb/sdb.h"
 #include "utils/log.h"
+#include "utils/difftest.h"
+
+#ifdef ENABLE_TRACE
 #include "trace/itrace.h"
 #include "trace/mtrace.h"
 #include "trace/ftrace.h"
-#include "utils/difftest.h"
+#endif
 
 // 打印使用说明
 static void print_usage(const char* prog_name) {
@@ -62,22 +65,17 @@ static bool parse_args(int argc, char** argv,
     return true;
 }
 
-// 初始化所有子系统
 static bool init_subsystems(const char* log_file, const char* elf_file) {
-    // 初始化日志系统
     init_log(log_file);
-    
-    // 初始化trace系统
+
+#ifdef ENABLE_TRACE
     init_itrace();
     init_mtrace();
     init_ftrace(elf_file);
-    
-    // 初始化设备
+#endif
+
     init_device();
-    
-    // 初始化sdb
     init_sdb();
-    
     return true;
 }
 
@@ -98,13 +96,11 @@ static void init_difftest_if_needed(const char* ref_so_file, const char* program
     }
 }
 
-// 打印欢迎信息
 static void print_welcome() {
     printf("NPC - RISC-V processor simulator with Simple Debugger\n");
     printf("======================================================\n\n");
 }
 
-// 打印退出信息
 static void print_exit_info() {
     if (npc_should_exit()) {
         uint32_t exit_code = npc_get_exit_code();
@@ -112,10 +108,11 @@ static void print_exit_info() {
         Log("Exit code: %d", exit_code);
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
-        
-        // 如果程序异常退出，显示iringbuf
+
         if (exit_code != 0) {
+#ifdef ENABLE_TRACE
             display_iringbuf();
+#endif
         }
     }
 }

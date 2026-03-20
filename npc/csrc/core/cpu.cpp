@@ -6,39 +6,57 @@
 #include "cpu.h"
 #include "npc.h"
 #include "memory.h"
+#include "device.h"
 #include "../utils/log.h"
-#include "../trace/itrace.h"
-#include "../trace/mtrace.h"
-#include "../trace/ftrace.h"
 #include "../utils/difftest.h"
 #include "../sdb/sdb.h"
 #include <verilated.h>
-#include <verilated_fst_c.h>
 #include "Vtop.h"
+
+#ifdef ENABLE_FST
+#include <verilated_fst_c.h>
+#endif
+
+#ifdef ENABLE_TRACE
+#include "../trace/itrace.h"
+#include "../trace/mtrace.h"
+#include "../trace/ftrace.h"
+#endif
 
 // 全局变量：顶层模块指针和仿真上下文
 Vtop* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
+
+#ifdef ENABLE_FST
 static VerilatedFstC* g_tfp = NULL;
+#endif
 
 // itrace控制：是否输出到控制台
 static bool g_print_itrace = false;
 
 // 初始化CPU
 bool init_cpu(int argc, char** argv) {
-    // 初始化Verilator上下文
     g_contextp = new VerilatedContext;
     g_contextp->commandArgs(argc, argv);
-    
-    // 创建顶层模块
     g_top = new Vtop{g_contextp};
-    
-    // 启用波形追踪（可选）
-    // Verilated::traceEverOn(true);
-    // g_tfp = new VerilatedFstC;
-    // g_top->trace(g_tfp, 99);
-    // g_tfp->open("wave/dump.fst");
-    
+
+#ifdef ENABLE_FST
+    Verilated::traceEverOn(true);
+    g_tfp = new VerilatedFstC;
+    g_top->trace(g_tfp, 99);
+    g_tfp->open("wave/dump.fst");
+    Log("FST wave tracing enabled: wave/dump.fst");
+    printf("FST: ON  -> wave/dump.fst\n");
+#else
+    printf("FST: OFF\n");
+#endif
+
+#ifdef ENABLE_TRACE
+    printf("Trace: ON\n");
+#else
+    printf("Trace: OFF\n");
+#endif
+
     return true;
 }
 
@@ -60,34 +78,34 @@ void reset_cpu() {
 
 // 单步执行
 void exec_once() {
-    // 保存当前PC用于DiffTest
     uint32_t current_pc = npc_get_pc();
-    
+
     // 下降沿
     g_top->clk = 0;
     g_top->eval();
+#ifdef ENABLE_FST
     if (g_tfp) g_tfp->dump(g_contextp->time());
-    
+#endif
     g_contextp->timeInc(1);
-    
+
     // 上升沿
     g_top->clk = 1;
     g_top->eval();
+#ifdef ENABLE_FST
     if (g_tfp) g_tfp->dump(g_contextp->time());
-    
+#endif
     g_contextp->timeInc(1);
-    
-    // 增加周期计数
+
     npc_inc_cycle();
-    
-    // 统一输出trace（按顺序：ftrace -> itrace -> mtrace）
+    device_update();
+
+#ifdef ENABLE_TRACE
     ftrace_flush(g_print_itrace);
     itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
     mtrace_flush(g_print_itrace);
-    
-    // DiffTest：对比执行结果
-    uint32_t next_pc = npc_get_pc();
-    difftest_step(current_pc, next_pc);
+#endif
+
+    difftest_step(current_pc, npc_get_pc());
 }
 
 // 设置itrace输出模式
@@ -106,19 +124,18 @@ void cpu_exec(uint64_t n) {
     }
     
     state->state = NPC_RUNNING;
-    
-    // 设置itrace输出模式：si命令且n<=10时输出到控制台
+
+    // si命令且n<=10时输出到控制台
     set_itrace_print(n <= 10);
-    
+
     uint64_t cycles = 0;
     bool hit_watchpoint = false;
-    
+
     Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);
-    
-    // 对于长时间运行（c命令或si>10），启用日志缓冲区
-    if (n > 10) {
-        enable_log_buffer();
-    }
+
+#ifdef ENABLE_TRACE
+    if (n > 10) enable_log_buffer();
+#endif
     
     while (cycles < n || n == (uint64_t)-1) {
         exec_once();
@@ -145,11 +162,10 @@ void cpu_exec(uint64_t n) {
             printf("Executed %lu cycles...\n", cycles);
         }
     }
-    
-    // 刷新日志缓冲区到文件
-    if (n > 10) {
-        flush_log_buffer();
-    }
+
+#ifdef ENABLE_TRACE
+    if (n > 10) flush_log_buffer();
+#endif
     
     if (state->state == NPC_RUNNING) {
         state->state = NPC_STOP;
@@ -164,10 +180,13 @@ void cpu_exec(uint64_t n) {
 // 清理CPU资源
 void cleanup_cpu() {
     g_top->final();
+#ifdef ENABLE_FST
     if (g_tfp) {
         g_tfp->close();
         delete g_tfp;
     }
+#endif
     delete g_top;
     delete g_contextp;
+    device_cleanup();
 }

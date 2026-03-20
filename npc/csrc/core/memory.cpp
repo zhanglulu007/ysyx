@@ -5,7 +5,6 @@
 
 #include "memory.h"
 #include "device.h"
-#include "../utils/difftest.h"
 #include "npc.h"
 #include "../utils/log.h"
 #include "../trace/mtrace.h"
@@ -30,11 +29,15 @@ uint8_t* guest_to_host(uint32_t paddr) {
 extern "C" int pmem_read(int raddr) {
     // 按4字节对齐读取
     raddr = raddr & ~0x3u;
-    
+
     // 处理设备读取
     if (is_device_addr(raddr)) {
-        difftest_skip_ref(); 
         return device_read(raddr);
+    }
+
+    // 帧缓冲区不可读（只写），返回0
+    if (is_fb_addr(raddr)) {
+        return 0;
     }
     
     // 检查地址是否在有效范围内
@@ -63,11 +66,16 @@ extern "C" int pmem_read(int raddr) {
 extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     // 按4字节对齐写入
     waddr = waddr & ~0x3u;
-    
-    // 处理设备写入
+
+    // 处理设备寄存器写入
     if (is_device_addr(waddr)) {
-        difftest_skip_ref(); 
-        device_write(waddr, wdata, wmask);
+        device_write(waddr, wdata, (uint8_t)wmask);
+        return;
+    }
+
+    // 帧缓冲写入
+    if (is_fb_addr(waddr)) {
+        fb_write(waddr, wdata, (uint8_t)wmask);
         return;
     }
     
