@@ -156,11 +156,13 @@ void cpu_exec(uint64_t n) {
             break;
         }
         
-        // 避免无限循环
+        // 避免无限循环（仅 TRACE 开启时打印进度，避免频繁 I/O）
+#ifdef ENABLE_TRACE
         if (cycles % 1000000 == 0 && n == (uint64_t)-1) {
             Log("Executed %lu cycles...", cycles);
             printf("Executed %lu cycles...\n", cycles);
         }
+#endif
     }
 
 #ifdef ENABLE_TRACE
@@ -172,8 +174,10 @@ void cpu_exec(uint64_t n) {
     }
     
     if (!hit_watchpoint && state->state == NPC_STOP) {
+#ifdef ENABLE_TRACE
         Log("Executed %lu cycles", cycles);
         printf("Executed %lu cycles.\n", cycles);
+#endif
     }
 }
 

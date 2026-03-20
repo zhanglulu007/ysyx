@@ -14,11 +14,13 @@
 // 物理内存
 static uint8_t pmem[PMEM_SIZE];
 
-// mtrace去重：记录上一次访存的周期和地址
+// mtrace去重变量（仅 TRACE 开启时使用）
+#ifdef ENABLE_TRACE
 static uint64_t last_read_cycle = 0;
 static uint32_t last_read_addr = 0;
 static uint64_t last_write_cycle = 0;
 static uint32_t last_write_addr = 0;
+#endif
 
 // 地址转换
 uint8_t* guest_to_host(uint32_t paddr) {
@@ -50,7 +52,8 @@ extern "C" int pmem_read(int raddr) {
     uint32_t* p = (uint32_t*)guest_to_host(raddr);
     uint32_t ret = *p;
     
-    // mtrace记录（去重：同一周期同一地址只记录一次）
+    // mtrace记录（TRACE 开启时才记录）
+#ifdef ENABLE_TRACE
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_read_cycle || raddr != last_read_addr) {
@@ -58,6 +61,7 @@ extern "C" int pmem_read(int raddr) {
         last_read_cycle = cycle;
         last_read_addr = raddr;
     }
+#endif
     
     return ret;
 }
@@ -86,14 +90,11 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
         return;
     }
     
-    // 计算实际写入的字节数
-    int len = 0;
-    if (wmask & 0x01) len++;
-    if (wmask & 0x02) len++;
-    if (wmask & 0x04) len++;
-    if (wmask & 0x08) len++;
+    uint8_t* p = guest_to_host(waddr);
     
-    // mtrace记录（去重：同一周期同一地址只记录一次）
+    // mtrace记录（TRACE 开启时才记录）
+#ifdef ENABLE_TRACE
+    int len = __builtin_popcount((uint8_t)wmask);
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_write_cycle || waddr != last_write_addr) {
@@ -101,8 +102,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
         last_write_cycle = cycle;
         last_write_addr = waddr;
     }
-    
-    uint8_t* p = guest_to_host(waddr);
+#endif
     
     // 根据写掩码写入数据
     if (wmask & 0x01) p[0] = wdata & 0xFF;
