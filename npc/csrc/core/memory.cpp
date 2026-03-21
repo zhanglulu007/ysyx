@@ -7,6 +7,7 @@
 #include "device.h"
 #include "npc.h"
 #include "../utils/log.h"
+#include "../utils/difftest.h"
 #include "../trace/mtrace.h"
 #include <cstdio>
 #include <cstring>
@@ -34,11 +35,13 @@ extern "C" int pmem_read(int raddr) {
 
     // 处理设备读取
     if (is_device_addr(raddr)) {
+        difftest_skip_ref();  // MMIO 访问结果不确定，跳过 REF 对比
         return device_read(raddr);
     }
 
     // 帧缓冲区不可读（只写），返回0
     if (is_fb_addr(raddr)) {
+        difftest_skip_ref();
         return 0;
     }
     
@@ -73,12 +76,14 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
 
     // 处理设备寄存器写入
     if (is_device_addr(waddr)) {
+        difftest_skip_ref();  // MMIO 写入，跳过 REF 对比
         device_write(waddr, wdata, (uint8_t)wmask);
         return;
     }
 
     // 帧缓冲写入
     if (is_fb_addr(waddr)) {
+        difftest_skip_ref();
         fb_write(waddr, wdata, (uint8_t)wmask);
         return;
     }
