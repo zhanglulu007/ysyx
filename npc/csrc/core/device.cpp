@@ -130,7 +130,15 @@ uint32_t device_read(uint32_t addr) {
         return (uint32_t)(us >> 32);
     }
     if (addr == KBD_ADDR) {
-        return key_dequeue();
+        // 防止同一仿真周期内对 KBD MMIO 的重复读取导致事件被多次出队
+        static uint64_t last_kbd_read_cycle = (uint64_t)-1;
+        static uint32_t last_kbd_read_val = AM_KEY_NONE;
+        uint64_t cur_cycle = npc_get_cycle();
+        if (cur_cycle != last_kbd_read_cycle) {
+            last_kbd_read_val = key_dequeue();
+            last_kbd_read_cycle = cur_cycle;
+        }
+        return last_kbd_read_val;
     }
     if (addr == VGACTL_ADDR) {
         // 高16位=宽，低16位=高
