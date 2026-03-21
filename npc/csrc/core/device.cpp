@@ -5,6 +5,7 @@
 ***************************************************************************************/
 
 #include "device.h"
+#include "npc.h"
 #include <cstdio>
 #include <cstring>
 #include <sys/time.h>
@@ -20,7 +21,7 @@ static uint64_t get_time_us() {
 
 //  键盘 
 #define KEYDOWN_MASK  0x8000
-#define KEY_QUEUE_LEN 256
+#define KEY_QUEUE_LEN 1024
 
 static uint32_t key_queue[KEY_QUEUE_LEN];
 static int key_head = 0, key_tail = 0;
@@ -166,11 +167,12 @@ void fb_write(uint32_t addr, uint32_t data, uint8_t wmask) {
 }
 
 void device_update() {
-    // 每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
-    static uint64_t last_update = 0;
-    uint64_t now = get_time_us();
-    if (now - last_update < 1000) return;  
-    last_update = now;
+    // 按仿真周期节流轮询，避免绑定到壁钟时间导致无 trace 时键盘事件入队过慢
+    static uint64_t last_poll_cycle = 0;
+    const uint64_t poll_interval_cycles = 5000;
+    uint64_t cur_cycle = npc_get_cycle();
+    if (cur_cycle - last_poll_cycle < poll_interval_cycles) return;
+    last_poll_cycle = cur_cycle;
 
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
