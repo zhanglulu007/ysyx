@@ -38,7 +38,6 @@ module LSU(
   assign mem_offset = mem_addr[1:0];
   
   // ========== 读操作 ==========
-  // 最小侵入时序化：
   // 在下降沿对 load 访存进行一次采样，避免组合逻辑反复调用 pmem_read()
   reg [31:0] mem_rdata_raw;
   always @(negedge clk) begin
