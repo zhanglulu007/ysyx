@@ -14,6 +14,11 @@
 // 物理内存
 static uint8_t pmem[PMEM_SIZE];
 
+// MMIO读去重：避免同一周期同一地址被重复读取时触发设备副作用多次
+static uint64_t last_mmio_read_cycle = (uint64_t)-1;
+static uint32_t last_mmio_read_addr = 0;
+static uint32_t last_mmio_read_data = 0;
+
 // mtrace去重变量（仅 TRACE 开启时使用）
 #ifdef ENABLE_TRACE
 static uint64_t last_read_cycle = 0;
@@ -34,7 +39,15 @@ extern "C" int pmem_read(int raddr) {
 
     // 处理设备读取
     if (is_device_addr(raddr)) {
-        return device_read(raddr);
+        uint64_t cycle = npc_get_cycle();
+        if (cycle == last_mmio_read_cycle && raddr == last_mmio_read_addr) {
+            return last_mmio_read_data;
+        }
+        uint32_t data = device_read(raddr);
+        last_mmio_read_cycle = cycle;
+        last_mmio_read_addr = (uint32_t)raddr;
+        last_mmio_read_data = data;
+        return data;
     }
 
     // 帧缓冲区不可读（只写），返回0

@@ -44,7 +44,6 @@ enum {
 
 #define SDL_KEYMAP(k) keymap[SDL_SCANCODE_##k] = AM_KEY_##k;
 static uint32_t keymap[512] = {};
-static bool key_prev_pressed[512] = {};
 
 static void init_keymap() {
     AM_KEYS(SDL_KEYMAP)
@@ -131,17 +130,7 @@ uint32_t device_read(uint32_t addr) {
         return (uint32_t)(us >> 32);
     }
     if (addr == KBD_ADDR) {
-        // 防止一次软件读键在 RTL 侧触发多次 MMIO 读取，导致键盘事件被连续出队吃空
-        // 经验上同一条 load 指令导致的重复访问会发生在相邻若干周期内
-        static uint64_t last_kbd_dequeue_cycle = (uint64_t)-1;
-        static uint32_t last_kbd_read_val = AM_KEY_NONE;
-        const uint64_t kbd_dequeue_guard_cycles = 16;
-        uint64_t cur_cycle = npc_get_cycle();
-        if (cur_cycle - last_kbd_dequeue_cycle >= kbd_dequeue_guard_cycles) {
-            last_kbd_read_val = key_dequeue();
-            last_kbd_dequeue_cycle = cur_cycle;
-        }
-        return last_kbd_read_val;
+        return key_dequeue();
     }
     if (addr == VGACTL_ADDR) {
         // 高16位=宽，低16位=高
@@ -185,27 +174,25 @@ void device_update() {
     if (cur_cycle - last_poll_cycle < poll_interval_cycles) return;
     last_poll_cycle = cur_cycle;
 
-    // 处理窗口事件（键盘输入不依赖 KEYDOWN/KEYUP 事件，避免边沿事件丢失）
+    // 处理窗口事件（与 NEMU 一致：基于 SDL_KEYDOWN/SDL_KEYUP 生成键盘事件）
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
-        if (ev.type == SDL_QUIT) {
-            key_enqueue(AM_KEY_ESCAPE | KEYDOWN_MASK);
-        }
-    }
-
-    // 使用键盘状态快照做差分，生成按下/松开事件
-    SDL_PumpEvents();
-    int nkeys = 0;
-    const Uint8 *keystate = SDL_GetKeyboardState(&nkeys);
-    int limit = (nkeys < 512) ? nkeys : 512;
-    for (int scancode = 0; scancode < limit; scancode++) {
-        if (keymap[scancode] == AM_KEY_NONE) continue;
-        bool pressed = keystate[scancode] != 0;
-        if (pressed != key_prev_pressed[scancode]) {
-            uint32_t code = keymap[scancode];
-            if (pressed) code |= KEYDOWN_MASK;
-            key_enqueue(code);
-            key_prev_pressed[scancode] = pressed;
+        switch (ev.type) {
+            case SDL_QUIT:
+                key_enqueue(AM_KEY_ESCAPE | KEYDOWN_MASK);
+                break;
+            case SDL_KEYDOWN:
+            case SDL_KEYUP: {
+                uint32_t scancode = ev.key.keysym.scancode;
+                if (scancode < 512 && keymap[scancode] != AM_KEY_NONE) {
+                    uint32_t code = keymap[scancode];
+                    if (ev.type == SDL_KEYDOWN) code |= KEYDOWN_MASK;
+                    key_enqueue(code);
+                }
+                break;
+            }
+            default:
+                break;
         }
     }
 }
