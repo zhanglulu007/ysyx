@@ -55,8 +55,6 @@ __am_asm_trap:
   mv a0, sp
   call __am_irq_handle
 
-  # __am_irq_handle returns the context pointer in a0
-  # This might be different from the original sp (context switch)
   mv sp, a0
 
   LOAD t1, OFFSET_STATUS(sp)

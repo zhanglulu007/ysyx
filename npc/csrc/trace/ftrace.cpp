@@ -158,30 +158,41 @@ void init_ftrace(const char *elf_file) {
 
 // 记录函数调用（延迟输出）
 void ftrace_call(uint32_t pc, uint32_t target) {
+#ifndef ENABLE_TRACE
+  return;  // TRACE 未开启时直接返回，避免 ftrace_buffer 无限增长
+#endif
   const char *func_name = find_func_name(target);
-  char logbuf[256];
-  snprintf(logbuf, sizeof(logbuf), 
+  // 用固定宽度缩进，避免 %*s 在 depth 很大时撑爆 buffer
+  int indent = func_depth * 2;
+  if (indent > 40) indent = 40;  // 最多 20 层缩进
+  char logbuf[512];
+  snprintf(logbuf, sizeof(logbuf),
            "[FTRACE] 0x%08x: %*scall [%s@0x%08x]",
-           pc, func_depth * 2, "", func_name, target);
-  
+           pc, indent, "", func_name, target);
+
   func_depth++;
-  
-  // 添加到缓冲区，延迟输出
+
   ftrace_buffer.push_back(std::string(logbuf));
 }
 
 // 记录函数返回（延迟输出）
-void ftrace_ret(uint32_t pc) {
+// pc: jalr 指令地址（用于显示位置）
+// target: 返回目标地址，即 ra 寄存器的值（用于查函数名）
+void ftrace_ret(uint32_t pc, uint32_t target) {
+#ifndef ENABLE_TRACE
+  return;  // TRACE 未开启时直接返回，避免 ftrace_buffer 无限增长
+#endif
   func_depth--;
-  if (func_depth < 0) func_depth = 0;  // 防止深度为负
-  
-  const char *func_name = find_func_name(pc);
-  char logbuf[256];
-  snprintf(logbuf, sizeof(logbuf), 
-           "[FTRACE] 0x%08x: %*sret  [%s]",
-           pc, func_depth * 2, "", func_name);
-  
-  // 添加到缓冲区，延迟输出
+  if (func_depth < 0) func_depth = 0;
+
+  const char *func_name = find_func_name(target);
+  int indent = func_depth * 2;
+  if (indent > 40) indent = 40;
+  char logbuf[512];
+  snprintf(logbuf, sizeof(logbuf),
+           "[FTRACE] 0x%08x: %*sret  [%s@0x%08x]",
+           pc, indent, "", func_name, target);
+
   ftrace_buffer.push_back(std::string(logbuf));
 }
 

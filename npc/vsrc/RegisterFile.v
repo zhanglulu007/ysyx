@@ -13,8 +13,7 @@ module RegisterFile(
   output [31:0] a0_value      // a0寄存器的值（x10）
 );
   
-  // 32个寄存器（实际只使用前16个，RV32E）
-  reg [31:0] rf [31:0];
+  reg [31:0] rf [16:0];
   
   // DPI-C导入函数：通知C++侧寄存器更新
   import "DPI-C" function void update_reg_value(input int idx, input int value);

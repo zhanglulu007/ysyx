@@ -327,7 +327,7 @@ module top(
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
-  import "DPI-C" function void ftrace_ret_handler(input int pc_val);
+  import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
   
   always @(posedge clk) begin
     if (!rst) begin
@@ -345,7 +345,7 @@ module top(
         end
         // jalr zero, ra, 0 (rd == 0 && rs1 == 1) 是函数返回
         else if (rd == 5'd0 && rs1 == 5'd1) begin
-          ftrace_ret_handler(pc);
+          ftrace_ret_handler(pc, jump_target);
         end
       end
       

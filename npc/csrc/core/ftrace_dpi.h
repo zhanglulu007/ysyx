@@ -10,6 +10,6 @@
 extern "C" void ftrace_call_handler(int pc_val, int target_val);
 
 // DPI-C接口：ftrace函数返回处理
-extern "C" void ftrace_ret_handler(int pc_val);
+extern "C" void ftrace_ret_handler(int pc_val, int target_val);
 
 #endif

@@ -64,6 +64,7 @@ FST     ?= 0
 TRACE   ?= 0
 DIFFTEST_SO ?=
 
+# FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
   VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs
   EXTRA_CFLAGS += -DENABLE_FST
@@ -76,13 +77,22 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
+# DiffTest：非空则拼成 -d <path> 传给可执行文件
 ifneq ($(DIFFTEST_SO),)
   DIFFTEST_ARG = -d $(DIFFTEST_SO)
 else
   DIFFTEST_ARG =
 endif
 
+# ELF：非空则拼成 -e <path> 传给可执行文件（ftrace 需要）
+ifneq ($(ELF),)
+  ELF_ARG = -e $(ELF)
+else
+  ELF_ARG =
+endif
+
 PROG  ?= test/mem.bin
+ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 VERILATOR_FLAGS += --x-assign fast --x-initial fast
@@ -91,13 +101,14 @@ $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)"
+	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "Usage examples:"
 	@echo "  make build                          # 全关（最快）"
 	@echo "  make build TRACE=1                  # 开 trace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make build FST=1 TRACE=1            # 全开"
-	@echo "  make run PROG=x.bin                 # 不带 difftest 运行"
+	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
+	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
 
 define VERILATE_CMD
@@ -136,8 +147,8 @@ run:
 		echo "Error: Program file '$(PROG)' not found."; exit 1; \
 	fi
 	@echo "-- RUN [DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
-	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST_ARG) $(BATCH)"
-	@$(OBJ_DIR)/Vtop $(PROG) $(DIFFTEST_ARG) $(BATCH)
+	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
+	@$(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
 .PHONY: build sim run clean

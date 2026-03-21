@@ -14,23 +14,25 @@ void init_mtrace() {
 
 // 记录内存读操作（延迟输出）
 void mtrace_read(uint32_t addr, int len, uint32_t data, uint32_t pc) {
+#ifndef ENABLE_TRACE
+  return;
+#endif
   char logbuf[256];
   snprintf(logbuf, sizeof(logbuf), 
            "[MTRACE] READ  at 0x%08x len=%d data=0x%08x pc=0x%08x",
            addr, len, data, pc);
-  
-  // 添加到缓冲区，延迟输出
   mtrace_buffer.push_back(std::string(logbuf));
 }
 
 // 记录内存写操作（延迟输出）
 void mtrace_write(uint32_t addr, int len, uint32_t data, uint32_t pc) {
+#ifndef ENABLE_TRACE
+  return;
+#endif
   char logbuf[256];
   snprintf(logbuf, sizeof(logbuf), 
            "[MTRACE] WRITE at 0x%08x len=%d data=0x%08x pc=0x%08x",
            addr, len, data, pc);
-  
-  // 添加到缓冲区，延迟输出
   mtrace_buffer.push_back(std::string(logbuf));
 }
 
