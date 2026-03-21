@@ -44,6 +44,7 @@ enum {
 
 #define SDL_KEYMAP(k) keymap[SDL_SCANCODE_##k] = AM_KEY_##k;
 static uint32_t keymap[512] = {};
+static bool key_prev_pressed[512] = {};
 
 static void init_keymap() {
     AM_KEYS(SDL_KEYMAP)
@@ -182,23 +183,27 @@ void device_update() {
     if (cur_cycle - last_poll_cycle < poll_interval_cycles) return;
     last_poll_cycle = cur_cycle;
 
+    // 处理窗口事件（键盘输入不依赖 KEYDOWN/KEYUP 事件，避免边沿事件丢失）
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
-        switch (ev.type) {
-            case SDL_QUIT:
-                key_enqueue(AM_KEY_ESCAPE | KEYDOWN_MASK);
-                break;
-            case SDL_KEYDOWN:
-            case SDL_KEYUP: {
-                uint32_t scancode = ev.key.keysym.scancode;
-                if (scancode < 512 && keymap[scancode] != AM_KEY_NONE) {
-                    uint32_t code = keymap[scancode];
-                    if (ev.type == SDL_KEYDOWN) code |= KEYDOWN_MASK;
-                    key_enqueue(code);
-                }
-                break;
-            }
-            default: break;
+        if (ev.type == SDL_QUIT) {
+            key_enqueue(AM_KEY_ESCAPE | KEYDOWN_MASK);
+        }
+    }
+
+    // 使用键盘状态快照做差分，生成按下/松开事件
+    SDL_PumpEvents();
+    int nkeys = 0;
+    const Uint8 *keystate = SDL_GetKeyboardState(&nkeys);
+    int limit = (nkeys < 512) ? nkeys : 512;
+    for (int scancode = 0; scancode < limit; scancode++) {
+        if (keymap[scancode] == AM_KEY_NONE) continue;
+        bool pressed = keystate[scancode] != 0;
+        if (pressed != key_prev_pressed[scancode]) {
+            uint32_t code = keymap[scancode];
+            if (pressed) code |= KEYDOWN_MASK;
+            key_enqueue(code);
+            key_prev_pressed[scancode] = pressed;
         }
     }
 }
