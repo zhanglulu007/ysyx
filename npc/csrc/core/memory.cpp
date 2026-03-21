@@ -14,10 +14,15 @@
 // 物理内存
 static uint8_t pmem[PMEM_SIZE];
 
-// MMIO读去重：避免同一周期同一地址被重复读取时触发设备副作用多次
+// MMIO访问去重：防止同一条指令在DPI路径上被重复触发副作用
+// 场景：组合逻辑中的pmem_read()在一个仿真周期内可能被多次调用。
 static uint64_t last_mmio_read_cycle = (uint64_t)-1;
 static uint32_t last_mmio_read_addr = 0;
 static uint32_t last_mmio_read_data = 0;
+static uint64_t last_mmio_write_cycle = (uint64_t)-1;
+static uint32_t last_mmio_write_addr = 0;
+static uint32_t last_mmio_write_data = 0;
+static uint8_t  last_mmio_write_wmask = 0;
 
 // mtrace去重变量（仅 TRACE 开启时使用）
 #ifdef ENABLE_TRACE
@@ -40,6 +45,7 @@ extern "C" int pmem_read(int raddr) {
     // 处理设备读取
     if (is_device_addr(raddr)) {
         uint64_t cycle = npc_get_cycle();
+        // 同周期同地址重复读取：返回上次值，不重复触发device_read()副作用
         if (cycle == last_mmio_read_cycle && raddr == last_mmio_read_addr) {
             return last_mmio_read_data;
         }
@@ -86,7 +92,21 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
 
     // 处理设备寄存器写入
     if (is_device_addr(waddr)) {
+        uint64_t cycle = npc_get_cycle();
+        uint8_t mask = (uint8_t)wmask;
+        // 同周期完全相同的MMIO写请求认为是重复触发，抑制副作用重复执行
+        if (cycle == last_mmio_write_cycle &&
+            (uint32_t)waddr == last_mmio_write_addr &&
+            (uint32_t)wdata == last_mmio_write_data &&
+            mask == last_mmio_write_wmask) {
+            return;
+        }
+
         device_write(waddr, wdata, (uint8_t)wmask);
+        last_mmio_write_cycle = cycle;
+        last_mmio_write_addr = (uint32_t)waddr;
+        last_mmio_write_data = (uint32_t)wdata;
+        last_mmio_write_wmask = mask;
         return;
     }
 
