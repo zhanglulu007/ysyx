@@ -131,13 +131,15 @@ uint32_t device_read(uint32_t addr) {
         return (uint32_t)(us >> 32);
     }
     if (addr == KBD_ADDR) {
-        // 防止同一仿真周期内对 KBD MMIO 的重复读取导致事件被多次出队
-        static uint64_t last_kbd_read_cycle = (uint64_t)-1;
+        // 防止一次软件读键在 RTL 侧触发多次 MMIO 读取，导致键盘事件被连续出队吃空
+        // 经验上同一条 load 指令导致的重复访问会发生在相邻若干周期内
+        static uint64_t last_kbd_dequeue_cycle = (uint64_t)-1;
         static uint32_t last_kbd_read_val = AM_KEY_NONE;
+        const uint64_t kbd_dequeue_guard_cycles = 16;
         uint64_t cur_cycle = npc_get_cycle();
-        if (cur_cycle != last_kbd_read_cycle) {
+        if (cur_cycle - last_kbd_dequeue_cycle >= kbd_dequeue_guard_cycles) {
             last_kbd_read_val = key_dequeue();
-            last_kbd_read_cycle = cur_cycle;
+            last_kbd_dequeue_cycle = cur_cycle;
         }
         return last_kbd_read_val;
     }
