@@ -64,12 +64,19 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
+  if (img_size < 0 || img_size > PMEM_SIZE) {
+    Log("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)", img_size, PMEM_SIZE);
+    printf("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)\n", img_size, PMEM_SIZE);
+    return;
+  }
+
   // 同步内存
   ref_difftest_memcpy(0x80000000, guest_to_host(0x80000000), img_size, DIFFTEST_TO_REF);
   
   // 同步寄存器
   DiffTestState dut_state;
-  for (int i = 0; i < 16; i++) {
+  const int gpr_num = sizeof(dut_state.gpr) / sizeof(dut_state.gpr[0]);
+  for (int i = 0; i < gpr_num; i++) {
     dut_state.gpr[i] = npc_get_reg(i);
   }
   dut_state.pc = npc_get_pc();
@@ -151,7 +158,8 @@ void difftest_step(uint32_t pc, uint32_t npc) {
   // 如果需要跳过 REF
   if (is_skip_ref) {
     // 将 DUT 的状态同步到 REF
-    for (int i = 0; i < 32; i++) {
+    const int gpr_num = sizeof(ref_state.gpr) / sizeof(ref_state.gpr[0]);
+    for (int i = 0; i < gpr_num; i++) {
       ref_state.gpr[i] = npc_get_reg(i);
     }
     ref_state.pc = npc_get_pc();

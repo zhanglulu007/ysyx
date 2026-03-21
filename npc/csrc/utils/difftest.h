@@ -16,7 +16,7 @@ enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
 
 // CPU 状态结构
 typedef struct {
-  uint32_t gpr[16];  // 16个通用寄存器
+  uint32_t gpr[32];  // 16个通用寄存器
   uint32_t pc;       // 程序计数器
 } DiffTestState;
 
