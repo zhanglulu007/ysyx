@@ -60,15 +60,10 @@ WAVE_FILE = $(WAVE_DIR)/dump.fst
 BUILD_DIR = ./build
 OBJ_DIR = $(BUILD_DIR)/obj_dir
 
-# ── 功能开关（0=关闭 1=开启，影响性能的功能默认关闭）─────────────────────
-# FST 波形录制：开启后每条指令都 dump 波形，严重影响性能
 FST     ?= 0
-# Trace（itrace/mtrace/ftrace）：开启后记录指令/内存/函数调用，影响性能
 TRACE   ?= 0
-# DiffTest：指定 REF .so 路径开启，留空关闭
 DIFFTEST_SO ?=
 
-# ── 根据开关生成编译/链接/运行参数 ──────────────────────────────────────
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
   VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs
@@ -96,7 +91,6 @@ else
   ELF_ARG =
 endif
 
-# ── 其他参数 ─────────────────────────────────────────────────────────────
 PROG  ?= test/mem.bin
 ELF   ?=
 BATCH ?= -b
@@ -117,7 +111,6 @@ show-config:
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
 
-# ── 公共 Verilator 命令（build/run 共用）────────────────────────────────
 define VERILATE_CMD
 	$(VERILATOR) --top-module top -cc --exe --build -j \
 	$(VERILATOR_TRACE_FLAGS) \
