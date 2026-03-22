@@ -95,7 +95,7 @@ PROG  ?= test/mem.bin
 ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
-VERILATOR_FLAGS += --x-assign fast --x-initial fast
+VERILATOR_FLAGS += --x-assign fast --x-initial fast --threads 4
 
 $(shell mkdir -p $(BUILD_DIR))
 
