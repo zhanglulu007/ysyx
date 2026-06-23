@@ -88,6 +88,8 @@ module IDU(
   output csr_wen              // CSR写使能
 );
 
+  assign idready = 1'b1;
+
   // 提取指令字段
   assign opcode = inst[6:0];
   assign rd = inst[11:7];
