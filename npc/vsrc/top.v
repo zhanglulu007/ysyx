@@ -91,14 +91,18 @@ module top(
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
+    .idready(idready),
     .pc_next(pc_next),
     .pc(pc),
-    .inst(inst)
+    .inst(inst),
+    .ifvalid(ifvalid)
   );
   
   // IDU - 译码单元
   IDU u_idu(
     .inst(inst),
+    .ifvalid(ifvalid),
+    .idready(idready),
     .opcode(opcode),
     .rd(rd),
     .rs1(rs1),

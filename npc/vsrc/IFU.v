@@ -4,9 +4,11 @@
 module IFU(
   input clk,
   input rst,
+  input idready,
   input [31:0] pc_next,      // 下一个PC值
   output reg [31:0] pc,      // 当前PC
-  output [31:0] inst         // 取出的指令
+  output [31:0] inst,        // 取出的指令
+  output ifvalid          // 取指有效信号
 );
 
   // DPI-C函数：从存储器读取指令
@@ -21,7 +23,7 @@ module IFU(
       pc <= 32'h80000000;  // AM程序从0x80000000开始
       // 复位时同步初始PC值到C++侧
       update_pc_value(32'h80000000);
-    end else begin
+    end else if (idready) begin
       pc <= pc_next;
       // PC更新后立即同步到C++侧
       update_pc_value(pc_next);
@@ -31,5 +33,7 @@ module IFU(
   // 取指：从PC地址读取指令
   // 在复位期间返回nop指令，避免读取无效地址
   assign inst = rst ? 32'h00000013 : pmem_read(pc);  // nop = addi x0, x0, 0
+
+  assign ifvalid = !rst;
 
 endmodule
