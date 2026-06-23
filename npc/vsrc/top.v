@@ -11,6 +11,8 @@ module top(
   // IFU <-> IDU
   wire [31:0] pc;
   wire [31:0] inst;
+  wire ifvalid;
+  wire idready;
   
   // IDU输出 - 指令字段
   wire [6:0] opcode;
