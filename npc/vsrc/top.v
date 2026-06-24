@@ -343,7 +343,7 @@ module top(
     if (!rst && ifvalid) begin
       // ebreak处理
       if (is_ebreak) begin
-        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=0x%08x", pc, a0_value , mcycle_out);
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value , mcycle_out);
         ebreak_handler(a0_value);
       end
       
