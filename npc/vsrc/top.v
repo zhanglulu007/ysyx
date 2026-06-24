@@ -80,6 +80,15 @@ module top(
   wire [31:0] mem_rdata;
   wire lsu_busy;
 
+  // SimpleBus 连接信号
+  wire [31:0] ifu_rdata;      // MEM -> IFU
+  wire [31:0] ifu_raddr;      // IFU -> MEM
+  wire [31:0] lsu_addr;       // LSU -> MEM
+  wire        lsu_wen;        // LSU -> MEM
+  wire [31:0] lsu_wdata;      // LSU -> MEM
+  wire [ 3:0] lsu_wmask;      // LSU -> MEM
+  wire [31:0] lsu_rdata;      // MEM -> LSU
+
   // WBU输出
   wire [31:0] rd_data;
   wire [31:0] pc_next;
@@ -132,7 +141,9 @@ module top(
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
     .pc_next(pc_next),
+    .ifu_rdata(ifu_rdata),
     .pc(pc),
+    .ifu_raddr(ifu_raddr),
     .inst(inst),
     .ifu_valid(ifu_valid)
   );
@@ -302,21 +313,31 @@ module top(
     .rst(rst),
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
-    // 加载指令
-    .is_lb(is_lb),
-    .is_lh(is_lh),
-    .is_lw(is_lw),
-    .is_lbu(is_lbu),
-    .is_lhu(is_lhu),
-    // 存储指令
-    .is_sb(is_sb),
-    .is_sh(is_sh),
-    .is_sw(is_sw),
-    // 地址和数据
+    .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
+    // SimpleBus (连接 MEM)
+    .lsu_addr(lsu_addr),
+    .lsu_wen(lsu_wen),
+    .lsu_wdata(lsu_wdata),
+    .lsu_wmask(lsu_wmask),
+    .lsu_rdata(lsu_rdata),
+    // 输出
     .rdata(mem_rdata),
     .lsu_busy(lsu_busy)
+  );
+
+  // MEM - 存储器模块 (内部通过 DPI-C 实现, 对外呈现 SimpleBus 接口)
+  MEM u_mem(
+    .clk(clk),
+    .rst(rst),
+    .ifu_raddr(ifu_raddr),
+    .ifu_rdata(ifu_rdata),
+    .lsu_addr(lsu_addr),
+    .lsu_wen(lsu_wen),
+    .lsu_wdata(lsu_wdata),
+    .lsu_wmask(lsu_wmask),
+    .lsu_rdata(lsu_rdata)
   );
 
   // WBU - 写回单元
