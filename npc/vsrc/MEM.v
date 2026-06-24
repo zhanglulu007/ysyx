@@ -10,6 +10,9 @@ module MEM(
   input  [31:0] ifu_raddr,
   output [31:0] ifu_rdata,
 
+  // 访存有效门控 (来自 IDU)
+  input         mem_valid,
+
   // LSU SimpleBus (可读可写)
   input  [31:0] lsu_addr,
   input         lsu_wen,
@@ -32,12 +35,14 @@ module MEM(
       // IFU: 每周期发出读请求, 下周期数据返回
       ifu_rdata_reg <= pmem_read(ifu_raddr);
 
-      // LSU: 读或写
-      if (!lsu_wen) begin
-        lsu_rdata_reg <= pmem_read(lsu_addr);
-      end else begin
-        pmem_write(lsu_addr, lsu_wdata, {4'b0, lsu_wmask});
-        lsu_rdata_reg <= 32'b0;
+      // LSU: 仅在访存有效时操作, 避免非访存指令触发越界读
+      if (mem_valid) begin
+        if (!lsu_wen) begin
+          lsu_rdata_reg <= pmem_read(lsu_addr);
+        end else begin
+          pmem_write(lsu_addr, lsu_wdata, {4'b0, lsu_wmask});
+          lsu_rdata_reg <= 32'b0;
+        end
       end
     end
   end

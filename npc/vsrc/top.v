@@ -333,6 +333,7 @@ module top(
     .rst(rst),
     .ifu_raddr(ifu_raddr),
     .ifu_rdata(ifu_rdata),
+    .mem_valid(mem_valid),
     .lsu_addr(lsu_addr),
     .lsu_wen(lsu_wen),
     .lsu_wdata(lsu_wdata),
