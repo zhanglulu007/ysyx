@@ -36,7 +36,7 @@ module MEM(
       if (!lsu_wen) begin
         lsu_rdata_reg <= pmem_read(lsu_addr);
       end else begin
-        pmem_write(lsu_addr, lsu_wdata, lsu_wmask);
+        pmem_write(lsu_addr, lsu_wdata, {4'b0, lsu_wmask});
         lsu_rdata_reg <= 32'b0;
       end
     end
