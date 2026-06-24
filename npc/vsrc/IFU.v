@@ -8,10 +8,7 @@ module IFU(
   input [31:0] pc_next,      // 下一个PC值
   output reg [31:0] pc,      // 当前PC
   output [31:0] inst,        // 取出的指令
-  output ifvalid,          // 取指有效信号
-  //SimpleBus
-  output [31:0] ifu_raddr,
-  input  [31:0] ifu_rdata
+  output ifvalid          // 取指有效信号
 );
 
   // DPI-C函数：从存储器读取指令
@@ -23,6 +20,7 @@ module IFU(
   parameter WAIT = 1'b1;
 
   reg state;
+  reg [31:0] ifu_rdata;
   
   always @(posedge clk) begin
     if (rst) begin
