@@ -37,7 +37,6 @@ module IFU(
         state       <= IDLE;
         pc          <= 32'h80000000;
         ifu_rdata   <= 32'h00000013;  // nop
-        pc_next_reg <= 32'h80000000;
         update_pc_value(32'h80000000);
     end else begin
         case (state)

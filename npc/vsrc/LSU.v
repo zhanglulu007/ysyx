@@ -28,7 +28,7 @@ module LSU(
 
   // 输出
   output [31:0] rdata,        // 读出数据（已做字节/半字选择，load 请求后 1 周期有效）
-  output lsu_busy             // LSU 忙碌信号（load 等待数据返回期间为 1）
+  output reg lsu_busy             // LSU 忙碌信号（load 等待数据返回期间为 1）
 );
 
   // DPI-C函数：存储器读写
@@ -44,7 +44,7 @@ module LSU(
   // 下一周期: 组合逻辑用保存的类型做字节/半字选择，输出正确的 rdata
 
   reg [31:0] lsu_rdata_raw;       // 寄存器化的原始读数据（posedge 采样）
-  reg lsu_busy;                    // 忙碌标志
+
 
   // 保存的 load 类型和地址偏移（load 请求时保存，下一周期用于选择）
   reg        saved_is_lw;
