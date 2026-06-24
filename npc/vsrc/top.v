@@ -3,7 +3,8 @@
 
 module top(
   input clk,
-  input rst
+  input rst,
+  output ifvalid_out
 );
 
   // ========== 模块间连接信号 ==========
@@ -12,6 +13,7 @@ module top(
   wire [31:0] pc;
   wire [31:0] inst;
   wire ifvalid;
+  assign ifvalid_out = ifvalid;
   wire idready;
   
   // IDU输出 - 指令字段
