@@ -1,82 +1,85 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
+// SimpleBus: 取指和访存均有 1 周期延迟, load 指令需要额外 stall
 
 module top(
   input clk,
   input rst,
-  output ifu_valid_out
+  output ifu_valid_out,
+  output load_delayed_out       // 供 C++ 侧 DiffTest 判断 load 写回时机
 );
 
   // ========== 模块间连接信号 ==========
-  
+
   // IFU <-> IDU
   wire [31:0] pc;
   wire [31:0] inst;
   wire ifu_valid;
   assign ifu_valid_out = ifu_valid;
   wire idu_ready;
-  
+
   // IDU输出 - 指令字段
   wire [6:0] opcode;
   wire [4:0] rd, rs1, rs2;
   wire [2:0] funct3;
   wire [6:0] funct7;
-  
+
   // IDU输出 - 立即数
   wire [31:0] imm_i, imm_s, imm_b, imm_u, imm_j;
-  
+
   // IDU输出 - R型指令
   wire is_add, is_sub, is_and, is_or, is_xor;
   wire is_sll, is_srl, is_sra, is_slt, is_sltu;
-  
+
   // IDU输出 - I型算术/逻辑指令
   wire is_addi, is_slti, is_sltiu, is_xori, is_ori, is_andi;
   wire is_slli, is_srli, is_srai;
-  
+
   // IDU输出 - I型加载指令
   wire is_lb, is_lh, is_lw, is_lbu, is_lhu;
-  
+
   // IDU输出 - S型存储指令
   wire is_sb, is_sh, is_sw;
-  
+
   // IDU输出 - B型分支指令
   wire is_beq, is_bne, is_blt, is_bge, is_bltu, is_bgeu;
-  
+
   // IDU输出 - U型指令
   wire is_lui, is_auipc;
-  
+
   // IDU输出 - J型指令
   wire is_jal, is_jalr;
-  
+
   // IDU输出 - 系统指令
   wire is_ebreak, is_ecall, is_mret;
-  
+
   // IDU输出 - CSR指令
   wire is_csrrw, is_csrrs;
-  
+
   // IDU输出 - 控制信号
   wire reg_wen, mem_valid, mem_wen, csr_wen;
-  
+
   // RegisterFile输出
   wire [31:0] rs1_data, rs2_data;
   wire [31:0] a0_value;  // a0寄存器的值
-  
+
   // EXU输出
   wire [31:0] alu_result;
   wire [31:0] jump_target;
   wire [31:0] branch_target;
   wire branch_taken;
   wire [31:0] csr_wdata;
-  
+
   // CSR输出
   wire [31:0] csr_rdata;
   wire [31:0] mepc_out;
   wire [31:0] mtvec_out;
   wire [63:0] mcycle_out;
-  
+
   // LSU输出
   wire [31:0] mem_rdata;
-  
+  wire lsu_busy;
+
   // WBU输出
   wire [31:0] rd_data;
   wire [31:0] pc_next;
@@ -84,25 +87,56 @@ module top(
   wire [31:0] exception_pc;
   wire [31:0] exception_cause;
   wire mret_en;
-  
+
   // 访存地址计算
   wire [31:0] mem_addr;
   wire is_store = is_sb || is_sh || is_sw;
   assign mem_addr = is_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
-  
+
+  // ========== 延迟 Load 写回 ==========
+  // load 指令在 WAIT 周期发出 LSU 请求, STALL 周期数据才返回
+  // 需要将写回延迟 1 个周期, 这里用流水线寄存器保存 rd 等信息
+  wire is_load;
+  assign is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
+
+  reg load_delayed;          // 上一周期有 load 指令待写回
+  reg [4:0] rd_delayed;      // 上一周期的目的寄存器
+
+  always @(posedge clk) begin
+    if (rst) begin
+      load_delayed <= 1'b0;
+      rd_delayed   <= 5'b0;
+    end else begin
+      // WAIT 周期: 如果是 load 且 rd != x0, 保存写回信息
+      load_delayed <= ifu_valid && is_load && (rd != 5'b0);
+      rd_delayed   <= rd;
+    end
+  end
+
+  assign load_delayed_out = load_delayed;
+
+  // 修改后的写回信号:
+  //   - 非 load: 在 WAIT 周期正常写回 (reg_wen 有效且当前不是 load)
+  //   - load:   在 STALL 周期写回 (load_delayed 为 1)
+  wire reg_wen_final = (reg_wen && !(ifu_valid && is_load)) || load_delayed;
+  wire [4:0] waddr_final = load_delayed ? rd_delayed : rd;
+  wire [31:0] wdata_final = load_delayed ? mem_rdata : rd_data;
+
   // ========== 模块实例化 ==========
-  
+
   // IFU - 取指单元
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
     .idu_ready(idu_ready),
+    .mem_valid(mem_valid),
+    .mem_wen(mem_wen),
     .pc_next(pc_next),
     .pc(pc),
     .inst(inst),
     .ifu_valid(ifu_valid)
   );
-  
+
   // IDU - 译码单元
   IDU u_idu(
     .inst(inst),
@@ -177,20 +211,20 @@ module top(
     .mem_wen(mem_wen),
     .csr_wen(csr_wen)
   );
-  
+
   // RegisterFile - 寄存器堆
   RegisterFile u_regfile(
     .clk(clk),
-    .waddr(rd),
-    .wdata(rd_data),
-    .wen(reg_wen),
+    .waddr(waddr_final),
+    .wdata(wdata_final),
+    .wen(reg_wen_final),
     .raddr1(rs1),
     .rdata1(rs1_data),
     .raddr2(rs2),
     .rdata2(rs2_data),
     .a0_value(a0_value)
   );
-  
+
   // EXU - 执行单元
   EXU u_exu(
     .rs1_data(rs1_data),
@@ -241,7 +275,7 @@ module top(
     .branch_target(branch_target),
     .branch_taken(branch_taken)
   );
-  
+
   // CSR - 控制状态寄存器
   CSR u_csr(
     .clk(clk),
@@ -261,7 +295,7 @@ module top(
     .mtvec_out(mtvec_out),
     .mcycle_out(mcycle_out)
   );
-  
+
   // LSU - 访存单元
   LSU u_lsu(
     .clk(clk),
@@ -281,9 +315,10 @@ module top(
     // 地址和数据
     .mem_addr(mem_addr),
     .wdata(rs2_data),
-    .rdata(mem_rdata)
+    .rdata(mem_rdata),
+    .lsu_busy(lsu_busy)
   );
-  
+
   // WBU - 写回单元
   WBU u_wbu(
     .pc(pc),
@@ -331,14 +366,13 @@ module top(
     .rd_data(rd_data),
     .pc_next(pc_next)
   );
-  
+
   // ========== ebreak处理和trace ==========
-  
+
   import "DPI-C" function void ebreak_handler(input int a0_value);
-  import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
-  
+
   always @(posedge clk) begin
     if (!rst && ifu_valid) begin
       // ebreak处理
@@ -346,7 +380,7 @@ module top(
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value , mcycle_out);
         ebreak_handler(a0_value);
       end
-      
+
       // ftrace检测
       if (is_jalr) begin
         // jalr ra, rs1, offset (rd == 1) 是函数调用
@@ -358,17 +392,14 @@ module top(
           ftrace_ret_handler(pc, jump_target);
         end
       end
-      
+
       // jal也可能是函数调用
       if (is_jal && rd == 5'd1) begin
         ftrace_call_handler(pc, branch_target);
       end
-      
-      // 每个时钟周期更新指令到C++侧
-      update_inst_value(pc, inst);
+
+      // 注意: update_inst_value 已移至 IFU.v 中调用, 消除与 update_pc_value 的竞争
     end
   end
 
 endmodule
-
-
