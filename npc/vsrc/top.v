@@ -1,12 +1,13 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
-// SimpleBus: 取指和访存均有 1 周期延迟, load 指令需要额外 stall
+// SimpleBus 协议: 支持有效信号 reqValid/respValid
+// 两状态状态机: IDLE / WAIT
+// 单周期设计: 非访存指令 2 周期, load/store 3 周期
 
 module top(
   input clk,
   input rst,
-  output ifu_valid_out,
-  output load_delayed_out       // 供 C++ 侧 DiffTest 判断 load 写回时机
+  output ifu_valid_out
 );
 
   // ========== 模块间连接信号 ==========
@@ -16,7 +17,10 @@ module top(
   wire [31:0] inst;
   wire ifu_valid;
   assign ifu_valid_out = ifu_valid;
-  wire idu_ready;
+  wire ifu_reqValid;
+  wire ifu_respValid;
+  wire load_wb;
+  wire [4:0] load_rd;
 
   // IDU输出 - 指令字段
   wire [6:0] opcode;
@@ -78,16 +82,17 @@ module top(
 
   // LSU输出
   wire [31:0] mem_rdata;
-  wire lsu_busy;
+  wire lsu_reqValid;
+  wire lsu_respValid;
 
   // SimpleBus 连接信号
-  wire [31:0] ifu_rdata;      // MEM -> IFU
-  wire [31:0] ifu_raddr;      // IFU -> MEM
-  wire [31:0] lsu_addr;       // LSU -> MEM
-  wire        lsu_wen;        // LSU -> MEM
-  wire [31:0] lsu_wdata;      // LSU -> MEM
-  wire [ 3:0] lsu_wmask;      // LSU -> MEM
-  wire [31:0] lsu_rdata;      // MEM -> LSU
+  wire [31:0] ifu_raddr;       // IFU -> MEM
+  wire [31:0] ifu_rdata;       // MEM -> IFU
+  wire [31:0] lsu_addr;        // LSU -> MEM
+  wire        lsu_wen;         // LSU -> MEM
+  wire [31:0] lsu_wdata;       // LSU -> MEM
+  wire [ 3:0] lsu_wmask;       // LSU -> MEM
+  wire [31:0] lsu_rdata;       // MEM -> LSU
 
   // WBU输出
   wire [31:0] rd_data;
@@ -97,62 +102,49 @@ module top(
   wire [31:0] exception_cause;
   wire mret_en;
 
-  // 访存地址计算
+  // 访存地址计算 (组合逻辑)
   wire [31:0] mem_addr;
   wire is_store = is_sb || is_sh || is_sw;
   assign mem_addr = is_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
 
-  // ========== 延迟 Load 写回 ==========
-  // load 指令在 WAIT 周期发出 LSU 请求, STALL 周期数据才返回
-  // 需要将写回延迟 1 个周期, 这里用流水线寄存器保存 rd 等信息
   wire is_load;
   assign is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
 
-  reg load_delayed;          // 上一周期有 load 指令待写回
-  reg [4:0] rd_delayed;      // 上一周期的目的寄存器
-
-  always @(posedge clk) begin
-    if (rst) begin
-      load_delayed <= 1'b0;
-      rd_delayed   <= 5'b0;
-    end else begin
-      // WAIT 周期: 如果是 load 且 rd != x0, 保存写回信息
-      load_delayed <= ifu_valid && is_load && (rd != 5'b0);
-      rd_delayed   <= rd;
-    end
-  end
-
-  assign load_delayed_out = load_delayed;
-
-  // 修改后的写回信号:
-  //   - 非 load: 在 WAIT 周期正常写回 (reg_wen 有效且当前不是 load)
-  //   - load:   在 STALL 周期写回 (load_delayed 为 1)
-  wire reg_wen_final = (reg_wen && !(ifu_valid && is_load)) || load_delayed;
-  wire [4:0] waddr_final = load_delayed ? rd_delayed : rd;
-  wire [31:0] wdata_final = load_delayed ? mem_rdata : rd_data;
+  // ========== 写回逻辑 ==========
+  // 非 load 指令: ifu_valid 周期正常写回
+  // load 指令:   load_wb 周期写回 (LSU 数据返回后)
+  //   注意: load 在 ifu_valid 周期译码时 reg_wen=1,
+  //   但数据尚未返回, 需抑制本次写回, 等 load_wb 再写回
+  wire reg_wen_final = (reg_wen && ifu_valid && !is_load) || (load_wb && (load_rd != 5'b0));
+  wire [4:0] waddr_final = load_wb ? load_rd : rd;
+  wire [31:0] wdata_final = load_wb ? mem_rdata : rd_data;
 
   // ========== 模块实例化 ==========
 
-  // IFU - 取指单元
+  // IFU - 取指单元 (两状态状态机: IDLE/WAIT)
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
-    .idu_ready(idu_ready),
+    .pc_next(pc_next),
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
-    .pc_next(pc_next),
+    .rd(rd),
+    .ifu_respValid(ifu_respValid),
+    .lsu_respValid(lsu_respValid),
     .ifu_rdata(ifu_rdata),
     .pc(pc),
+    .ifu_reqValid(ifu_reqValid),
     .ifu_raddr(ifu_raddr),
     .inst(inst),
-    .ifu_valid(ifu_valid)
+    .ifu_valid(ifu_valid),
+    .load_wb(load_wb),
+    .load_rd(load_rd)
   );
 
   // IDU - 译码单元
   IDU u_idu(
     .inst(inst),
     .ifu_valid(ifu_valid),
-    .idu_ready(idu_ready),
     .opcode(opcode),
     .rd(rd),
     .rs1(rs1),
@@ -317,23 +309,29 @@ module top(
     .mem_addr(mem_addr),
     .wdata(rs2_data),
     // SimpleBus (连接 MEM)
+    .lsu_reqValid(lsu_reqValid),
     .lsu_addr(lsu_addr),
     .lsu_wen(lsu_wen),
     .lsu_wdata(lsu_wdata),
     .lsu_wmask(lsu_wmask),
+    .lsu_respValid(lsu_respValid),
     .lsu_rdata(lsu_rdata),
     // 输出
-    .rdata(mem_rdata),
-    .lsu_busy(lsu_busy)
+    .rdata(mem_rdata)
   );
 
   // MEM - 存储器模块 (内部通过 DPI-C 实现, 对外呈现 SimpleBus 接口)
   MEM u_mem(
     .clk(clk),
     .rst(rst),
+    // IFU SimpleBus
+    .ifu_reqValid(ifu_reqValid),
+    .ifu_respValid(ifu_respValid),
     .ifu_raddr(ifu_raddr),
     .ifu_rdata(ifu_rdata),
-    .mem_valid(mem_valid),
+    // LSU SimpleBus
+    .lsu_reqValid(lsu_reqValid),
+    .lsu_respValid(lsu_respValid),
     .lsu_addr(lsu_addr),
     .lsu_wen(lsu_wen),
     .lsu_wdata(lsu_wdata),
@@ -399,7 +397,7 @@ module top(
     if (!rst && ifu_valid) begin
       // ebreak处理
       if (is_ebreak) begin
-        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value , mcycle_out);
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
         ebreak_handler(a0_value);
       end
 
@@ -419,8 +417,6 @@ module top(
       if (is_jal && rd == 5'd1) begin
         ftrace_call_handler(pc, branch_target);
       end
-
-      // 注意: update_inst_value 已移至 IFU.v 中调用, 消除与 update_pc_value 的竞争
     end
   end
 

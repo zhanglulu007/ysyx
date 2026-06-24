@@ -1,5 +1,6 @@
 // MEM - Memory Module
 // 模拟存储器，内部通过 DPI-C 实现访存，对外呈现 SimpleBus 接口
+// 支持有效信号的 SimpleBus 协议: reqValid/respValid 握手
 // 读延迟固定 1 周期（同步存储器/SRAM 特性）
 
 module MEM(
@@ -7,13 +8,14 @@ module MEM(
   input rst,
 
   // IFU SimpleBus (只读)
+  input         ifu_reqValid,
+  output        ifu_respValid,
   input  [31:0] ifu_raddr,
   output [31:0] ifu_rdata,
 
-  // 访存有效门控 (来自 IDU)
-  input         mem_valid,
-
   // LSU SimpleBus (可读可写)
+  input         lsu_reqValid,
+  output        lsu_respValid,
   input  [31:0] lsu_addr,
   input         lsu_wen,
   input  [31:0] lsu_wdata,
@@ -26,17 +28,24 @@ module MEM(
 
   reg [31:0] ifu_rdata_reg;
   reg [31:0] lsu_rdata_reg;
+  reg        ifu_respValid_reg;
+  reg        lsu_respValid_reg;
 
   always @(posedge clk) begin
     if (rst) begin
-      ifu_rdata_reg <= 32'b0;
-      lsu_rdata_reg <= 32'b0;
+      ifu_rdata_reg     <= 32'b0;
+      lsu_rdata_reg     <= 32'b0;
+      ifu_respValid_reg <= 1'b0;
+      lsu_respValid_reg <= 1'b0;
     end else begin
-      // IFU: 每周期发出读请求, 下周期数据返回
-      ifu_rdata_reg <= pmem_read(ifu_raddr);
+      // IFU: 只在 reqValid 有效时发送读请求, 下周期数据返回
+      if (ifu_reqValid) begin
+        ifu_rdata_reg <= pmem_read(ifu_raddr);
+      end
+      ifu_respValid_reg <= ifu_reqValid;
 
-      // LSU: 仅在访存有效时操作, 避免非访存指令触发越界读
-      if (mem_valid) begin
+      // LSU: 只在 reqValid 有效时操作, 避免非访存指令触发越界读
+      if (lsu_reqValid) begin
         if (!lsu_wen) begin
           lsu_rdata_reg <= pmem_read(lsu_addr);
         end else begin
@@ -44,10 +53,13 @@ module MEM(
           lsu_rdata_reg <= 32'b0;
         end
       end
+      lsu_respValid_reg <= lsu_reqValid;
     end
   end
 
-  assign ifu_rdata = ifu_rdata_reg;
-  assign lsu_rdata = lsu_rdata_reg;
+  assign ifu_rdata     = ifu_rdata_reg;
+  assign lsu_rdata     = lsu_rdata_reg;
+  assign ifu_respValid = ifu_respValid_reg;
+  assign lsu_respValid = lsu_respValid_reg;
 
 endmodule

@@ -4,8 +4,7 @@
 module IDU(
   input [31:0] inst,          // 输入指令
   input ifu_valid,             // 取指有效信号
-  output idu_ready,            // 译码完成信号
-  
+
   // 指令字段
   output [6:0] opcode,
   output [4:0] rd,
@@ -87,8 +86,6 @@ module IDU(
   output mem_wen,             // 存储器写使能
   output csr_wen              // CSR写使能
 );
-
-  assign idu_ready = 1'b1;
 
   // 提取指令字段
   assign opcode = inst[6:0];
