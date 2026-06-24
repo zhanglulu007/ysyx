@@ -70,6 +70,7 @@ module top(
   wire [31:0] csr_rdata;
   wire [31:0] mepc_out;
   wire [31:0] mtvec_out;
+  wire [63:0] mcycle_out;
   
   // LSU输出
   wire [31:0] mem_rdata;
@@ -255,7 +256,8 @@ module top(
     // mret指令接口
     .mret_en(mret_en),
     .mepc_out(mepc_out),
-    .mtvec_out(mtvec_out)
+    .mtvec_out(mtvec_out),
+    .mcycle_out(mcycle_out)
   );
   
   // LSU - 访存单元
@@ -336,10 +338,10 @@ module top(
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
   
   always @(posedge clk) begin
-    if (!rst) begin
+    if (!rst && ifvalid) begin
       // ebreak处理
       if (is_ebreak) begin
-        $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=0x%08x", pc, a0_value , mcycle_out);
         ebreak_handler(a0_value);
       end
       
