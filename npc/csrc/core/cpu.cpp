@@ -100,14 +100,14 @@ void exec_once() {
     device_update();
 
 #ifdef ENABLE_TRACE
-    if (g_top->ifvalid_out) {
+    if (g_top->ifu_valid_out) {
         ftrace_flush(g_print_itrace);
         itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
         mtrace_flush(g_print_itrace);
     }
 #endif
 
-    if (g_top->ifvalid_out) {
+    if (g_top->ifu_valid_out) {
         (current_pc, npc_get_pc());
     }
 }
