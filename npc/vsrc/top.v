@@ -4,7 +4,7 @@
 module top(
   input clk,
   input rst,
-  output ifvalid_out
+  output ifu_valid_out
 );
 
   // ========== 模块间连接信号 ==========
@@ -12,9 +12,9 @@ module top(
   // IFU <-> IDU
   wire [31:0] pc;
   wire [31:0] inst;
-  wire ifvalid;
-  assign ifvalid_out = ifvalid;
-  wire idready;
+  wire ifu_valid;
+  assign ifu_valid_out = ifu_valid;
+  wire idu_ready;
   
   // IDU输出 - 指令字段
   wire [6:0] opcode;
@@ -96,18 +96,18 @@ module top(
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
-    .idready(idready),
+    .idu_ready(idu_ready),
     .pc_next(pc_next),
     .pc(pc),
     .inst(inst),
-    .ifvalid(ifvalid)
+    .ifu_valid(ifu_valid)
   );
   
   // IDU - 译码单元
   IDU u_idu(
     .inst(inst),
-    .ifvalid(ifvalid),
-    .idready(idready),
+    .ifu_valid(ifu_valid),
+    .idu_ready(idu_ready),
     .opcode(opcode),
     .rd(rd),
     .rs1(rs1),
@@ -340,7 +340,7 @@ module top(
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
   
   always @(posedge clk) begin
-    if (!rst && ifvalid) begin
+    if (!rst && ifu_valid) begin
       // ebreak处理
       if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value , mcycle_out);

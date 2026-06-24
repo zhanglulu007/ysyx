@@ -63,7 +63,7 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 FST     ?= 0
 TRACE   ?= 0
 DIFFTEST_SO ?=
-
+#DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
   VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs

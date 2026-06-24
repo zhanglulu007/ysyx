@@ -4,11 +4,11 @@
 module IFU(
   input clk,
   input rst,
-  input idready,
+  input idu_ready,
   input [31:0] pc_next,      // 下一个PC值
   output reg [31:0] pc,      // 当前PC
   output [31:0] inst,        // 取出的指令
-  output ifvalid          // 取指有效信号
+  output ifu_valid          // 取指有效信号
 );
 
   // DPI-C函数：从存储器读取指令
@@ -38,10 +38,13 @@ module IFU(
                 state <= WAIT;
             end
             WAIT: begin
-                // ifu_rdata 是有效的指令, 执行并更新 PC
-                pc <= pc_next;
-                update_pc_value(pc_next);
-                state <= IDLE; 
+               // ifu_rdata 是有效的指令, 执行并更新 PC
+                if (idu_ready) begin
+                  pc <= pc_next;
+                  update_pc_value(pc_next);
+                  state <= IDLE; 
+                end
+                
             end
         endcase
     end
@@ -49,6 +52,6 @@ end
   
   // 取指：从PC地址读取指令
   assign inst = (state == WAIT) ? ifu_rdata : 32'h00000013;  // nop = addi x0, x0, 0
-  assign ifvalid = (state == WAIT) && !rst;
+  assign ifu_valid = (state == WAIT) && !rst;
 
 endmodule
