@@ -36,7 +36,7 @@ module IFU(
 );
 
   wire insdone_comb;
-  assign insdone_comb = (state == WAIT) && ((lsu_rvalid) || (lsu_bvalid));
+  assign insdone_comb = (state == WAIT) && ((lsu_pending) && (lsu_rvalid) || (lsu_bvalid));
 
   always @(posedge clk) begin
     if (rst)
