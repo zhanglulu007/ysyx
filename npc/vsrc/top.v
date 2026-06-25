@@ -1,10 +1,11 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
-// AXI4-Lite 总线协议: IFU+LSU → AXIArbiter → Xbar → {UART, MEM}
-// 仲裁器将两个 master 的请求仲裁后转发给 Xbar, Xbar 根据地址路由到 UART 或 MEM
-//   UART: [0x1000_0000, 0x1000_0fff) - 写操作通过 $write 输出字符
-//   MEM:  [0x8000_0000, 0x8800_0000) - 128MB 存储器 (DPI-C)
-//   其他: DECERR
+// AXI4-Lite 总线协议: IFU+LSU → AXIArbiter → Xbar → {UART, CLINT, MEM}
+// 仲裁器将两个 master 的请求仲裁后转发给 Xbar, Xbar 根据地址路由到 UART、CLINT 或 MEM
+//   UART:  [0x1000_0000, 0x1000_0048) ∪ [0x1000_0050, 0x1000_1000) - 写操作通过 $write 输出字符
+//   CLINT: [0x1000_0048, 0x1000_0050) - mtime 计时器 (只读)
+//   MEM:   [0x8000_0000, 0x8800_0000) - 128MB 存储器 (DPI-C)
+//   其他:  DECERR
 // 多周期设计: 非访存指令 2+ 周期, load/store 3+ 周期
 
 module top(
@@ -93,7 +94,7 @@ module top(
   wire mret_en;
 
   // ===================================================================
-  // AXI4-Lite 总线连接信号 (IFU/LSU → Arbiter → Xbar → {UART, MEM})
+  // AXI4-Lite 总线连接信号 (IFU/LSU → Arbiter → Xbar → {UART, CLINT, MEM})
   // ===================================================================
 
   // --- IFU <-> Arbiter (Master 0, 只读: AR + R) ---
@@ -153,7 +154,7 @@ module top(
   wire        xbar_m_bready;
   wire [ 1:0] xbar_m_bresp;
 
-  // --- Xbar <-> MEM (slave 端口) ---
+  // --- Xbar <-> MEM (slave 2 端口) ---
   // AR
   wire        mem_arvalid;
   wire        mem_arready;
@@ -177,7 +178,7 @@ module top(
   wire        mem_bready;
   wire [ 1:0] mem_bresp;
 
-  // --- Xbar <-> UART (slave 端口) ---
+  // --- Xbar <-> UART (slave 0 端口) ---
   // AR
   wire        uart_arvalid;
   wire        uart_arready;
@@ -200,6 +201,30 @@ module top(
   wire        uart_bvalid;
   wire        uart_bready;
   wire [ 1:0] uart_bresp;
+
+  // --- Xbar <-> CLINT (slave 1 端口, mtime 只读) ---
+  // AR
+  wire        clint_arvalid;
+  wire        clint_arready;
+  wire [31:0] clint_araddr;
+  // R
+  wire        clint_rvalid;
+  wire        clint_rready;
+  wire [31:0] clint_rdata;
+  wire [ 1:0] clint_rresp;
+  // AW
+  wire        clint_awvalid;
+  wire        clint_awready;
+  wire [31:0] clint_awaddr;
+  // W
+  wire        clint_wvalid;
+  wire        clint_wready;
+  wire [31:0] clint_wdata;
+  wire [ 3:0] clint_wstrb;
+  // B
+  wire        clint_bvalid;
+  wire        clint_bready;
+  wire [ 1:0] clint_bresp;
 
   // 访存地址计算 (组合逻辑)
   wire [31:0] mem_addr;
@@ -491,7 +516,7 @@ module top(
     .mem_bresp(xbar_m_bresp)
   );
 
-  // Xbar - AXI4-Lite 交叉开关 (根据地址路由: UART 或 MEM)
+  // Xbar - AXI4-Lite 交叉开关 (根据地址路由: UART, CLINT, MEM)
   Xbar u_xbar(
     .clk(clk),
     .rst(rst),
@@ -531,7 +556,25 @@ module top(
     .uart_bvalid(uart_bvalid),
     .uart_bready(uart_bready),
     .uart_bresp(uart_bresp),
-    // Slave 1: MEM
+    // Slave 1: CLINT
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp),
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp),
+    // Slave 2: MEM
     .mem_arvalid(mem_arvalid),
     .mem_arready(mem_arready),
     .mem_araddr(mem_araddr),
@@ -577,6 +620,34 @@ module top(
     .uart_bvalid(uart_bvalid),
     .uart_bready(uart_bready),
     .uart_bresp(uart_bresp)
+  );
+
+  // CLINT - AXI4-Lite CLINT 模块 (mtime 计时器, 只读)
+  CLINT u_clint(
+    .clk(clk),
+    .rst(rst),
+    // AR 通道
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    // R 通道
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp),
+    // AW 通道
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    // W 通道
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    // B 通道
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp)
   );
 
   // MEM - 存储器模块 (AXI4-Lite 接口, 内部通过 DPI-C 实现)
