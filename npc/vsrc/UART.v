@@ -128,20 +128,20 @@ module UART(
 
               // 调用 DPI-C: 使用锁存值或当前值
               if (aw_completing && w_completing) begin
-                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
-                       uart_wdata[7:0], uart_wdata[7:0], uart_awaddr);
+                //$write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                 //      uart_wdata[7:0], uart_wdata[7:0], uart_awaddr);
                 pmem_write(uart_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else if (aw_completing) begin
-                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
-                       latched_wdata[7:0], latched_wdata[7:0], uart_awaddr);
+                //$write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                 //      latched_wdata[7:0], latched_wdata[7:0], uart_awaddr);
                 pmem_write(uart_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end else if (w_completing) begin
-                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
-                       uart_wdata[7:0], uart_wdata[7:0], latched_awaddr);
+                //$write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                 //      uart_wdata[7:0], uart_wdata[7:0], latched_awaddr);
                 pmem_write(latched_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else begin
-                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
-                       latched_wdata[7:0], latched_wdata[7:0], latched_awaddr);
+                //$write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                 //      latched_wdata[7:0], latched_wdata[7:0], latched_awaddr);
                 pmem_write(latched_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end
 
@@ -167,7 +167,7 @@ module UART(
         R_BUSY: begin
           // R 握手: rvalid && rready
           if (uart_rvalid && uart_rready) begin
-            $write("[UART] read  done  addr=0x%08x data=0x%08x\n", logged_araddr, latched_rdata);
+            //$write("[UART] read  done  addr=0x%08x data=0x%08x\n", logged_araddr, latched_rdata);
             state <= IDLE;
           end
         end
@@ -175,7 +175,7 @@ module UART(
         W_BUSY: begin
           // B 握手: bvalid && bready
           if (uart_bvalid && uart_bready) begin
-            $write("[UART] write done  addr=0x%08x data=0x%08x strb=%b\n",
+            //$write("[UART] write done  addr=0x%08x data=0x%08x strb=%b\n",
                    latched_awaddr, latched_wdata, latched_wstrb);
             state <= IDLE;
           end
