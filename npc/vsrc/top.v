@@ -1,8 +1,7 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
-// AXI4-Lite 总线协议: 5 个独立通道 (AR, R, AW, W, B)
-// IFU:  只读, 使用 AR + R 通道
-// LSU:  读写, 使用全部 5 个通道
+// AXI4-Lite 总线协议: IFU+LSU → AXIArbiter → MEM
+// 仲裁器将两个 master 的请求仲裁后转发给单一 slave 接口的存储器
 // 多周期设计: 非访存指令 2+ 周期, load/store 3+ 周期
 
 module top(
@@ -18,8 +17,6 @@ module top(
   wire [31:0] inst;
   wire ifu_valid;
   assign ifu_valid_out = ifu_valid;
-  wire ifu_arvalid;
-  wire ifu_rvalid;
   wire load_wb;
   wire [4:0] load_rd;
 
@@ -81,8 +78,8 @@ module top(
   wire [31:0] mtvec_out;
   wire [63:0] mcycle_out;
 
-  // LSU输出
-  wire [31:0] mem_rdata;
+  // LSU输出 (经字节/半字选择后的读数据, 送往 WBU)
+  wire [31:0] lsu_mem_rdata;
 
   // WBU输出
   wire [31:0] rd_data;
@@ -93,42 +90,65 @@ module top(
   wire mret_en;
 
   // ===================================================================
-  // AXI4-Lite 总线连接信号
+  // AXI4-Lite 总线连接信号 (IFU/LSU → Arbiter → MEM)
   // ===================================================================
 
-  // --- IFU AXI4-Lite (只读: AR + R 通道) ---
-  wire [31:0] ifu_araddr;       // IFU -> MEM: 读地址
-  wire        ifu_arready;      // MEM -> IFU: 读地址就绪
-  wire [31:0] ifu_rdata;        // MEM -> IFU: 读数据
-  wire        ifu_rready;       // IFU -> MEM: 读数据就绪
-  wire [ 1:0] ifu_rresp;        // MEM -> IFU: 读响应状态
+  // --- IFU <-> Arbiter (Master 0, 只读: AR + R) ---
+  wire        ifu_arvalid;
+  wire        ifu_arready;
+  wire [31:0] ifu_araddr;
+  wire        ifu_rvalid;
+  wire        ifu_rready;
+  wire [31:0] ifu_rdata;
+  wire [ 1:0] ifu_rresp;
 
-  // --- LSU AXI4-Lite AR 通道 (读地址) ---
-  wire        lsu_arvalid;      // LSU -> MEM
-  wire        lsu_arready;      // MEM -> LSU
-  wire [31:0] lsu_araddr;       // LSU -> MEM
+  // --- LSU <-> Arbiter (Master 1, 读写: 全部 5 通道) ---
+  // AR
+  wire        lsu_arvalid;
+  wire        lsu_arready;
+  wire [31:0] lsu_araddr;
+  // R
+  wire        lsu_rvalid;
+  wire        lsu_rready;
+  wire [31:0] lsu_rdata;
+  wire [ 1:0] lsu_rresp;
+  // AW
+  wire        lsu_awvalid;
+  wire        lsu_awready;
+  wire [31:0] lsu_awaddr;
+  // W
+  wire        lsu_wvalid;
+  wire        lsu_wready;
+  wire [31:0] lsu_wdata;
+  wire [ 3:0] lsu_wstrb;
+  // B
+  wire        lsu_bvalid;
+  wire        lsu_bready;
+  wire [ 1:0] lsu_bresp;
 
-  // --- LSU AXI4-Lite R 通道 (读数据) ---
-  wire        lsu_rvalid;       // MEM -> LSU (也用于通知 IFU load 完成)
-  wire        lsu_rready;       // LSU -> MEM
-  wire [31:0] lsu_rdata;        // MEM -> LSU
-  wire [ 1:0] lsu_rresp;        // MEM -> LSU
-
-  // --- LSU AXI4-Lite AW 通道 (写地址) ---
-  wire        lsu_awvalid;      // LSU -> MEM
-  wire        lsu_awready;      // MEM -> LSU
-  wire [31:0] lsu_awaddr;       // LSU -> MEM
-
-  // --- LSU AXI4-Lite W 通道 (写数据) ---
-  wire        lsu_wvalid;       // LSU -> MEM
-  wire        lsu_wready;       // MEM -> LSU
-  wire [31:0] lsu_wdata;        // LSU -> MEM
-  wire [ 3:0] lsu_wstrb;        // LSU -> MEM (写字节使能)
-
-  // --- LSU AXI4-Lite B 通道 (写回复) ---
-  wire        lsu_bvalid;       // MEM -> LSU (也用于通知 IFU store 完成)
-  wire        lsu_bready;       // LSU -> MEM
-  wire [ 1:0] lsu_bresp;        // MEM -> LSU
+  // --- Arbiter <-> MEM (单一 Slave 接口) ---
+  // AR
+  wire        mem_arvalid;
+  wire        mem_arready;
+  wire [31:0] mem_araddr;
+  // R
+  wire        mem_rvalid;
+  wire        mem_rready;
+  wire [31:0] mem_rdata;
+  wire [ 1:0] mem_rresp;
+  // AW
+  wire        mem_awvalid;
+  wire        mem_awready;
+  wire [31:0] mem_awaddr;
+  // W
+  wire        mem_wvalid;
+  wire        mem_wready;
+  wire [31:0] mem_wdata;
+  wire [ 3:0] mem_wstrb;
+  // B
+  wire        mem_bvalid;
+  wire        mem_bready;
+  wire [ 1:0] mem_bresp;
 
   // 访存地址计算 (组合逻辑)
   wire [31:0] mem_addr;
@@ -145,7 +165,7 @@ module top(
   //   但数据尚未返回, 需抑制本次写回, 等 load_wb 再写回
   wire reg_wen_final = (reg_wen && ifu_valid && !is_load) || (load_wb && (load_rd != 5'b0));
   wire [4:0] waddr_final = load_wb ? load_rd : rd;
-  wire [31:0] wdata_final = load_wb ? mem_rdata : rd_data;
+  wire [31:0] wdata_final = load_wb ? lsu_mem_rdata : rd_data;
 
   // ========== 模块实例化 ==========
 
@@ -157,16 +177,16 @@ module top(
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
     .rd(rd),
-    // AXI4-Lite AR 通道
+    // AXI4-Lite AR 通道 (连接 Arbiter)
     .ifu_arready(ifu_arready),
     .ifu_arvalid(ifu_arvalid),
     .ifu_araddr(ifu_araddr),
-    // AXI4-Lite R 通道
+    // AXI4-Lite R 通道 (连接 Arbiter)
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
     .ifu_rresp(ifu_rresp),
-    // LSU 完成信号
+    // LSU 完成信号 (来自 Arbiter 的 LSU 侧, 用于 load/store 完成检测)
     .lsu_rvalid(lsu_rvalid),
     .lsu_bvalid(lsu_bvalid),
     // 输出
@@ -335,7 +355,7 @@ module top(
     .mcycle_out(mcycle_out)
   );
 
-  // LSU - 访存单元 (AXI4-Lite: 全部 5 个通道)
+  // LSU - 访存单元 (AXI4-Lite: 全部 5 通道, 连接 Arbiter)
   LSU u_lsu(
     .clk(clk),
     .rst(rst),
@@ -344,37 +364,37 @@ module top(
     .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
-    // AXI4-Lite AR 通道
+    // AXI4-Lite AR 通道 (连接 Arbiter)
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
-    // AXI4-Lite R 通道
+    // AXI4-Lite R 通道 (连接 Arbiter)
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
     .lsu_rdata(lsu_rdata),
     .lsu_rresp(lsu_rresp),
-    // AXI4-Lite AW 通道
+    // AXI4-Lite AW 通道 (连接 Arbiter)
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
-    // AXI4-Lite W 通道
+    // AXI4-Lite W 通道 (连接 Arbiter)
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
     .lsu_wdata(lsu_wdata),
     .lsu_wstrb(lsu_wstrb),
-    // AXI4-Lite B 通道
+    // AXI4-Lite B 通道 (连接 Arbiter)
     .lsu_bvalid(lsu_bvalid),
     .lsu_bready(lsu_bready),
     .lsu_bresp(lsu_bresp),
     // 输出
-    .rdata(mem_rdata)
+    .rdata(lsu_mem_rdata)
   );
 
-  // MEM - 存储器模块 (AXI4-Lite 接口, 内部通过 DPI-C 实现)
-  MEM u_mem(
+  // AXIArbiter - AXI4-Lite 仲裁器 (IFU + LSU → MEM)
+  AXIArbiter u_arbiter(
     .clk(clk),
     .rst(rst),
-    // IFU AXI4-Lite (只读: AR + R 通道)
+    // Master 0: IFU (只读)
     .ifu_arvalid(ifu_arvalid),
     .ifu_arready(ifu_arready),
     .ifu_araddr(ifu_araddr),
@@ -382,35 +402,77 @@ module top(
     .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
     .ifu_rresp(ifu_rresp),
-    // LSU AXI4-Lite AR 通道
+    // Master 1: LSU (读写)
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
-    // LSU AXI4-Lite R 通道
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
     .lsu_rdata(lsu_rdata),
     .lsu_rresp(lsu_rresp),
-    // LSU AXI4-Lite AW 通道
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
-    // LSU AXI4-Lite W 通道
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
     .lsu_wdata(lsu_wdata),
     .lsu_wstrb(lsu_wstrb),
-    // LSU AXI4-Lite B 通道
     .lsu_bvalid(lsu_bvalid),
     .lsu_bready(lsu_bready),
-    .lsu_bresp(lsu_bresp)
+    .lsu_bresp(lsu_bresp),
+    // Slave: MEM
+    .mem_arvalid(mem_arvalid),
+    .mem_arready(mem_arready),
+    .mem_araddr(mem_araddr),
+    .mem_rvalid(mem_rvalid),
+    .mem_rready(mem_rready),
+    .mem_rdata(mem_rdata),
+    .mem_rresp(mem_rresp),
+    .mem_awvalid(mem_awvalid),
+    .mem_awready(mem_awready),
+    .mem_awaddr(mem_awaddr),
+    .mem_wvalid(mem_wvalid),
+    .mem_wready(mem_wready),
+    .mem_wdata(mem_wdata),
+    .mem_wstrb(mem_wstrb),
+    .mem_bvalid(mem_bvalid),
+    .mem_bready(mem_bready),
+    .mem_bresp(mem_bresp)
+  );
+
+  // MEM - 存储器模块 (单一 AXI4-Lite 接口, 内部通过 DPI-C 实现)
+  MEM u_mem(
+    .clk(clk),
+    .rst(rst),
+    // AR 通道
+    .mem_arvalid(mem_arvalid),
+    .mem_arready(mem_arready),
+    .mem_araddr(mem_araddr),
+    // R 通道
+    .mem_rvalid(mem_rvalid),
+    .mem_rready(mem_rready),
+    .mem_rdata(mem_rdata),
+    .mem_rresp(mem_rresp),
+    // AW 通道
+    .mem_awvalid(mem_awvalid),
+    .mem_awready(mem_awready),
+    .mem_awaddr(mem_awaddr),
+    // W 通道
+    .mem_wvalid(mem_wvalid),
+    .mem_wready(mem_wready),
+    .mem_wdata(mem_wdata),
+    .mem_wstrb(mem_wstrb),
+    // B 通道
+    .mem_bvalid(mem_bvalid),
+    .mem_bready(mem_bready),
+    .mem_bresp(mem_bresp)
   );
 
   // WBU - 写回单元
   WBU u_wbu(
     .pc(pc),
     .alu_result(alu_result),
-    .mem_rdata(mem_rdata),
+    .mem_rdata(lsu_mem_rdata),
     .imm_u(imm_u),
     .jump_target(jump_target),
     .branch_target(branch_target),
