@@ -84,7 +84,7 @@ module IFU(
 
         WAIT: begin
           if (lsu_pending) begin
-            if (lsu_rvalid) || (lsu_bvalid) begin
+            if (lsu_rvalid || lsu_bvalid) begin
                 pc               <= pc_next;
                 update_pc_value(pc_next);
                 state            <= IDLE;
