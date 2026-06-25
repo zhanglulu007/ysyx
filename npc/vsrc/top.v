@@ -10,7 +10,7 @@
 module top(
   input clk,
   input rst,
-  output ifu_valid_out
+  output insdone_out
 );
 
   // ========== 模块间连接信号 ==========
@@ -19,7 +19,8 @@ module top(
   wire [31:0] pc;
   wire [31:0] inst;
   wire ifu_valid;
-  assign ifu_valid_out = ifu_valid;
+  wire insdone;
+  assign insdone_out = insdone;
   wire load_wb;
   wire [4:0] load_rd;
 
@@ -245,7 +246,8 @@ module top(
     .inst(inst),
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
-    .load_rd(load_rd)
+    .load_rd(load_rd),
+    .insdone(insdone)
   );
 
   // IDU - 译码单元

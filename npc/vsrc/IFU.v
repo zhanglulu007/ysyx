@@ -32,8 +32,16 @@ module IFU(
   output [31:0] inst,          // -> IDU: 当前指令
   output ifu_valid,            // -> IDU: 指令有效 (译码/执行周期)
   output load_wb,              // -> top: load 写回触发
-  output [4:0] load_rd         // -> top: load 目的寄存器
+  output [4:0] load_rd,         // -> top: load 目的寄存器
+
+  output insdone
 );
+
+  assign insdone = (state == WAIT) && (
+    (!lsu_pending && ifu_rvalid && ifu_rready && !mem_valid) ||   // 非访存指令完成
+    (lsu_pending && is_load_pending && lsu_rvalid) ||             // load 完成
+    (lsu_pending && !is_load_pending && lsu_bvalid)               // store 完成
+  );
 
   // DPI-C函数：通知C++侧
   import "DPI-C" function void update_pc_value(input int pc_val);
