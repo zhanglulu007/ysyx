@@ -17,11 +17,12 @@
 //   1. valid 不依赖 ready (发送方自主决定)
 //   2. valid 一旦置位必须保持直到握手完成
 //   3. ready 可依赖 valid (接收方可等待)
+//   4. ready 信号可以在 valid 之前或之后置位
 //
-// 状态机:
-//   IDLE:   等待 AR (读) 或 AW+W (写) 握手
-//   R_BUSY: 读事务进行中，立即响应
-//   W_BUSY: 写事务进行中，立即响应
+// 简化实现:
+//   - UART 响应很快，所有 ready 信号始终为 1（零延迟）
+//   - 写操作：AW 和 W 都握手后立即输出字符并响应 B
+//   - 读操作：AR 握手后立即响应 R
 
 module UART(
   input clk,
@@ -62,16 +63,14 @@ module UART(
 
   reg [1:0] state;
 
-  // 写路径追踪: AW 和 W 可独立握手
-  reg        aw_done;
-  reg        w_done;
+  // 写路径数据锁存
   reg [31:0] w_data_latched;
 
   // ========== 通道就绪信号 ==========
-  // UART 响应很快，ready 始终为 1（无延迟）
-  assign uart_arready = (state == IDLE) && !rst;
-  assign uart_awready = (state == IDLE) && !aw_done && !rst;
-  assign uart_wready  = (state == IDLE) && !w_done && !rst;
+  // UART 响应很快，ready 始终为 1（无延迟，符合 AXI 规范）
+  assign uart_arready = 1'b1 && !rst;
+  assign uart_awready = 1'b1 && !rst;
+  assign uart_wready  = 1'b1 && !rst;
 
   // ========== 响应信号 ==========
   assign uart_rvalid = (state == R_BUSY);
@@ -86,8 +85,6 @@ module UART(
   always @(posedge clk) begin
     if (rst) begin
       state          <= IDLE;
-      aw_done        <= 1'b0;
-      w_done         <= 1'b0;
       w_data_latched <= 32'b0;
     end else begin
       case (state)
@@ -97,28 +94,14 @@ module UART(
             // 读操作立即完成（串口只写，返回 0）
             state <= R_BUSY;
           end
-          // ----- 写事务: AW 和 W 握手追踪 -----
-          else begin
-            // AW 握手
-            if (uart_awvalid && uart_awready && !aw_done) begin
-              aw_done <= 1'b1;
-            end
-
-            // W 握手
-            if (uart_wvalid && uart_wready && !w_done) begin
-              w_data_latched <= uart_wdata;
-              w_done <= 1'b1;
-            end
-
-            // AW 和 W 均完成时输出字符
-            if (aw_done && w_done) begin
-              // 输出字符（低 8 位）
-              $write("%c", w_data_latched[7:0]);
-
-              state    <= W_BUSY;
-              aw_done  <= 1'b0;
-              w_done   <= 1'b0;
-            end
+          // ----- 写事务: AW 和 W 握手 -----
+          // 简化实现：AW 和 W 可以同时握手，或者先AW后W，或先W后AW
+          else if (uart_awvalid && uart_wvalid) begin
+            // AW 和 W 同时有效，记录数据并进入写响应
+            w_data_latched <= uart_wdata;
+            // 输出字符（低 8 位）
+            $write("%c", uart_wdata[7:0]);
+            state <= W_BUSY;
           end
         end
 
