@@ -35,7 +35,7 @@ module IFU(
   output insdone
 );
 
-  assign insdone = (state == WAIT) && ((lsu_pending) && (lsu_rvalid) || (lsu_bvalid));
+  assign insdone = (state == WAIT) && (lsu_pending) && ((lsu_rvalid) || (lsu_bvalid));
 
 
 
