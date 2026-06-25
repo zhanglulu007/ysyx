@@ -53,39 +53,19 @@ module IFU(
   import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
 
-  // ========== 两状态状态机 (AXI4-Lite 握手) ==========
-  // IDLE - 发送取指请求 (arvalid=1), 等待 arready 握手
-  // WAIT - 等待取指响应 (rvalid 握手), 执行指令, 可能等待LSU响应
-  localparam IDLE = 1'b0;
-  localparam WAIT = 1'b1;
+  localparam IDLE = 1'b0 , WAIT = 1'b1;
 
   reg state;
   reg lsu_pending;          // 1 = 在 WAIT 状态中等待 LSU 响应
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
-  // ifu_araddr 恒等于 pc, MEM 仅在 arvalid 有效时采样
+
   assign ifu_araddr = pc;
-
-  // ifu_arvalid: 在 IDLE 状态发送取指请求
-  //   AXI 规则: valid 不依赖 ready, 自主决定
   assign ifu_arvalid = (state == IDLE) && !rst;
-
-  // ifu_rready: 在 WAIT 状态且未等待 LSU 时, 就绪接收取指响应
-  //   - 当 lsu_pending=1 时, IFU 正等待 LSU 完成, 不能接收新的取指响应
   assign ifu_rready = (state == WAIT) && !lsu_pending && !rst;
-
-  // ifu_valid: 仅在取指响应握手完成且未等待 LSU 时有效
-  //   rvalid && rready 握手成功即表示指令已接收
   assign ifu_valid = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;
-
-  // inst: 有效指令或 NOP
-  //   - 当 ifu_valid=1 时输出真实指令
-  //   - 当等待 LSU 时输出 NOP (防止 IDU 重复译码 load/store)
-  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop = addi x0, x0, 0
-
-  // load_wb: 当 MEM 返回 load 数据时触发写回 (组合逻辑)
-  //   AXI4-Lite: R 通道握手完成即 load 数据有效
+  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop 
   assign load_wb = (state == WAIT) && lsu_pending && lsu_rvalid && is_load_pending;
   assign load_rd = load_rd_saved;
 
@@ -100,41 +80,25 @@ module IFU(
     end else begin
       case (state)
         IDLE: begin
-          // 发送取指请求 (ifu_arvalid=1), 等待 arready 握手
-          // AXI 规则: valid 一旦置位必须保持直到握手完成
-          // 握手成功 (ifu_arvalid && ifu_arready) 后进入 WAIT
           if (ifu_arready) begin
             state       <= WAIT;
             lsu_pending <= 1'b0;
           end
-          // 否则保持 IDLE, arvalid 继续有效等待
         end
 
         WAIT: begin
           if (lsu_pending) begin
             // ===== 等待 LSU 响应 =====
             // AXI4-Lite: load 完成看 lsu_rvalid, store 完成看 lsu_bvalid
-            if (is_load_pending) begin
-              // 等待 load 数据返回 (R 通道)
-              if (lsu_rvalid) begin
-                // load 数据已通过 load_wb 写回 (组合逻辑, 本周期 posedge 写入)
+
+            if ((is_load_pending && lsu_rvalid) || (!is_load_pending && lsu_bvalid)) begin
                 pc               <= pc_next;
                 update_pc_value(pc_next);
                 state            <= IDLE;
                 lsu_pending      <= 1'b0;
                 is_load_pending  <= 1'b0;
-              end
-            end else begin
-              // 等待 store 完成 (B 通道)
-              if (lsu_bvalid) begin
-                // store 写入已完成
-                pc               <= pc_next;
-                update_pc_value(pc_next);
-                state            <= IDLE;
-                lsu_pending      <= 1'b0;
-                is_load_pending  <= 1'b0;
-              end
             end
+
             // 继续保持 WAIT 等待
           end else if (ifu_rvalid && ifu_rready) begin
             // ===== 取指响应握手完成, 执行指令 =====
