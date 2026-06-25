@@ -97,9 +97,9 @@ module Xbar(
   // UART: [0x1000_0000, 0x1000_00FF)
   // MEM:  [0x8000_0000, 0x8FFF_FFFF)
   function automatic [1:0] decode_addr(input [31:0] addr);
-    casex (addr[31:8])
+    casez (addr[31:8])
       24'h100000: return 2'b01;  // UART
-      24'h8?????: return 2'b10;  // MEM
+      24'b1000_????_????_????_????_??: return 2'b10;  // MEM (0x8???????)
       default:    return 2'b00;  // 无效地址
     endcase
   endfunction
