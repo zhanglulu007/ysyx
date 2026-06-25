@@ -1,7 +1,8 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
-// SimpleBus 协议: 支持完整握手信号 reqValid/reqReady + respValid/respReady
-// 两状态状态机: IDLE / WAIT
+// AXI4-Lite 总线协议: 5 个独立通道 (AR, R, AW, W, B)
+// IFU:  只读, 使用 AR + R 通道
+// LSU:  读写, 使用全部 5 个通道
 // 多周期设计: 非访存指令 2+ 周期, load/store 3+ 周期
 
 module top(
@@ -17,8 +18,8 @@ module top(
   wire [31:0] inst;
   wire ifu_valid;
   assign ifu_valid_out = ifu_valid;
-  wire ifu_reqValid;
-  wire ifu_respValid;
+  wire ifu_arvalid;
+  wire ifu_rvalid;
   wire load_wb;
   wire [4:0] load_rd;
 
@@ -82,29 +83,44 @@ module top(
 
   // LSU输出
   wire [31:0] mem_rdata;
-  wire lsu_reqValid;
-  wire lsu_respValid;
 
-  // SimpleBus 连接信号 (完整握手)
-  wire [31:0] ifu_raddr;       // IFU -> MEM
-  wire [31:0] ifu_rdata;       // MEM -> IFU
-  wire        ifu_reqReady;    // MEM -> IFU: 从设备就绪
-  wire        ifu_respReady;   // IFU -> MEM: 主设备就绪
-  wire [31:0] lsu_addr;        // LSU -> MEM
-  wire        lsu_wen;         // LSU -> MEM
-  wire [31:0] lsu_wdata;       // LSU -> MEM
-  wire [ 3:0] lsu_wmask;       // LSU -> MEM
-  wire [31:0] lsu_rdata;       // MEM -> LSU
-  wire        lsu_reqReady;    // MEM -> LSU: 从设备就绪
-  wire        lsu_respReady;   // LSU -> MEM: 主设备就绪
+  // ===================================================================
+  // AXI4-Lite 总线连接信号
+  // ===================================================================
 
-  // WBU输出
-  wire [31:0] rd_data;
-  wire [31:0] pc_next;
-  wire exception_en;
-  wire [31:0] exception_pc;
-  wire [31:0] exception_cause;
-  wire mret_en;
+  // --- IFU AXI4-Lite (只读: AR + R 通道) ---
+  wire [31:0] ifu_araddr;       // IFU -> MEM: 读地址
+  wire        ifu_arready;      // MEM -> IFU: 读地址就绪
+  wire [31:0] ifu_rdata;        // MEM -> IFU: 读数据
+  wire        ifu_rready;       // IFU -> MEM: 读数据就绪
+  wire [ 1:0] ifu_rresp;        // MEM -> IFU: 读响应状态
+
+  // --- LSU AXI4-Lite AR 通道 (读地址) ---
+  wire        lsu_arvalid;      // LSU -> MEM
+  wire        lsu_arready;      // MEM -> LSU
+  wire [31:0] lsu_araddr;       // LSU -> MEM
+
+  // --- LSU AXI4-Lite R 通道 (读数据) ---
+  wire        lsu_rvalid;       // MEM -> LSU (也用于通知 IFU load 完成)
+  wire        lsu_rready;       // LSU -> MEM
+  wire [31:0] lsu_rdata;        // MEM -> LSU
+  wire [ 1:0] lsu_rresp;        // MEM -> LSU
+
+  // --- LSU AXI4-Lite AW 通道 (写地址) ---
+  wire        lsu_awvalid;      // LSU -> MEM
+  wire        lsu_awready;      // MEM -> LSU
+  wire [31:0] lsu_awaddr;       // LSU -> MEM
+
+  // --- LSU AXI4-Lite W 通道 (写数据) ---
+  wire        lsu_wvalid;       // LSU -> MEM
+  wire        lsu_wready;       // MEM -> LSU
+  wire [31:0] lsu_wdata;        // LSU -> MEM
+  wire [ 3:0] lsu_wstrb;        // LSU -> MEM (写字节使能)
+
+  // --- LSU AXI4-Lite B 通道 (写回复) ---
+  wire        lsu_bvalid;       // MEM -> LSU (也用于通知 IFU store 完成)
+  wire        lsu_bready;       // LSU -> MEM
+  wire [ 1:0] lsu_bresp;        // MEM -> LSU
 
   // 访存地址计算 (组合逻辑)
   wire [31:0] mem_addr;
@@ -125,7 +141,7 @@ module top(
 
   // ========== 模块实例化 ==========
 
-  // IFU - 取指单元 (两状态状态机: IDLE/WAIT, 完整握手)
+  // IFU - 取指单元 (AXI4-Lite: AR + R 通道)
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
@@ -133,14 +149,20 @@ module top(
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
     .rd(rd),
-    .ifu_reqReady(ifu_reqReady),
-    .ifu_respValid(ifu_respValid),
-    .ifu_respReady(ifu_respReady),
-    .lsu_respValid(lsu_respValid),
+    // AXI4-Lite AR 通道
+    .ifu_arready(ifu_arready),
+    .ifu_arvalid(ifu_arvalid),
+    .ifu_araddr(ifu_araddr),
+    // AXI4-Lite R 通道
+    .ifu_rvalid(ifu_rvalid),
+    .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
+    .ifu_rresp(ifu_rresp),
+    // LSU 完成信号
+    .lsu_rvalid(lsu_rvalid),
+    .lsu_bvalid(lsu_bvalid),
+    // 输出
     .pc(pc),
-    .ifu_reqValid(ifu_reqValid),
-    .ifu_raddr(ifu_raddr),
     .inst(inst),
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
@@ -305,7 +327,7 @@ module top(
     .mcycle_out(mcycle_out)
   );
 
-  // LSU - 访存单元
+  // LSU - 访存单元 (AXI4-Lite: 全部 5 个通道)
   LSU u_lsu(
     .clk(clk),
     .rst(rst),
@@ -314,41 +336,66 @@ module top(
     .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
-    // SimpleBus (连接 MEM, 完整握手)
-    .lsu_reqValid(lsu_reqValid),
-    .lsu_reqReady(lsu_reqReady),
-    .lsu_addr(lsu_addr),
-    .lsu_wen(lsu_wen),
-    .lsu_wdata(lsu_wdata),
-    .lsu_wmask(lsu_wmask),
-    .lsu_respValid(lsu_respValid),
-    .lsu_respReady(lsu_respReady),
+    // AXI4-Lite AR 通道
+    .lsu_arvalid(lsu_arvalid),
+    .lsu_arready(lsu_arready),
+    .lsu_araddr(lsu_araddr),
+    // AXI4-Lite R 通道
+    .lsu_rvalid(lsu_rvalid),
+    .lsu_rready(lsu_rready),
     .lsu_rdata(lsu_rdata),
+    .lsu_rresp(lsu_rresp),
+    // AXI4-Lite AW 通道
+    .lsu_awvalid(lsu_awvalid),
+    .lsu_awready(lsu_awready),
+    .lsu_awaddr(lsu_awaddr),
+    // AXI4-Lite W 通道
+    .lsu_wvalid(lsu_wvalid),
+    .lsu_wready(lsu_wready),
+    .lsu_wdata(lsu_wdata),
+    .lsu_wstrb(lsu_wstrb),
+    // AXI4-Lite B 通道
+    .lsu_bvalid(lsu_bvalid),
+    .lsu_bready(lsu_bready),
+    .lsu_bresp(lsu_bresp),
     // 输出
     .rdata(mem_rdata)
   );
 
-  // MEM - 存储器模块 (内部通过 DPI-C 实现, 对外呈现 SimpleBus 完整握手接口)
+  // MEM - 存储器模块 (AXI4-Lite 接口, 内部通过 DPI-C 实现)
   MEM u_mem(
     .clk(clk),
     .rst(rst),
-    // IFU SimpleBus (完整握手)
-    .ifu_reqValid(ifu_reqValid),
-    .ifu_reqReady(ifu_reqReady),
-    .ifu_respValid(ifu_respValid),
-    .ifu_respReady(ifu_respReady),
-    .ifu_raddr(ifu_raddr),
+    // IFU AXI4-Lite (只读: AR + R 通道)
+    .ifu_arvalid(ifu_arvalid),
+    .ifu_arready(ifu_arready),
+    .ifu_araddr(ifu_araddr),
+    .ifu_rvalid(ifu_rvalid),
+    .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
-    // LSU SimpleBus (完整握手)
-    .lsu_reqValid(lsu_reqValid),
-    .lsu_reqReady(lsu_reqReady),
-    .lsu_respValid(lsu_respValid),
-    .lsu_respReady(lsu_respReady),
-    .lsu_addr(lsu_addr),
-    .lsu_wen(lsu_wen),
+    .ifu_rresp(ifu_rresp),
+    // LSU AXI4-Lite AR 通道
+    .lsu_arvalid(lsu_arvalid),
+    .lsu_arready(lsu_arready),
+    .lsu_araddr(lsu_araddr),
+    // LSU AXI4-Lite R 通道
+    .lsu_rvalid(lsu_rvalid),
+    .lsu_rready(lsu_rready),
+    .lsu_rdata(lsu_rdata),
+    .lsu_rresp(lsu_rresp),
+    // LSU AXI4-Lite AW 通道
+    .lsu_awvalid(lsu_awvalid),
+    .lsu_awready(lsu_awready),
+    .lsu_awaddr(lsu_awaddr),
+    // LSU AXI4-Lite W 通道
+    .lsu_wvalid(lsu_wvalid),
+    .lsu_wready(lsu_wready),
     .lsu_wdata(lsu_wdata),
-    .lsu_wmask(lsu_wmask),
-    .lsu_rdata(lsu_rdata)
+    .lsu_wstrb(lsu_wstrb),
+    // LSU AXI4-Lite B 通道
+    .lsu_bvalid(lsu_bvalid),
+    .lsu_bready(lsu_bready),
+    .lsu_bresp(lsu_bresp)
   );
 
   // WBU - 写回单元

@@ -1,35 +1,62 @@
 // MEM - Memory Module with LFSR Random Delay
-// 模拟存储器，内部通过 DPI-C 实现访存，对外呈现 SimpleBus 接口
-// 支持完整握手信号的 SimpleBus 协议: reqValid/reqReady + respValid/respReady
-// 通过 LFSR 随机延迟 reqReady 和 respValid, 用于测试总线实现的鲁棒性
+// 模拟存储器，内部通过 DPI-C 实现访存，对外呈现 AXI4-Lite 接口
+// 支持完整 AXI4-Lite 握手协议
+// 通过 LFSR 随机延迟 arready/awready/wready 和 rvalid/bvalid, 用于测试总线实现的鲁棒性
 //
-// 每通道状态机:
-//   IDLE: reqReady 受 LFSR 随机延迟, 等待 reqValid && reqReady 握手
-//   BUSY: 请求已接受, DPI-C 已完成, respValid 受 LFSR 随机延迟
-//         等待 respValid && respReady 握手完成
+// AXI 握手规则 (防死锁/活锁):
+//   1. valid 不依赖 ready (发送方自主决定)
+//   2. valid 一旦置位必须保持直到握手完成
+//   3. ready 可依赖 valid (接收方可等待)
+//
+// IFU 端口: AR + R 通道 (只读)
+//   IDLE: 等待 arvalid && arready 握手, DPI-C 读
+//   BUSY: LFSR 延迟后 rvalid 握手
+//
+// LSU 端口: AR + R + AW + W + B 通道 (读写)
+//   IDLE:   等待 AR (读) 或 AW+W (写) 握手
+//   R_BUSY: LFSR 延迟后 rvalid 握手
+//   W_BUSY: LFSR 延迟后 bvalid 握手
+//   写路径: AW 和 W 可独立握手, 均完成后触发 DPI-C 写
 
 module MEM(
   input clk,
   input rst,
 
-  // IFU SimpleBus (只读)
-  input         ifu_reqValid,
-  output        ifu_reqReady,
-  output        ifu_respValid,
-  input         ifu_respReady,
-  input  [31:0] ifu_raddr,
+  // ===== IFU AXI4-Lite (只读: AR + R 通道) =====
+  input         ifu_arvalid,
+  output        ifu_arready,
+  input  [31:0] ifu_araddr,
+  output        ifu_rvalid,
+  input         ifu_rready,
   output [31:0] ifu_rdata,
+  output [ 1:0] ifu_rresp,
 
-  // LSU SimpleBus (可读可写)
-  input         lsu_reqValid,
-  output        lsu_reqReady,
-  output        lsu_respValid,
-  input         lsu_respReady,
-  input  [31:0] lsu_addr,
-  input         lsu_wen,
+  // ===== LSU AXI4-Lite AR 通道 (读地址) =====
+  input         lsu_arvalid,
+  output        lsu_arready,
+  input  [31:0] lsu_araddr,
+
+  // ===== LSU AXI4-Lite R 通道 (读数据) =====
+  output        lsu_rvalid,
+  input         lsu_rready,
+  output [31:0] lsu_rdata,
+  output [ 1:0] lsu_rresp,
+
+  // ===== LSU AXI4-Lite AW 通道 (写地址) =====
+  input         lsu_awvalid,
+  output        lsu_awready,
+  input  [31:0] lsu_awaddr,
+
+  // ===== LSU AXI4-Lite W 通道 (写数据) =====
+  input         lsu_wvalid,
+  output        lsu_wready,
   input  [31:0] lsu_wdata,
-  input  [ 3:0] lsu_wmask,
-  output [31:0] lsu_rdata
+  input  [ 3:0] lsu_wstrb,
+
+  // ===== LSU AXI4-Lite B 通道 (写回复) =====
+  output        lsu_bvalid,
+  input         lsu_bready,
+  output [ 1:0] lsu_bresp
 );
 
   import "DPI-C" function int pmem_read(input int raddr);
@@ -44,49 +71,52 @@ module MEM(
   );
 
   // ================================================================
-  // IFU 通道: 完整握手状态机
+  // IFU 通道: AXI4-Lite AR → R (只读)
   // ================================================================
   // 状态编码:
-  //   IDLE(1'b0): 等待 reqValid && reqReady 握手
-  //   BUSY(1'b1): 请求已处理, 等待 respValid && respReady 握手
+  //   IDLE(1'b0): arready 可用 (受 LFSR 延迟), 等待 arvalid && arready
+  //   BUSY(1'b1): DPI-C 读完成, LFSR 延迟后 rvalid 有效, 等待 rvalid && rready
   localparam IFU_IDLE = 1'b0;
   localparam IFU_BUSY = 1'b1;
 
   reg        ifu_state;
   reg [31:0] ifu_rdata_latched;
-  reg [ 3:0] ifu_req_ready_cnt;   // reqReady 延迟计数器 (0=就绪)
-  reg [ 3:0] ifu_resp_delay_cnt;  // respValid 延迟计数器 (0=响应就绪)
+  reg [ 3:0] ifu_req_ready_cnt;   // arready 延迟计数器 (0=就绪)
+  reg [ 3:0] ifu_resp_delay_cnt;  // rvalid 延迟计数器 (0=响应就绪)
 
-  // reqReady: 空闲且延迟计数器归零时, 可以接收新请求
-  assign ifu_reqReady = (ifu_state == IFU_IDLE) && (ifu_req_ready_cnt == 4'd0) && !rst;
+  // arready: 空闲且延迟计数器归零时, 可以接收读地址
+  //   AXI 规则: ready 可依赖 valid (允许), 但这里独立于 valid
+  assign ifu_arready = (ifu_state == IFU_IDLE) && (ifu_req_ready_cnt == 4'd0) && !rst;
 
-  // respValid: BUSY 状态且延迟计数器归零时, 响应有效
-  assign ifu_respValid = (ifu_state == IFU_BUSY) && (ifu_resp_delay_cnt == 4'd0);
+  // rvalid: BUSY 状态且延迟计数器归零时, 读数据有效
+  //   AXI 规则: valid 不依赖 ready
+  assign ifu_rvalid = (ifu_state == IFU_BUSY) && (ifu_resp_delay_cnt == 4'd0);
 
-  // 读数据输出
+  // 读数据和响应 (简单存储器始终返回 OKAY)
   assign ifu_rdata = ifu_rdata_latched;
+  assign ifu_rresp = 2'b00;  // OKAY
 
   always @(posedge clk) begin
     if (rst) begin
-      ifu_state         <= IFU_IDLE;
-      ifu_rdata_latched <= 32'b0;
-      ifu_req_ready_cnt <= 4'd0;
+      ifu_state          <= IFU_IDLE;
+      ifu_rdata_latched  <= 32'b0;
+      ifu_req_ready_cnt  <= 4'd0;
       ifu_resp_delay_cnt <= 4'd0;
     end else begin
-      // reqReady 延迟计数器: 空闲时递减到 0
+      // arready 延迟计数器: 空闲时递减到 0
       if (ifu_state == IFU_IDLE && ifu_req_ready_cnt > 4'd0)
         ifu_req_ready_cnt <= ifu_req_ready_cnt - 4'd1;
 
-      // respValid 延迟计数器: BUSY 时递减到 0
+      // rvalid 延迟计数器: BUSY 时递减到 0
       if (ifu_state == IFU_BUSY && ifu_resp_delay_cnt > 4'd0)
         ifu_resp_delay_cnt <= ifu_resp_delay_cnt - 4'd1;
 
       case (ifu_state)
         IFU_IDLE: begin
-          // 握手: reqValid && reqReady
-          if (ifu_reqValid && ifu_reqReady) begin
-            // 接受请求, 立即调用 DPI-C 完成实际读操作
-            ifu_rdata_latched <= pmem_read(ifu_raddr);
+          // AR 握手: arvalid && arready
+          if (ifu_arvalid && ifu_arready) begin
+            // 接受读地址, 立即调用 DPI-C 完成实际读操作
+            ifu_rdata_latched <= pmem_read(ifu_araddr);
             // 采样 LFSR 决定响应延迟 (1~8 周期)
             ifu_resp_delay_cnt <= {1'b0, lfsr_val[2:0]} + 4'd1;
             ifu_state <= IFU_BUSY;
@@ -94,10 +124,10 @@ module MEM(
         end
 
         IFU_BUSY: begin
-          // 握手: respValid && respReady
-          if (ifu_respValid && ifu_respReady) begin
+          // R 握手: rvalid && rready
+          if (ifu_rvalid && ifu_rready) begin
             // 响应被主设备接受, 准备接收下一个请求
-            // 加载新的 reqReady 延迟 (0~7 周期)
+            // 加载新的 arready 延迟 (0~7 周期)
             ifu_req_ready_cnt <= {1'b0, lfsr_val[5:3]};
             ifu_state <= IFU_IDLE;
           end
@@ -110,57 +140,122 @@ module MEM(
 
 
   // ================================================================
-  // LSU 通道: 完整握手状态机
+  // LSU 通道: AXI4-Lite 全部 5 通道
   // ================================================================
-  localparam LSU_IDLE = 1'b0;
-  localparam LSU_BUSY = 1'b1;
+  // 状态编码:
+  //   LSU_IDLE    (2'b00): 等待读/写请求
+  //   LSU_R_BUSY  (2'b01): 读事务进行中, LFSR 延迟后 rvalid
+  //   LSU_W_BUSY  (2'b10): 写事务进行中, LFSR 延迟后 bvalid
+  localparam LSU_IDLE    = 2'b00;
+  localparam LSU_R_BUSY  = 2'b01;
+  localparam LSU_W_BUSY  = 2'b10;
 
-  reg        lsu_state;
+  reg [ 1:0] lsu_state;
   reg [31:0] lsu_rdata_latched;
-  reg [ 3:0] lsu_req_ready_cnt;
-  reg [ 3:0] lsu_resp_delay_cnt;
+  reg [ 3:0] lsu_req_ready_cnt;   // arready/awready/wready 延迟计数器 (0=就绪)
+  reg [ 3:0] lsu_resp_delay_cnt;  // rvalid/bvalid 延迟计数器 (0=响应就绪)
 
-  assign lsu_reqReady = (lsu_state == LSU_IDLE) && (lsu_req_ready_cnt == 4'd0) && !rst;
-  assign lsu_respValid = (lsu_state == LSU_BUSY) && (lsu_resp_delay_cnt == 4'd0);
+  // 写路径追踪: AW 和 W 可独立握手
+  reg        lsu_aw_done;          // AW 握手已完成
+  reg        lsu_w_done;           // W  握手已完成
+  reg [31:0] lsu_aw_addr_latched;  // 锁存的写地址
+  reg [31:0] lsu_w_data_latched;   // 锁存的写数据
+  reg [ 3:0] lsu_w_strb_latched;   // 锁存的写字节使能
+
+  // ----- arready: IDLE 状态, 计数器归零, 且无写事务进行中 -----
+  assign lsu_arready = (lsu_state == LSU_IDLE) && (lsu_req_ready_cnt == 4'd0)
+                       && !lsu_aw_done && !lsu_w_done && !rst;
+
+  // ----- awready: IDLE 状态, 计数器归零 (或 W 已先完成, 需要地址) -----
+  assign lsu_awready = (lsu_state == LSU_IDLE) && !lsu_aw_done && !rst
+                       && ((lsu_req_ready_cnt == 4'd0) || lsu_w_done);
+
+  // ----- wready: IDLE 状态, 计数器归零 (或 AW 已先完成, 需要数据) -----
+  assign lsu_wready = (lsu_state == LSU_IDLE) && !lsu_w_done && !rst
+                      && ((lsu_req_ready_cnt == 4'd0) || lsu_aw_done);
+
+  // ----- rvalid: R_BUSY 状态且延迟计数器归零 -----
+  assign lsu_rvalid = (lsu_state == LSU_R_BUSY) && (lsu_resp_delay_cnt == 4'd0);
+
+  // ----- bvalid: W_BUSY 状态且延迟计数器归零 -----
+  assign lsu_bvalid = (lsu_state == LSU_W_BUSY) && (lsu_resp_delay_cnt == 4'd0);
+
+  // 读数据和响应
   assign lsu_rdata = lsu_rdata_latched;
+  assign lsu_rresp = 2'b00;  // OKAY
+  assign lsu_bresp = 2'b00;  // OKAY
 
   always @(posedge clk) begin
     if (rst) begin
-      lsu_state         <= LSU_IDLE;
-      lsu_rdata_latched <= 32'b0;
-      lsu_req_ready_cnt <= 4'd0;
-      lsu_resp_delay_cnt <= 4'd0;
+      lsu_state           <= LSU_IDLE;
+      lsu_rdata_latched   <= 32'b0;
+      lsu_req_ready_cnt   <= 4'd0;
+      lsu_resp_delay_cnt  <= 4'd0;
+      lsu_aw_done         <= 1'b0;
+      lsu_w_done          <= 1'b0;
+      lsu_aw_addr_latched <= 32'b0;
+      lsu_w_data_latched  <= 32'b0;
+      lsu_w_strb_latched  <= 4'b0;
     end else begin
-      // reqReady 延迟计数器
+      // reqReady 延迟计数器: IDLE 时递减到 0
       if (lsu_state == LSU_IDLE && lsu_req_ready_cnt > 4'd0)
         lsu_req_ready_cnt <= lsu_req_ready_cnt - 4'd1;
 
-      // respValid 延迟计数器
-      if (lsu_state == LSU_BUSY && lsu_resp_delay_cnt > 4'd0)
+      // 响应延迟计数器: BUSY 时递减到 0
+      if ((lsu_state == LSU_R_BUSY || lsu_state == LSU_W_BUSY) && lsu_resp_delay_cnt > 4'd0)
         lsu_resp_delay_cnt <= lsu_resp_delay_cnt - 4'd1;
 
       case (lsu_state)
         LSU_IDLE: begin
-          // 握手: reqValid && reqReady
-          if (lsu_reqValid && lsu_reqReady) begin
-            if (!lsu_wen) begin
-              // 读操作: 立即调用 pmem_read, 锁存数据
-              lsu_rdata_latched <= pmem_read(lsu_addr);
-            end else begin
-              // 写操作: 立即调用 pmem_write
-              pmem_write(lsu_addr, lsu_wdata, {4'b0, lsu_wmask});
-              lsu_rdata_latched <= 32'b0;
-            end
+          // ----- 读事务: AR 握手 -----
+          if (lsu_arvalid && lsu_arready) begin
+            // 接受读地址, 立即调用 DPI-C 完成实际读操作
+            lsu_rdata_latched <= pmem_read(lsu_araddr);
             // 采样 LFSR 决定响应延迟 (1~8 周期)
             lsu_resp_delay_cnt <= {1'b0, lfsr_val[2:0]} + 4'd1;
-            lsu_state <= LSU_BUSY;
+            lsu_state <= LSU_R_BUSY;
+          end
+          // ----- 写事务: AW 和 W 握手追踪 -----
+          else begin
+            // AW 握手
+            if (lsu_awvalid && lsu_awready && !lsu_aw_done) begin
+              lsu_aw_addr_latched <= lsu_awaddr;
+              lsu_aw_done <= 1'b1;
+            end
+
+            // W 握手
+            if (lsu_wvalid && lsu_wready && !lsu_w_done) begin
+              lsu_w_data_latched <= lsu_wdata;
+              lsu_w_strb_latched <= lsu_wstrb;
+              lsu_w_done <= 1'b1;
+            end
+
+            // 当 AW 和 W 均完成时, 触发 DPI-C 写
+            // (使用寄存器值判断, 确保在握手完成后的下一周期触发)
+            if (lsu_aw_done && lsu_w_done) begin
+              pmem_write(lsu_aw_addr_latched, lsu_w_data_latched, {4'b0, lsu_w_strb_latched});
+              // 采样 LFSR 决定 B 响应延迟 (1~8 周期)
+              lsu_resp_delay_cnt <= {1'b0, lfsr_val[2:0]} + 4'd1;
+              lsu_state    <= LSU_W_BUSY;
+              lsu_aw_done  <= 1'b0;
+              lsu_w_done   <= 1'b0;
+            end
           end
         end
 
-        LSU_BUSY: begin
-          // 握手: respValid && respReady
-          if (lsu_respValid && lsu_respReady) begin
+        LSU_R_BUSY: begin
+          // R 握手: rvalid && rready
+          if (lsu_rvalid && lsu_rready) begin
             // 响应被主设备接受, 加载新的 reqReady 延迟 (0~7 周期)
+            lsu_req_ready_cnt <= {1'b0, lfsr_val[5:3]};
+            lsu_state <= LSU_IDLE;
+          end
+        end
+
+        LSU_W_BUSY: begin
+          // B 握手: bvalid && bready
+          if (lsu_bvalid && lsu_bready) begin
+            // 写回复被主设备接受, 加载新的 reqReady 延迟 (0~7 周期)
             lsu_req_ready_cnt <= {1'b0, lfsr_val[5:3]};
             lsu_state <= LSU_IDLE;
           end
