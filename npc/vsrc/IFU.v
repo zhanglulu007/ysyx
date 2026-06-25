@@ -37,11 +37,19 @@ module IFU(
   output insdone
 );
 
-  assign insdone = (state == WAIT) && (
+  wire insdone_comb;
+  assign insdone_comb = (state == WAIT) && (
     (!lsu_pending && ifu_rvalid && ifu_rready && !mem_valid) ||   // 非访存指令完成
     (lsu_pending && is_load_pending && lsu_rvalid) ||             // load 完成
     (lsu_pending && !is_load_pending && lsu_bvalid)               // store 完成
   );
+
+  always @(posedge clk) begin
+    if (rst)
+        insdone <= 1'b0;
+    else
+        insdone <= insdone_comb;
+  end
 
   // DPI-C函数：通知C++侧
   import "DPI-C" function void update_pc_value(input int pc_val);
