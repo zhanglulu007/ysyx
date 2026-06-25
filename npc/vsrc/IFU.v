@@ -133,14 +133,6 @@ module IFU(
             // ifu_rready 在本状态且 !lsu_pending 时恒为 1
             update_inst_value(pc, ifu_rdata);
 
-            // 判断当前指令是否为访存指令
-            // 注意: 此时 inst = ifu_rdata (已更新为真实指令)
-            // 直接用 inst 字段判断, 而不依赖 IDU 输出的 mem_valid
-            wire [6:0] cur_opcode = ifu_rdata[6:0];
-            wire is_load_inst  = (cur_opcode == 7'b0000011);  // Load opcode
-            wire is_store_inst = (cur_opcode == 7'b0100011);  // Store opcode
-            wire is_mem_inst   = is_load_inst || is_store_inst;
-
             if (is_mem_inst) begin
               // Load 或 Store: 需要等待 LSU 完成
               // LSU 请求在本周期已发送 (mem_valid/mem_wen 由 IDU 组合逻辑产生)
