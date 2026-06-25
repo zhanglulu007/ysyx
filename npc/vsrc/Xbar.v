@@ -155,9 +155,9 @@ module Xbar(
                      (aw_is_uart ? uart_wready :
                       aw_is_mem  ? mem_wready  : 1'b1);  // error 情况也接受
 
-  assign uart_wvalid = m_wvalid && ((write_active && write_sel_uart) ||
+  assign uart_wvalid = m_wvalid && ((write_active && write_sel_uart && !write_is_error) ||
                                     (!write_active && aw_is_uart)) && !rst;
-  assign mem_wvalid  = m_wvalid && ((write_active && !write_sel_uart) ||
+  assign mem_wvalid  = m_wvalid && ((write_active && !write_sel_uart && !write_is_error) ||
                                     (!write_active && aw_is_mem)) && !rst;
 
   assign uart_wdata = m_wdata;
