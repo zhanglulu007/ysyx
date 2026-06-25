@@ -1,8 +1,8 @@
 // NPC - RV32E processor (Modular Design)
 // 模块化设计：将处理器拆分为IFU、IDU、EXU、LSU、WBU等模块
-// SimpleBus 协议: 支持有效信号 reqValid/respValid
+// SimpleBus 协议: 支持完整握手信号 reqValid/reqReady + respValid/respReady
 // 两状态状态机: IDLE / WAIT
-// 单周期设计: 非访存指令 2 周期, load/store 3 周期
+// 多周期设计: 非访存指令 2+ 周期, load/store 3+ 周期
 
 module top(
   input clk,
@@ -85,14 +85,18 @@ module top(
   wire lsu_reqValid;
   wire lsu_respValid;
 
-  // SimpleBus 连接信号
+  // SimpleBus 连接信号 (完整握手)
   wire [31:0] ifu_raddr;       // IFU -> MEM
   wire [31:0] ifu_rdata;       // MEM -> IFU
+  wire        ifu_reqReady;    // MEM -> IFU: 从设备就绪
+  wire        ifu_respReady;   // IFU -> MEM: 主设备就绪
   wire [31:0] lsu_addr;        // LSU -> MEM
   wire        lsu_wen;         // LSU -> MEM
   wire [31:0] lsu_wdata;       // LSU -> MEM
   wire [ 3:0] lsu_wmask;       // LSU -> MEM
   wire [31:0] lsu_rdata;       // MEM -> LSU
+  wire        lsu_reqReady;    // MEM -> LSU: 从设备就绪
+  wire        lsu_respReady;   // LSU -> MEM: 主设备就绪
 
   // WBU输出
   wire [31:0] rd_data;
@@ -121,7 +125,7 @@ module top(
 
   // ========== 模块实例化 ==========
 
-  // IFU - 取指单元 (两状态状态机: IDLE/WAIT)
+  // IFU - 取指单元 (两状态状态机: IDLE/WAIT, 完整握手)
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
@@ -129,7 +133,9 @@ module top(
     .mem_valid(mem_valid),
     .mem_wen(mem_wen),
     .rd(rd),
+    .ifu_reqReady(ifu_reqReady),
     .ifu_respValid(ifu_respValid),
+    .ifu_respReady(ifu_respReady),
     .lsu_respValid(lsu_respValid),
     .ifu_rdata(ifu_rdata),
     .pc(pc),
@@ -308,30 +314,36 @@ module top(
     .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
-    // SimpleBus (连接 MEM)
+    // SimpleBus (连接 MEM, 完整握手)
     .lsu_reqValid(lsu_reqValid),
+    .lsu_reqReady(lsu_reqReady),
     .lsu_addr(lsu_addr),
     .lsu_wen(lsu_wen),
     .lsu_wdata(lsu_wdata),
     .lsu_wmask(lsu_wmask),
     .lsu_respValid(lsu_respValid),
+    .lsu_respReady(lsu_respReady),
     .lsu_rdata(lsu_rdata),
     // 输出
     .rdata(mem_rdata)
   );
 
-  // MEM - 存储器模块 (内部通过 DPI-C 实现, 对外呈现 SimpleBus 接口)
+  // MEM - 存储器模块 (内部通过 DPI-C 实现, 对外呈现 SimpleBus 完整握手接口)
   MEM u_mem(
     .clk(clk),
     .rst(rst),
-    // IFU SimpleBus
+    // IFU SimpleBus (完整握手)
     .ifu_reqValid(ifu_reqValid),
+    .ifu_reqReady(ifu_reqReady),
     .ifu_respValid(ifu_respValid),
+    .ifu_respReady(ifu_respReady),
     .ifu_raddr(ifu_raddr),
     .ifu_rdata(ifu_rdata),
-    // LSU SimpleBus
+    // LSU SimpleBus (完整握手)
     .lsu_reqValid(lsu_reqValid),
+    .lsu_reqReady(lsu_reqReady),
     .lsu_respValid(lsu_respValid),
+    .lsu_respReady(lsu_respReady),
     .lsu_addr(lsu_addr),
     .lsu_wen(lsu_wen),
     .lsu_wdata(lsu_wdata),
