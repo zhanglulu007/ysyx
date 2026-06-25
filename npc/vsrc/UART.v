@@ -102,6 +102,7 @@ module UART(
       latched_wdata  <= 32'b0;
       latched_wstrb  <= 4'b0;
       latched_rdata  <= 32'b0;
+      logged_araddr  <= 32'b0;
     end else begin
       case (state)
         IDLE: begin
@@ -127,12 +128,20 @@ module UART(
 
               // 调用 DPI-C: 使用锁存值或当前值
               if (aw_completing && w_completing) begin
+                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                       uart_wdata[7:0], uart_wdata[7:0], uart_awaddr);
                 pmem_write(uart_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else if (aw_completing) begin
+                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                       latched_wdata[7:0], latched_wdata[7:0], uart_awaddr);
                 pmem_write(uart_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end else if (w_completing) begin
+                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                       uart_wdata[7:0], uart_wdata[7:0], latched_awaddr);
                 pmem_write(latched_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else begin
+                $write("[UART] write char='%c' (0x%02x) addr=0x%08x\n",
+                       latched_wdata[7:0], latched_wdata[7:0], latched_awaddr);
                 pmem_write(latched_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end
 
