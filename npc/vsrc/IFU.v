@@ -82,7 +82,7 @@ module IFU(
   // inst: 有效指令或 NOP
   //   - 当 ifu_valid=1 时输出真实指令
   //   - 当等待 LSU 时输出 NOP (防止 IDU 重复译码 load/store)
-  assign inst = ifu_rdata;  // nop = addi x0, x0, 0
+  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop = addi x0, x0, 0
 
   // load_wb: 当 MEM 返回 load 数据时触发写回 (组合逻辑)
   //   AXI4-Lite: R 通道握手完成即 load 数据有效
