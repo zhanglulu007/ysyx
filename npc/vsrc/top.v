@@ -90,7 +90,7 @@ module top(
   wire mret_en;
 
   // ===================================================================
-  // AXI4-Lite 总线连接信号 (IFU/LSU → Arbiter → MEM)
+  // AXI4-Lite 总线连接信号 (IFU/LSU → Arbiter → Xbar → UART/MEM)
   // ===================================================================
 
   // --- IFU <-> Arbiter (Master 0, 只读: AR + R) ---
@@ -126,7 +126,55 @@ module top(
   wire        lsu_bready;
   wire [ 1:0] lsu_bresp;
 
-  // --- Arbiter <-> MEM (单一 Slave 接口) ---
+  // --- Arbiter <-> Xbar (单一 Master 接口) ---
+  // AR
+  wire        xbar_arvalid;
+  wire        xbar_arready;
+  wire [31:0] xbar_araddr;
+  // R
+  wire        xbar_rvalid;
+  wire        xbar_rready;
+  wire [31:0] xbar_rdata;
+  wire [ 1:0] xbar_rresp;
+  // AW
+  wire        xbar_awvalid;
+  wire        xbar_awready;
+  wire [31:0] xbar_awaddr;
+  // W
+  wire        xbar_wvalid;
+  wire        xbar_wready;
+  wire [31:0] xbar_wdata;
+  wire [ 3:0] xbar_wstrb;
+  // B
+  wire        xbar_bvalid;
+  wire        xbar_bready;
+  wire [ 1:0] xbar_bresp;
+
+  // --- Xbar <-> UART (Slave 0) ---
+  // AR
+  wire        uart_arvalid;
+  wire        uart_arready;
+  wire [31:0] uart_araddr;
+  // R
+  wire        uart_rvalid;
+  wire        uart_rready;
+  wire [31:0] uart_rdata;
+  wire [ 1:0] uart_rresp;
+  // AW
+  wire        uart_awvalid;
+  wire        uart_awready;
+  wire [31:0] uart_awaddr;
+  // W
+  wire        uart_wvalid;
+  wire        uart_wready;
+  wire [31:0] uart_wdata;
+  wire [ 3:0] uart_wstrb;
+  // B
+  wire        uart_bvalid;
+  wire        uart_bready;
+  wire [ 1:0] uart_bresp;
+
+  // --- Xbar <-> MEM (Slave 1) ---
   // AR
   wire        mem_arvalid;
   wire        mem_arready;
@@ -390,7 +438,7 @@ module top(
     .rdata(lsu_mem_rdata)
   );
 
-  // AXIArbiter - AXI4-Lite 仲裁器 (IFU + LSU → MEM)
+  // AXIArbiter - AXI4-Lite 仲裁器 (IFU + LSU → Xbar)
   AXIArbiter u_arbiter(
     .clk(clk),
     .rst(rst),
@@ -420,7 +468,67 @@ module top(
     .lsu_bvalid(lsu_bvalid),
     .lsu_bready(lsu_bready),
     .lsu_bresp(lsu_bresp),
-    // Slave: MEM
+    // Slave: Xbar
+    .mem_arvalid(xbar_arvalid),
+    .mem_arready(xbar_arready),
+    .mem_araddr(xbar_araddr),
+    .mem_rvalid(xbar_rvalid),
+    .mem_rready(xbar_rready),
+    .mem_rdata(xbar_rdata),
+    .mem_rresp(xbar_rresp),
+    .mem_awvalid(xbar_awvalid),
+    .mem_awready(xbar_awready),
+    .mem_awaddr(xbar_awaddr),
+    .mem_wvalid(xbar_wvalid),
+    .mem_wready(xbar_wready),
+    .mem_wdata(xbar_wdata),
+    .mem_wstrb(xbar_wstrb),
+    .mem_bvalid(xbar_bvalid),
+    .mem_bready(xbar_bready),
+    .mem_bresp(xbar_bresp)
+  );
+
+  // Xbar - AXI4-Lite Crossbar (根据地址转发到 UART 或 MEM)
+  Xbar u_xbar(
+    .clk(clk),
+    .rst(rst),
+    // Master (来自 Arbiter)
+    .master_arvalid(xbar_arvalid),
+    .master_arready(xbar_arready),
+    .master_araddr(xbar_araddr),
+    .master_rvalid(xbar_rvalid),
+    .master_rready(xbar_rready),
+    .master_rdata(xbar_rdata),
+    .master_rresp(xbar_rresp),
+    .master_awvalid(xbar_awvalid),
+    .master_awready(xbar_awready),
+    .master_awaddr(xbar_awaddr),
+    .master_wvalid(xbar_wvalid),
+    .master_wready(xbar_wready),
+    .master_wdata(xbar_wdata),
+    .master_wstrb(xbar_wstrb),
+    .master_bvalid(xbar_bvalid),
+    .master_bready(xbar_bready),
+    .master_bresp(xbar_bresp),
+    // Slave 0: UART
+    .uart_arvalid(uart_arvalid),
+    .uart_arready(uart_arready),
+    .uart_araddr(uart_araddr),
+    .uart_rvalid(uart_rvalid),
+    .uart_rready(uart_rready),
+    .uart_rdata(uart_rdata),
+    .uart_rresp(uart_rresp),
+    .uart_awvalid(uart_awvalid),
+    .uart_awready(uart_awready),
+    .uart_awaddr(uart_awaddr),
+    .uart_wvalid(uart_wvalid),
+    .uart_wready(uart_wready),
+    .uart_wdata(uart_wdata),
+    .uart_wstrb(uart_wstrb),
+    .uart_bvalid(uart_bvalid),
+    .uart_bready(uart_bready),
+    .uart_bresp(uart_bresp),
+    // Slave 1: MEM
     .mem_arvalid(mem_arvalid),
     .mem_arready(mem_arready),
     .mem_araddr(mem_araddr),
@@ -438,6 +546,34 @@ module top(
     .mem_bvalid(mem_bvalid),
     .mem_bready(mem_bready),
     .mem_bresp(mem_bresp)
+  );
+
+  // UART - AXI4-Lite UART 设备模块
+  UART u_uart(
+    .clk(clk),
+    .rst(rst),
+    // AR 通道
+    .uart_arvalid(uart_arvalid),
+    .uart_arready(uart_arready),
+    .uart_araddr(uart_araddr),
+    // R 通道
+    .uart_rvalid(uart_rvalid),
+    .uart_rready(uart_rready),
+    .uart_rdata(uart_rdata),
+    .uart_rresp(uart_rresp),
+    // AW 通道
+    .uart_awvalid(uart_awvalid),
+    .uart_awready(uart_awready),
+    .uart_awaddr(uart_awaddr),
+    // W 通道
+    .uart_wvalid(uart_wvalid),
+    .uart_wready(uart_wready),
+    .uart_wdata(uart_wdata),
+    .uart_wstrb(uart_wstrb),
+    // B 通道
+    .uart_bvalid(uart_bvalid),
+    .uart_bready(uart_bready),
+    .uart_bresp(uart_bresp)
   );
 
   // MEM - 存储器模块 (单一 AXI4-Lite 接口, 内部通过 DPI-C 实现)
