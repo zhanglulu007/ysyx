@@ -3,7 +3,8 @@
 
 module IDU(
   input [31:0] inst,          // 输入指令
-  
+  input ifu_valid,             // 取指有效信号
+
   // 指令字段
   output [6:0] opcode,
   output [4:0] rd,
@@ -170,16 +171,16 @@ module IDU(
   wire is_u_type = is_lui || is_auipc;
   wire is_csr = is_csrrw || is_csrrs;
   
-  assign reg_wen = ((is_r_type || is_i_arith || is_load || is_jump || is_u_type || is_csr) && (rd != 5'b0));
+  assign reg_wen = ifu_valid && ((is_r_type || is_i_arith || is_load || is_jump || is_u_type || is_csr) && (rd != 5'b0));
   
   // 访存有效：所有加载和存储指令
   wire is_store = is_sb || is_sh || is_sw;
-  assign mem_valid = is_load || is_store;
+  assign mem_valid = ifu_valid && (is_load || is_store);
   
   // 存储器写使能：所有存储指令
-  assign mem_wen = is_store;
+  assign mem_wen = ifu_valid && is_store;
   
   // CSR写使能：csrrw总是写，csrrs当rs1!=0时写
-  assign csr_wen = is_csrrw || (is_csrrs && (rs1 != 5'b0));
+  assign csr_wen = ifu_valid && (is_csrrw || (is_csrrs && (rs1 != 5'b0)));
 
 endmodule
