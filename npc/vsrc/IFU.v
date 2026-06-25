@@ -50,12 +50,6 @@ module IFU(
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
-  // 判断当前指令类型 (组合逻辑)
-  wire [6:0] cur_opcode = ifu_rdata[6:0];
-  wire is_load_inst  = (cur_opcode == 7'b0000011);  // Load opcode
-  wire is_store_inst = (cur_opcode == 7'b0100011);  // Store opcode
-  wire is_mem_inst   = is_load_inst || is_store_inst;
-
   // ifu_araddr 恒等于 pc, MEM 仅在 arvalid 有效时采样
   assign ifu_araddr = pc;
 
@@ -133,11 +127,11 @@ module IFU(
             // ifu_rready 在本状态且 !lsu_pending 时恒为 1
             update_inst_value(pc, ifu_rdata);
 
-            if (is_mem_inst) begin
+            if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
               // LSU 请求在本周期已发送 (mem_valid/mem_wen 由 IDU 组合逻辑产生)
               lsu_pending     <= 1'b1;
-              is_load_pending <= is_load_inst;  // load=1, store=0
+              is_load_pending <= !mem_wen;  // mem_wen=0 -> load, mem_wen=1 -> store
               load_rd_saved   <= rd;
               // 保持 WAIT 状态 (注意: 下周期 ifu_rready 变 0, 防止误收)
             end else begin
