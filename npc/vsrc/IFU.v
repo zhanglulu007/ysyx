@@ -1,8 +1,6 @@
 // IFU - Instruction Fetch Unit
-// 取指单元：通过 AXI4-Lite 从 MEM 模块取指令
-// AXI4-Lite 协议: AR 通道 (读地址) + R 通道 (读数据)
-// IFU 只读, AW/W/B 通道无需连接
-// 两状态状态机: IDLE (等待arready握手) / WAIT (等待rvalid握手, 执行指令)
+// 取指单元：通过 AXI4-Lite 从 MEM 模块取指令 (通过仲裁器)
+// 两状态状态机: IDLE (等待arready握手) / WAIT (等待rvalid握手/指令执行完成)
 
 module IFU(
   input clk,
@@ -13,19 +11,19 @@ module IFU(
   input [4:0] rd,              // 目的寄存器 (来自IDU)
 
   // ===== AXI4-Lite AR 通道 (读地址) =====
-  input  ifu_arready,          // MEM -> IFU: 从设备就绪接收读地址
-  output ifu_arvalid,          // IFU -> MEM: 读地址有效
-  output [31:0] ifu_araddr,    // IFU -> MEM: 读地址
+  input  ifu_arready,          
+  output ifu_arvalid,          
+  output [31:0] ifu_araddr,    
 
   // ===== AXI4-Lite R 通道 (读数据) =====
-  input  ifu_rvalid,           // MEM -> IFU: 读数据有效
-  output ifu_rready,           // IFU -> MEM: 主设备就绪接收读数据
-  input  [31:0] ifu_rdata,     // MEM -> IFU: 读出的指令
-  input  [ 1:0] ifu_rresp,     // MEM -> IFU: 读响应状态
+  input  ifu_rvalid,           
+  output ifu_rready,           
+  input  [31:0] ifu_rdata,     
+  input  [ 1:0] ifu_rresp,     
 
   // ===== LSU 完成信号 (来自 MEM 的 R/B 通道) =====
-  input  lsu_rvalid,           // MEM -> LSU R 通道 valid (load 完成)
-  input  lsu_bvalid,           // MEM -> LSU B 通道 valid (store 完成)
+  input  lsu_rvalid,           
+  input  lsu_bvalid,           
 
   // ===== 输出 =====
   output reg [31:0] pc,        // 当前PC
@@ -84,7 +82,7 @@ module IFU(
   // inst: 有效指令或 NOP
   //   - 当 ifu_valid=1 时输出真实指令
   //   - 当等待 LSU 时输出 NOP (防止 IDU 重复译码 load/store)
-  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop = addi x0, x0, 0
+  assign inst = ifu_rdata;  // nop = addi x0, x0, 0
 
   // load_wb: 当 MEM 返回 load 数据时触发写回 (组合逻辑)
   //   AXI4-Lite: R 通道握手完成即 load 数据有效

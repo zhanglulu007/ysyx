@@ -1,23 +1,9 @@
 // AXIArbiter - AXI4-Lite 仲裁器
-// 在多个 AXI4-Lite master 之间仲裁, 选择一个与单一 slave 通信
-//
-// 功能 (讲义 B1 第 703-718 行):
-//   1. 调度: 选择一个正在发送有效请求的 master (固定优先级: IFU > LSU)
-//   2. 阻塞: 阻塞其他 master 的访问 (将其 ready 信号置 0)
-//   3. 转发: 将获得访问权的 master 的请求转发给 slave,
-//            并将 slave 的响应转发回该 master
-//
-// AXI 握手规则 (防死锁/活锁):
-//   1. valid 不依赖 ready (发送方自主决定)
-//   2. valid 一旦置位必须保持直到握手完成
-//   3. ready 可依赖 valid (接收方可等待)
 //
 // 状态机:
 //   IDLE: 无 master 获得授权, 检测请求
 //   BUSY: 已授权某个 master, 转发其事务直到完成
 //
-// 组合逻辑授权: IDLE 状态下若检测到请求, 组合同步授权,
-// 实现零周期延迟转发 (请求到达的同一周期即可转发给 slave)
 
 module AXIArbiter(
   input clk,
@@ -83,9 +69,8 @@ module AXIArbiter(
   input  [ 1:0] mem_bresp
 );
 
-  // ========== 状态机 ==========
-  localparam IDLE = 1'b0;  // 等待请求
-  localparam BUSY = 1'b1;  // 事务进行中
+  localparam IDLE = 1'b0 , BUSY = 1'b1;
+  localparam IFU = 1'b0 , LSU = 1'b1;  
 
   reg state;
   reg grant;          // 0 = IFU, 1 = LSU
@@ -97,12 +82,8 @@ module AXIArbiter(
 
   // ========== 组合逻辑授权 (IDLE 时零周期转发) ==========
   // 固定优先级: IFU > LSU
-  // IDLE 状态时, 若有请求立即组合授权
-  // BUSY 状态时, 根据已注册的 grant 授权
-  wire ifu_granted = (state == IDLE && ifu_req && !rst) ||
-                     (state == BUSY && grant == 1'b0);
-  wire lsu_granted = (state == IDLE && lsu_req && !ifu_req && !rst) ||
-                     (state == BUSY && grant == 1'b1);
+  wire ifu_granted = (state == IDLE && ifu_req && !rst) || (state == BUSY && grant == IFU);
+  wire lsu_granted = (state == IDLE && lsu_req && !ifu_req && !rst) || (state == BUSY && grant == LSU);
 
   // ========== AR 通道转发 ==========
   // Master → Slave
@@ -127,26 +108,21 @@ module AXIArbiter(
   assign mem_rready = ifu_granted ? ifu_rready :
                       lsu_granted ? lsu_rready : 1'b0;
 
-  // ========== AW 通道转发 (仅 LSU) ==========
+  // ========== AW , W , B 通道转发 (仅 LSU) ==========
   assign mem_awvalid = lsu_granted ? lsu_awvalid : 1'b0;
   assign mem_awaddr  = lsu_awaddr;
   assign lsu_awready = lsu_granted ? mem_awready : 1'b0;
 
-  // ========== W 通道转发 (仅 LSU) ==========
   assign mem_wvalid = lsu_granted ? lsu_wvalid : 1'b0;
   assign mem_wdata  = lsu_wdata;
   assign mem_wstrb  = lsu_wstrb;
   assign lsu_wready = lsu_granted ? mem_wready : 1'b0;
 
-  // ========== B 通道转发 (仅 LSU) ==========
   assign lsu_bvalid = lsu_granted ? mem_bvalid : 1'b0;
   assign lsu_bresp  = mem_bresp;
   assign mem_bready = lsu_granted ? lsu_bready : 1'b0;
 
   // ========== 事务完成检测 ==========
-  // IFU: 读事务完成 = R 通道握手
-  // LSU 读: 完成 = R 通道握手
-  // LSU 写: 完成 = B 通道握手
   wire ifu_done  = mem_rvalid && mem_rready;
   wire lsu_done  = lsu_is_read ? (mem_rvalid && mem_rready)
                                : (mem_bvalid && mem_bready);
@@ -155,33 +131,29 @@ module AXIArbiter(
   always @(posedge clk) begin
     if (rst) begin
       state       <= IDLE;
-      grant       <= 1'b0;
+      grant       <= IFU;
       lsu_is_read <= 1'b0;
     end else begin
       case (state)
         IDLE: begin
           if (ifu_req) begin
-            // IFU 请求 (固定优先级更高)
             state       <= BUSY;
-            grant       <= 1'b0;  // IFU
+            grant       <= IFU;  
             // IFU 只读, lsu_is_read 无关
           end else if (lsu_req) begin
-            // LSU 请求
             state <= BUSY;
-            grant <= 1'b1;  // LSU
+            grant <= LSU;  
             // 记录事务类型: arvalid 有效 = 读, 否则 = 写
             lsu_is_read <= lsu_arvalid && !lsu_awvalid;
           end
         end
 
         BUSY: begin
-          if (grant == 1'b0) begin
-            // IFU 授权中
+          if (grant == IFU) begin
             if (ifu_done) begin
               state <= IDLE;
             end
           end else begin
-            // LSU 授权中
             if (lsu_done) begin
               state <= IDLE;
               lsu_is_read <= 1'b0;

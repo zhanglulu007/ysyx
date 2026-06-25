@@ -21,7 +21,7 @@ module CSR(
   output [31:0] mepc_out,     // mepc寄存器输出（用于mret返回）
   output [31:0] mtvec_out,   // mtvec寄存器输出（异常入口地址）
 
-  output [63:0] mcycle_out
+  output [63:0] mcycle_out  // 周期计数输出
 );
 
   // ========== CSR寄存器定义 ==========
