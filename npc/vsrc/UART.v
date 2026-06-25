@@ -68,6 +68,9 @@ module UART(
   // 读数据锁存 (DPI-C 调用后保存)
   reg [31:0] latched_rdata;
 
+  // 读地址锁存 (用于日志输出)
+  reg [31:0] logged_araddr;
+
   // ========== 组合逻辑: 检测 AW/W 是否在本周期完成 ==========
   wire aw_completing = (state == IDLE) && uart_awvalid && uart_awready && !aw_done;
   wire w_completing  = (state == IDLE) && uart_wvalid  && uart_wready  && !w_done;
@@ -106,6 +109,7 @@ module UART(
           if (uart_arvalid && uart_arready) begin
             // 握手成功, 通过 DPI-C 读取数据
             latched_rdata <= pmem_read(uart_araddr);
+            $write("[UART] read  addr=0x%08x -> data=0x%08x\n", uart_araddr, pmem_read(uart_araddr));
             state <= R_BUSY;
           end
           // ----- 写事务: AW 和 W 握手追踪 -----
