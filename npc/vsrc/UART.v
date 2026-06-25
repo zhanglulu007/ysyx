@@ -176,7 +176,7 @@ module UART(
           // B 握手: bvalid && bready
           if (uart_bvalid && uart_bready) begin
             //$write("[UART] write done  addr=0x%08x data=0x%08x strb=%b\n",
-                   latched_awaddr, latched_wdata, latched_wstrb);
+             //      latched_awaddr, latched_wdata, latched_wstrb);
             state <= IDLE;
           end
         end
