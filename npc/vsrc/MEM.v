@@ -2,11 +2,6 @@
 // 模拟存储器，内部通过 DPI-C 实现访存，对外呈现单一 AXI4-Lite 接口
 // 通过 LFSR 随机延迟 arready/awready/wready 和 rvalid/bvalid, 用于测试总线实现的鲁棒性
 //
-// AXI 握手规则 (防死锁/活锁):
-//   1. valid 不依赖 ready (发送方自主决定)
-//   2. valid 一旦置位必须保持直到握手完成
-//   3. ready 可依赖 valid (接收方可等待)
-//
 // 状态机:
 //   IDLE:    等待 AR (读) 或 AW+W (写) 握手
 //   R_BUSY:  DPI-C 读完成, LFSR 延迟后 rvalid 握手

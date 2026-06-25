@@ -1,17 +1,5 @@
 // LSU - Load-Store Unit
 // 访存单元：通过 AXI4-Lite 与 MEM 模块交互
-// AXI4-Lite 协议: 5 个独立通道
-//   - AR 通道 (读地址): arvalid/arready/araddr
-//   - R  通道 (读数据): rvalid/rready/rdata/rresp
-//   - AW 通道 (写地址): awvalid/awready/awaddr
-//   - W  通道 (写数据): wvalid/wready/wdata/wstrb
-//   - B  通道 (写回复): bvalid/bready/bresp
-//
-// AXI 握手规则:
-//   1. valid 不依赖 ready (防死锁)
-//   2. valid 一旦置位必须保持直到握手完成 (防活锁)
-//
-// 内部状态机:
 //   L_IDLE:      等待 IDU 发出访存请求 (mem_valid)
 //   L_WAIT_AR:   等待 arready 握手 (读地址)
 //   L_WAIT_R:    等待 rvalid 握手 (读数据), rready=1

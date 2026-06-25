@@ -1,19 +1,3 @@
-// UART - AXI4-Lite UART Slave Module (测试用)
-// 通过 AXI4-Lite 接口 + DPI-C 实现设备读写
-// 地址空间: [0x1000_0000, 0x1000_0fff)
-// 写操作: 通过 DPI-C pmem_write 将数据写入 C++ 仿真层 (SERIAL_PORT → putchar)
-// 读操作: 通过 DPI-C pmem_read 从 C++ 仿真层读取
-//
-// AXI 握手规则:
-//   1. valid 不依赖 ready
-//   2. valid 一旦置位必须保持直到握手完成
-//   3. ready 可依赖 valid
-//
-// 状态机:
-//   IDLE:   等待 AR (读) 或 AW+W (写) 请求
-//   R_BUSY: 读事务, DPI-C 已调用, 等待 rvalid 握手
-//   W_BUSY: 写事务, DPI-C 已调用, 等待 bvalid 握手
-
 module UART(
   input clk,
   input rst,

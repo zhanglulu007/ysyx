@@ -1,18 +1,5 @@
 // Xbar - AXI4-Lite Crossbar (地址译码 + 多路开关)
 // 1 个 master 端口 (来自 Arbiter) → 2 个 slave 端口 (UART, MEM)
-// 根据请求地址将事务路由到对应的 slave:
-//   UART: [0x1000_0000, 0x1000_0fff)
-//   MEM:  其余所有地址
-//
-// AXI 握手规则:
-//   1. valid 不依赖 ready
-//   2. valid 一旦置位必须保持直到握手完成
-//   3. ready 可依赖 valid
-//
-// 关键设计: master 端 ready 必须等 slave 端 ready, 否则请求会在 Xbar 丢失
-//   - m_arready 依赖选中 slave 的 arready
-//   - m_awready 依赖选中 slave 的 awready
-//   - m_wready  依赖选中 slave 的 wready (写激活后)
 
 module Xbar(
   input clk,
