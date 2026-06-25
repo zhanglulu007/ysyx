@@ -88,17 +88,13 @@ module IFU(
 
         WAIT: begin
           if (lsu_pending) begin
-            // ===== 等待 LSU 响应 =====
-            // AXI4-Lite: load 完成看 lsu_rvalid, store 完成看 lsu_bvalid
-
-            if ((is_load_pending && lsu_rvalid) || (!is_load_pending && lsu_bvalid)) begin
+            if ((lsu_rvalid) || (lsu_bvalid)) begin
                 pc               <= pc_next;
                 update_pc_value(pc_next);
                 state            <= IDLE;
                 lsu_pending      <= 1'b0;
                 is_load_pending  <= 1'b0;
             end
-
             // 继续保持 WAIT 等待
           end else if (ifu_rvalid && ifu_rready) begin
             // ===== 取指响应握手完成, 执行指令 =====
