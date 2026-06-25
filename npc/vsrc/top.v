@@ -84,6 +84,14 @@ module top(
   // LSU输出
   wire [31:0] mem_rdata;
 
+  // WBU输出
+  wire [31:0] rd_data;
+  wire [31:0] pc_next;
+  wire exception_en;
+  wire [31:0] exception_pc;
+  wire [31:0] exception_cause;
+  wire mret_en;
+
   // ===================================================================
   // AXI4-Lite 总线连接信号
   // ===================================================================
