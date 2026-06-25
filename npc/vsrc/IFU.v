@@ -50,6 +50,12 @@ module IFU(
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
+  // 判断当前指令类型 (组合逻辑)
+  wire [6:0] cur_opcode = ifu_rdata[6:0];
+  wire is_load_inst  = (cur_opcode == 7'b0000011);  // Load opcode
+  wire is_store_inst = (cur_opcode == 7'b0100011);  // Store opcode
+  wire is_mem_inst   = is_load_inst || is_store_inst;
+
   // ifu_araddr 恒等于 pc, MEM 仅在 arvalid 有效时采样
   assign ifu_araddr = pc;
 
