@@ -19,9 +19,7 @@ module CSR(
   // mret指令接口
   input mret_en,              // mret使能
   output [31:0] mepc_out,     // mepc寄存器输出（用于mret返回）
-  output [31:0] mtvec_out,   // mtvec寄存器输出（异常入口地址）
-
-  output [63:0] mcycle_out
+  output [31:0] mtvec_out     // mtvec寄存器输出（异常入口地址）
 );
 
   // ========== CSR寄存器定义 ==========
@@ -87,6 +85,5 @@ module CSR(
   // ========== 输出信号 ==========
   assign mepc_out  = mepc;
   assign mtvec_out = mtvec;
-  assign mcycle_out = mcycle;
 
 endmodule

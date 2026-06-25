@@ -44,8 +44,9 @@ Context *kcontext(Area kstack, void (*entry)(void *), void *arg) {
   Context *ctx = (Context *)(stack_top - sizeof(Context));
   memset(ctx, 0, sizeof(Context));
   
-  ctx->mepc = (uintptr_t)entry;  
-  ctx->mstatus = 0x1800;          
+  // Set up the context for the kernel thread
+  ctx->mepc = (uintptr_t)entry;  // Entry point - where to jump when mret is executed
+  ctx->mstatus = 0x1800;          // MPP=11 (Machine mode) for difftest
   ctx->gpr[10] = (uintptr_t)arg;
 
   return ctx;
