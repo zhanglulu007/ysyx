@@ -60,7 +60,6 @@ module IFU(
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
-
   assign ifu_araddr = pc;
   assign ifu_arvalid = (state == IDLE) && !rst;
   assign ifu_rready = (state == WAIT) && !lsu_pending && !rst;

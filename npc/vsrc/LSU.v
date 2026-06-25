@@ -82,31 +82,21 @@ module LSU(
   // AXI4-Lite 输出信号
   // ===================================================================
 
-  // ----- AR 通道 (读地址) -----
-  // AXI 规则: valid 不依赖 ready
   assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
 
   assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
 
-  // ----- R 通道 (读数据) -----
-  // rready: 在 WAIT_R 状态时就绪接收读数据
   assign lsu_rready = (lsu_state == L_WAIT_R);
 
-  // ----- AW 通道 (写地址) -----
-  // AXI 规则: valid 不依赖 ready, 一旦置位保持到握手完成
   assign lsu_awvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                        (lsu_state == L_WAIT_AW_W && !aw_done) ? 1'b1 : 1'b0;
 
   assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
 
-  // ----- W 通道 (写数据) -----
-  // AXI 规则: valid 不依赖 ready, 一旦置位保持到握手完成
   assign lsu_wvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                       (lsu_state == L_WAIT_AW_W && !w_done) ? 1'b1 : 1'b0;
 
-  // ----- B 通道 (写回复) -----
-  // bready: 在 WAIT_B 状态时就绪接收写回复
   assign lsu_bready = (lsu_state == L_WAIT_B);
 
   // ===================================================================
