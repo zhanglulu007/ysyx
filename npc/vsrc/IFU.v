@@ -95,19 +95,13 @@ module IFU(
                 lsu_pending      <= 1'b0;
                 is_load_pending  <= 1'b0;
             end
-            // 继续保持 WAIT 等待
           end else if (ifu_rvalid && ifu_rready) begin
-            // ===== 取指响应握手完成, 执行指令 =====
-            // ifu_rready 在本状态且 !lsu_pending 时恒为 1
             update_inst_value(pc, ifu_rdata);
-
             if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
-              // LSU 请求在本周期已发送 (mem_valid/mem_wen 由 IDU 组合逻辑产生)
               lsu_pending     <= 1'b1;
               is_load_pending <= !mem_wen;  // mem_wen=0 -> load, mem_wen=1 -> store
               load_rd_saved   <= rd;
-              // 保持 WAIT 状态 (注意: 下周期 ifu_rready 变 0, 防止误收)
             end else begin
               // 非访存指令: 本周期完成执行, 写回寄存器 (由 top.v 处理)
               pc               <= pc_next;
@@ -115,8 +109,6 @@ module IFU(
               state            <= IDLE;
             end
           end
-          // rvalid == 0: 继续保持 WAIT 等待取指响应
-          // (ifu_rready 已为 1, MEM 看到后会尽快返回 rvalid)
         end
 
         default: state <= IDLE;
