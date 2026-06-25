@@ -109,25 +109,30 @@ module UART(
           if (uart_arvalid && uart_arready) begin
             // 握手成功, 通过 DPI-C 读取数据
             latched_rdata <= pmem_read(uart_araddr);
-            $write("[UART] read  addr=0x%08x -> data=0x%08x\n", uart_araddr, pmem_read(uart_araddr));
+            logged_araddr <= uart_araddr;
             state <= R_BUSY;
           end
           // ----- 写事务: AW 和 W 握手追踪 -----
           else begin
             // 当 AW 和 W 均完成 (包括本周期) 时, 调用 DPI-C 写入
             if (aw_ready_c && w_ready_c) begin
-              // 根据完成时机选择正确的地址/数据/掩码
+              // 先锁存本周期完成的值 (用于日志和 DPI-C 调用)
+              if (aw_completing) begin
+                latched_awaddr <= uart_awaddr;
+              end
+              if (w_completing) begin
+                latched_wdata <= uart_wdata;
+                latched_wstrb <= uart_wstrb;
+              end
+
+              // 调用 DPI-C: 使用锁存值或当前值
               if (aw_completing && w_completing) begin
-                // AW 和 W 同周期完成: 使用当前总线信号
                 pmem_write(uart_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else if (aw_completing) begin
-                // AW 本周期完成, W 之前已完成: 使用锁存的 W 数据
                 pmem_write(uart_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end else if (w_completing) begin
-                // W 本周期完成, AW 之前已完成: 使用锁存的 AW 地址
                 pmem_write(latched_awaddr, uart_wdata, {4'b0, uart_wstrb});
               end else begin
-                // 两者都在之前周期完成: 使用锁存值
                 pmem_write(latched_awaddr, latched_wdata, {4'b0, latched_wstrb});
               end
 
@@ -153,6 +158,7 @@ module UART(
         R_BUSY: begin
           // R 握手: rvalid && rready
           if (uart_rvalid && uart_rready) begin
+            $write("[UART] read  done  addr=0x%08x data=0x%08x\n", logged_araddr, latched_rdata);
             state <= IDLE;
           end
         end
@@ -160,6 +166,8 @@ module UART(
         W_BUSY: begin
           // B 握手: bvalid && bready
           if (uart_bvalid && uart_bready) begin
+            $write("[UART] write done  addr=0x%08x data=0x%08x strb=%b\n",
+                   latched_awaddr, latched_wdata, latched_wstrb);
             state <= IDLE;
           end
         end
