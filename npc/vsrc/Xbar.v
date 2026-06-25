@@ -11,18 +11,10 @@
 //   - MEM:       [0x8000_0000, 0x8FFF_FFFF) → slave 1 (MEM)
 //   - 其他地址:  返回错误 (DECERR)
 //
-// 当前架构:
-//   +-----+      +------+      +-----+
-//   | IFU | ---> |      | ---> | UART|  [0x1000_0000, 0x1000_00FF)
-//   +-----+      |      |      +-----+
-//                | Xbar |
-//   +-----+      |      |      +-----+
-//   | LSU | ---> |      | ---> | MEM |  [0x8000_0000, 0x8FFF_FFFF)
-//   +-----+      +------+      +-----+
-//
-// 注意: 当前实现为简化版，支持单个 master (LSU) 访问多个 slave
-//       IFU 只能访问 MEM (取指)，不能访问 UART
-//       如需支持多 master，需要增加仲裁逻辑
+// 简化版实现:
+//   - 无仲裁逻辑，假设同时只有一个 master 请求
+//   - AR/R 和 AW/W/B 独立处理
+//   - 通过寄存器记录路由状态
 
 module Xbar(
   input clk,
@@ -104,145 +96,106 @@ module Xbar(
   // ========== 地址译码 ==========
   // UART: [0x1000_0000, 0x1000_00FF)
   // MEM:  [0x8000_0000, 0x8FFF_FFFF)
-  wire is_uart_addr = (master_araddr[31:8] == 24'h100000) ||
-                       (master_awaddr[31:8] == 24'h100000);
-  wire is_mem_addr  = (master_araddr[31:28] == 4'h8) ||
-                       (master_awaddr[31:28] == 4'h8);
+  function automatic [1:0] decode_addr(input [31:0] addr);
+    casex (addr[31:8])
+      24'h100000: return 2'b01;  // UART
+      24'h8?????: return 2'b10;  // MEM
+      default:    return 2'b00;  // 无效地址
+    endcase
+  endfunction
 
-  // ========== 状态机 ==========
-  // 记录当前事务路由到哪个 slave
-  localparam SLAVE_NONE = 2'b00;
-  localparam SLAVE_UART = 2'b01;
-  localparam SLAVE_MEM  = 2'b10;
+  wire [1:0] ar_slave = decode_addr(master_araddr);
+  wire [1:0] aw_slave = decode_addr(master_awaddr);
 
-  reg [1:0] current_slave;    // 当前事务的 slave
-  reg [1:0] next_slave;       // 下一个事务的 slave (用于写路径)
-  reg       is_write;         // 当前事务类型: 1=写, 0=读
-
-  // 写路径握手追踪 (AW 和 W 可独立完成)
-  reg aw_done;
-  reg w_done;
+  // ========== 路由状态寄存器 ==========
+  reg [1:0] r_slave;  // 当前读事务的 slave
+  reg [1:0] b_slave;  // 当前写事务的 slave
 
   // ========== AR 通道转发 ==========
-  // Master → Slave
-  assign uart_arvalid = master_arvalid && is_uart_addr && (current_slave == SLAVE_NONE);
-  assign mem_arvalid  = master_arvalid && is_mem_addr  && (current_slave == SLAVE_NONE);
+  // 地址有效才转发，无效地址立即响应
+  assign master_arready = (ar_slave == 2'b01) ? uart_arready :
+                          (ar_slave == 2'b10) ? mem_arready  :
+                          1'b1;  // 无效地址立即接受
 
+  assign uart_arvalid = master_arvalid && (ar_slave == 2'b01);
+  assign mem_arvalid  = master_arvalid && (ar_slave == 2'b10);
   assign uart_araddr  = master_araddr;
   assign mem_araddr   = master_araddr;
 
-  // Slave → Master
-  // 未匹配任何地址时，返回 DECERR (2'b11)
-  wire ar_match = is_uart_addr || is_mem_addr;
-  assign master_arready = ar_match ?
-                           (is_uart_addr ? uart_arready : mem_arready) :
-                           1'b1;  // 不匹配地址立即响应
-
   // ========== R 通道转发 ==========
-  // Slave → Master
-  assign master_rvalid = (current_slave == SLAVE_UART) ? uart_rvalid :
-                         (current_slave == SLAVE_MEM)  ? mem_rvalid  :
+  assign master_rvalid = (r_slave == 2'b01) ? uart_rvalid :
+                         (r_slave == 2'b10) ? mem_rvalid  :
+                         (r_slave == 2'b11) ? 1'b1       :  // 无效地址立即响应
                          1'b0;
 
-  assign master_rdata  = (current_slave == SLAVE_UART) ? uart_rdata :
-                         (current_slave == SLAVE_MEM)  ? mem_rdata  :
+  assign master_rdata  = (r_slave == 2'b01) ? uart_rdata :
+                         (r_slave == 2'b10) ? mem_rdata  :
                          32'b0;
 
-  assign master_rresp  = (current_slave == SLAVE_UART) ? uart_rresp :
-                         (current_slave == SLAVE_MEM)  ? mem_rresp  :
+  assign master_rresp  = (r_slave == 2'b01) ? uart_rresp :
+                         (r_slave == 2'b10) ? mem_rresp  :
                          2'b11;  // DECERR
 
-  // Master → Slave
-  assign uart_rready = (current_slave == SLAVE_UART) ? master_rready : 1'b0;
-  assign mem_rready  = (current_slave == SLAVE_MEM)  ? master_rready : 1'b0;
+  assign uart_rready = (r_slave == 2'b01) ? master_rready : 1'b0;
+  assign mem_rready  = (r_slave == 2'b10) ? master_rready : 1'b0;
 
   // ========== AW 通道转发 ==========
-  // Master → Slave
-  assign uart_awvalid = master_awvalid && is_uart_addr && !aw_done;
-  assign mem_awvalid  = master_awvalid && is_mem_addr  && !aw_done;
+  assign master_awready = (aw_slave == 2'b01) ? uart_awready :
+                          (aw_slave == 2'b10) ? mem_awready  :
+                          1'b1;  // 无效地址立即接受
 
+  assign uart_awvalid = master_awvalid && (aw_slave == 2'b01);
+  assign mem_awvalid  = master_awvalid && (aw_slave == 2'b10);
   assign uart_awaddr  = master_awaddr;
   assign mem_awaddr   = master_awaddr;
 
-  // Slave → Master
-  wire aw_match = is_uart_addr || is_mem_addr;
-  assign master_awready = aw_match ?
-                          (is_uart_addr ? uart_awready : mem_awready) :
-                          1'b1;  // 不匹配地址立即响应
-
   // ========== W 通道转发 ==========
-  // Master → Slave
-  assign uart_wvalid = master_wvalid && !w_done;
-  assign mem_wvalid  = master_wvalid && !w_done;
-
+  // W 通道数据同时发给所有 slave，但只有地址匹配的 slave 会响应
+  assign master_wready = uart_wready | mem_wready | (b_slave == 2'b00);
+  assign uart_wvalid = master_wvalid;
+  assign mem_wvalid  = master_wvalid;
   assign uart_wdata  = master_wdata;
   assign mem_wdata   = master_wdata;
   assign uart_wstrb  = master_wstrb;
   assign mem_wstrb   = master_wstrb;
 
-  // Slave → Master
-  assign master_wready = (next_slave == SLAVE_UART) ? uart_wready :
-                         (next_slave == SLAVE_MEM)  ? mem_wready  :
-                         1'b1;  // 未匹配地址时立即响应
-
   // ========== B 通道转发 ==========
-  // Slave → Master
-  assign master_bvalid = (current_slave == SLAVE_UART) ? uart_bvalid :
-                         (current_slave == SLAVE_MEM)  ? mem_bvalid  :
+  assign master_bvalid = (b_slave == 2'b01) ? uart_bvalid :
+                         (b_slave == 2'b10) ? mem_bvalid  :
+                         (b_slave == 2'b11) ? 1'b1       :  // 无效地址立即响应
                          1'b0;
 
-  assign master_bresp  = (current_slave == SLAVE_UART) ? uart_bresp :
-                         (current_slave == SLAVE_MEM)  ? mem_bresp  :
+  assign master_bresp  = (b_slave == 2'b01) ? uart_bresp :
+                         (b_slave == 2'b10) ? mem_bresp  :
                          2'b11;  // DECERR
 
-  // Master → Slave
-  assign uart_bready = (current_slave == SLAVE_UART) ? master_bready : 1'b0;
-  assign mem_bready  = (current_slave == SLAVE_MEM)  ? master_bready : 1'b0;
+  assign uart_bready = (b_slave == 2'b01) ? master_bready : 1'b0;
+  assign mem_bready  = (b_slave == 2'b10) ? master_bready : 1'b0;
 
-  // ========== 状态机 ==========
-  // 追踪当前事务状态
+  // ========== 路由状态追踪 ==========
   always @(posedge clk) begin
     if (rst) begin
-      current_slave <= SLAVE_NONE;
-      next_slave    <= SLAVE_NONE;
-      is_write      <= 1'b0;
-      aw_done       <= 1'b0;
-      w_done        <= 1'b0;
+      r_slave <= 2'b00;
+      b_slave <= 2'b00;
     end else begin
-      // 读事务
+      // AR 握手：记录读事务路由
       if (master_arvalid && master_arready) begin
-        current_slave <= is_uart_addr ? SLAVE_UART : SLAVE_MEM;
-        is_write      <= 1'b0;
+        r_slave <= (ar_slave == 2'b00) ? 2'b11 : ar_slave;  // 2'b11 表示无效地址
       end
 
-      // 读事务完成
+      // R 握手：清除读事务路由
       if (master_rvalid && master_rready) begin
-        current_slave <= SLAVE_NONE;
+        r_slave <= 2'b00;
       end
 
-      // 写事务: AW 握手
-      if (master_awvalid && master_awready && !aw_done) begin
-        next_slave <= is_uart_addr ? SLAVE_UART : SLAVE_MEM;
-        aw_done    <= 1'b1;
+      // AW 握手：记录写事务路由
+      if (master_awvalid && master_awready) begin
+        b_slave <= (aw_slave == 2'b00) ? 2'b11 : aw_slave;  // 2'b11 表示无效地址
       end
 
-      // 写事务: W 握手
-      if (master_wvalid && master_wready && !w_done) begin
-        w_done <= 1'b1;
-      end
-
-      // 写事务开始 (AW 和 W 都完成)
-      if (aw_done && w_done) begin
-        current_slave <= next_slave;
-        is_write      <= 1'b1;
-      end
-
-      // 写事务完成
+      // B 握手：清除写事务路由
       if (master_bvalid && master_bready) begin
-        current_slave <= SLAVE_NONE;
-        next_slave    <= SLAVE_NONE;
-        aw_done       <= 1'b0;
-        w_done        <= 1'b0;
+        b_slave <= 2'b00;
       end
     end
   end
