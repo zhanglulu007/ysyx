@@ -52,45 +52,46 @@ module ysyx_26020070(
   input  [ 1:0] io_master_bresp,
   input  [ 3:0] io_master_bid,
 
-  // ===== AXI4 Slave 总线 - 用于调试 (目前不使用) =====
+  // ===== AXI4 Slave 总线 - 用于调试 (目前不使用，按规范定义端口) =====
+  // 注意：Slave接口方向与Master接口镜像相反
   // AW 通道 (写地址)
-  input         io_slave_awready,
-  output        io_slave_awvalid,
-  output [ 3:0] io_slave_awid,
-  output [31:0] io_slave_awaddr,
-  output [ 7:0] io_slave_awlen,
-  output [ 2:0] io_slave_awsize,
-  output [ 1:0] io_slave_awburst,
+  output        io_slave_awready,   // slave ready to accept write address
+  input         io_slave_awvalid,   // master driving write address
+  input  [ 3:0] io_slave_awid,
+  input  [31:0] io_slave_awaddr,
+  input  [ 7:0] io_slave_awlen,
+  input  [ 2:0] io_slave_awsize,
+  input  [ 1:0] io_slave_awburst,
 
   // W 通道 (写数据)
-  input         io_slave_wready,
-  output        io_slave_wvalid,
-  output [31:0] io_slave_wdata,
-  output [ 3:0] io_slave_wstrb,
-  output        io_slave_wlast,
+  output        io_slave_wready,    // slave ready to accept write data
+  input         io_slave_wvalid,    // master driving write data
+  input  [31:0] io_slave_wdata,
+  input  [ 3:0] io_slave_wstrb,
+  input         io_slave_wlast,
 
   // B 通道 (写回复)
-  output        io_slave_bready,
-  input         io_slave_bvalid,
-  input  [ 3:0] io_slave_bid,
-  input  [ 1:0] io_slave_bresp,
+  input         io_slave_bready,    // master ready to accept response
+  output        io_slave_bvalid,    // slave driving response
+  output [ 3:0] io_slave_bid,
+  output [ 1:0] io_slave_bresp,
 
   // AR 通道 (读地址)
-  input         io_slave_arready,
-  output        io_slave_arvalid,
-  output [ 3:0] io_slave_arid,
-  output [31:0] io_slave_araddr,
-  output [ 7:0] io_slave_arlen,
-  output [ 2:0] io_slave_arsize,
-  output [ 1:0] io_slave_arburst,
+  output        io_slave_arready,   // slave ready to accept read address
+  input         io_slave_arvalid,   // master driving read address
+  input  [ 3:0] io_slave_arid,
+  input  [31:0] io_slave_araddr,
+  input  [ 7:0] io_slave_arlen,
+  input  [ 2:0] io_slave_arsize,
+  input  [ 1:0] io_slave_arburst,
 
   // R 通道 (读数据)
-  output        io_slave_rready,
-  input         io_slave_rvalid,
-  input  [ 3:0] io_slave_rid,
-  input  [31:0] io_slave_rdata,
-  input  [ 1:0] io_slave_rresp,
-  input         io_slave_rlast
+  input         io_slave_rready,    // master ready to accept read data
+  output        io_slave_rvalid,    // slave driving read data
+  output [ 3:0] io_slave_rid,
+  output [31:0] io_slave_rdata,
+  output [ 1:0] io_slave_rresp,
+  output        io_slave_rlast
 );
 
   // ========== 内部信号定义 ==========
