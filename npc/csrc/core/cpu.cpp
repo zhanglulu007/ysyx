@@ -103,13 +103,13 @@ void exec_once() {
     device_update();
 
 #ifdef ENABLE_TRACE
-    if (g_top->io_master_insdone_out) {  // Note: this signal needs to be verified
+    if (g_top->asic->cpu->io_master_insdone_out) {  // Access CPU submodule signal
         ftrace_flush(g_print_itrace);
         itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
         mtrace_flush(g_print_itrace);
     }
 #endif
-    if (g_top->io_master_insdone_out) {
+    if (g_top->asic->cpu->io_master_insdone_out) {
         difftest_step(current_pc, npc_get_pc());
     }
 
