@@ -26,6 +26,7 @@
 // 全局变量：顶层模块指针和仿真上下文
 VysyxSoCFull* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
+uint32_t pc_cache;
 
 #ifdef ENABLE_FST
 static VerilatedFstC* g_tfp = NULL;
@@ -39,6 +40,7 @@ bool init_cpu(int argc, char** argv) {
     g_contextp = new VerilatedContext;
     g_contextp->commandArgs(argc, argv);  // ysyxSoC needs this for plusargs
     g_top = new VysyxSoCFull{g_contextp};
+    pc_cache = npc_get_pc;
 
 #ifdef ENABLE_FST
     Verilated::traceEverOn(true);
@@ -81,7 +83,6 @@ void reset_cpu() {
 
 // 单步执行
 void exec_once() {
-    uint32_t pc_cache = current_pc;
     uint32_t current_pc = npc_get_pc();
     bool insdone = (pc_cache != current_pc);
     // 下降沿
@@ -114,6 +115,7 @@ void exec_once() {
         difftest_step(current_pc, npc_get_pc());
     }
 
+    pc_cache = current_pc;
 }
 
 // 设置itrace输出模式
