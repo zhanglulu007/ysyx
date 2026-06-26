@@ -106,7 +106,8 @@ VERILATOR_FLAGS += --x-assign fast --x-initial fast \
 						--timescale "1ns/1ns" \
     					--no-timing \
     					-I$(YSYXSOC_PERIP)/uart16550/rtl \
-    					-I$(YSYXSOC_PERIP)/spi/rtl
+    					-I$(YSYXSOC_PERIP)/spi/rtl \
+						--autoflush
 
 # Verilog files: ysyxSoC top + peripherals
 VERILOG_FILES += \
