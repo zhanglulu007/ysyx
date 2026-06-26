@@ -105,7 +105,7 @@ VERILATOR_FLAGS += --top-module ysyxSoCFull
 VERILATOR_FLAGS += --x-assign fast --x-initial fast \
 						--timescale "1ns/1ns" \
     					--no-timing \
-    					-Wno-fatal \
+    					--lint-off PORTSHORT \
     					-I$(YSYXSOC_PERIP)/uart16550/rtl \
     					-I$(YSYXSOC_PERIP)/spi/rtl
 
