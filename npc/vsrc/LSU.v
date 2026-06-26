@@ -1,10 +1,11 @@
 // LSU - Load-Store Unit
-// 访存单元：通过 AXI4-Lite 与 MEM 模块交互
+// 访存单元：通过 AXI4 与 MEM 模块交互
 //   L_IDLE:      等待 IDU 发出访存请求 (mem_valid)
 //   L_WAIT_AR:   等待 arready 握手 (读地址)
 //   L_WAIT_R:    等待 rvalid 握手 (读数据), rready=1
 //   L_WAIT_AW_W: 等待 awready + wready 握手 (写地址+写数据)
 //   L_WAIT_B:    等待 bvalid 握手 (写回复), bready=1
+// AXI4 扩展: 添加 id, len, size, burst, last 等信号
 
 module LSU(
   input clk,
@@ -21,32 +22,44 @@ module LSU(
   input [31:0] mem_addr,      // 访存地址
   input [31:0] wdata,         // 写入数据（来自rs2）
 
-  // ===== AXI4-Lite AR 通道 (读地址) =====
+  // ===== AXI4 AR 通道 (读地址) =====
   output        lsu_arvalid,
   input         lsu_arready,
   output [31:0] lsu_araddr,
+  output [ 3:0] lsu_arid,     // AXI4: Transaction ID
+  output [ 7:0] lsu_arlen,    // AXI4: Burst length
+  output [ 2:0] lsu_arsize,   // AXI4: Transfer size
+  output [ 1:0] lsu_arburst,  // AXI4: Burst type
 
-  // ===== AXI4-Lite R 通道 (读数据) =====
+  // ===== AXI4 R 通道 (读数据) =====
   input         lsu_rvalid,
   output        lsu_rready,
   input  [31:0] lsu_rdata,
   input  [ 1:0] lsu_rresp,
+  input         lsu_rlast,    // AXI4: Last beat
+  input  [ 3:0] lsu_rid,      // AXI4: Transaction ID
 
-  // ===== AXI4-Lite AW 通道 (写地址) =====
+  // ===== AXI4 AW 通道 (写地址) =====
   output        lsu_awvalid,
   input         lsu_awready,
   output [31:0] lsu_awaddr,
+  output [ 3:0] lsu_awid,     // AXI4: Transaction ID
+  output [ 7:0] lsu_awlen,    // AXI4: Burst length
+  output [ 2:0] lsu_awsize,   // AXI4: Transfer size
+  output [ 1:0] lsu_awburst,  // AXI4: Burst type
 
-  // ===== AXI4-Lite W 通道 (写数据) =====
+  // ===== AXI4 W 通道 (写数据) =====
   output        lsu_wvalid,
   input         lsu_wready,
   output reg [31:0] lsu_wdata,
   output reg [ 3:0] lsu_wstrb,
+  output        lsu_wlast,    // AXI4: Last beat
 
-  // ===== AXI4-Lite B 通道 (写回复) =====
+  // ===== AXI4 B 通道 (写回复) =====
   input         lsu_bvalid,
   output        lsu_bready,
   input  [ 1:0] lsu_bresp,
+  input  [ 3:0] lsu_bid,      // AXI4: Transaction ID
 
   // ===== 输出 =====
   output reg [31:0] rdata     // 字节/半字选择后的数据
@@ -79,24 +92,36 @@ module LSU(
   assign mem_offset = mem_addr[1:0];
 
   // ===================================================================
-  // AXI4-Lite 输出信号
+  // AXI4 输出信号
   // ===================================================================
 
+  // AR 通道
   assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
-
   assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+  assign lsu_arid = 4'b0000;      // ID固定为0
+  assign lsu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
+  assign lsu_arsize = 3'b010;     // 4字节传输 (2^2 = 4 bytes)
+  assign lsu_arburst = 2'b01;     // INCR模式 (增量突发)
 
+  // R 通道
   assign lsu_rready = (lsu_state == L_WAIT_R);
 
+  // AW 通道
   assign lsu_awvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                        (lsu_state == L_WAIT_AW_W && !aw_done) ? 1'b1 : 1'b0;
-
   assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+  assign lsu_awid = 4'b0000;      // ID固定为0
+  assign lsu_awlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
+  assign lsu_awsize = 3'b010;     // 4字节传输 (2^2 = 4 bytes)
+  assign lsu_awburst = 2'b01;     // INCR模式 (增量突发)
 
+  // W 通道
   assign lsu_wvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                       (lsu_state == L_WAIT_AW_W && !w_done) ? 1'b1 : 1'b0;
+  assign lsu_wlast = lsu_wvalid;  // 单次传输，wvalid时即为last beat
 
+  // B 通道
   assign lsu_bready = (lsu_state == L_WAIT_B);
 
   // ===================================================================

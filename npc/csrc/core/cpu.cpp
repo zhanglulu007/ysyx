@@ -11,7 +11,7 @@
 #include "../utils/difftest.h"
 #include "../sdb/sdb.h"
 #include <verilated.h>
-#include "Vtop.h"
+#include "VysyxSoCFull.h"  // ysyxSoC top module
 
 #ifdef ENABLE_FST
 #include <verilated_fst_c.h>
@@ -24,7 +24,7 @@
 #endif
 
 // 全局变量：顶层模块指针和仿真上下文
-Vtop* g_top = NULL;
+VysyxSoCFull* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
 
 #ifdef ENABLE_FST
@@ -37,8 +37,8 @@ static bool g_print_itrace = false;
 // 初始化CPU
 bool init_cpu(int argc, char** argv) {
     g_contextp = new VerilatedContext;
-    g_contextp->commandArgs(argc, argv);
-    g_top = new Vtop{g_contextp};
+    g_contextp->commandArgs(argc, argv);  // ysyxSoC needs this for plusargs
+    g_top = new VysyxSoCFull{g_contextp};
 
 #ifdef ENABLE_FST
     Verilated::traceEverOn(true);
@@ -63,16 +63,19 @@ bool init_cpu(int argc, char** argv) {
 // 复位CPU
 void reset_cpu() {
     Log("Resetting NPC...");
-    g_top->rst = 1;
-    g_top->clk = 0;
+    // ysyxSoC uses high-level reset (active high)
+    // Reset needs to be held for at least 10 cycles for ChipLink
+    // For basic test, we use 2 cycles
+    g_top->reset = 1;
+    g_top->clock = 0;
     g_top->eval();
-    
+
     g_contextp->timeInc(1);
-    g_top->clk = 1;
+    g_top->clock = 1;
     g_top->eval();
-    
+
     g_contextp->timeInc(1);
-    g_top->rst = 0;
+    g_top->reset = 0;
     Log("Reset complete");
 }
 
@@ -81,7 +84,7 @@ void exec_once() {
     uint32_t current_pc = npc_get_pc();
 
     // 下降沿
-    g_top->clk = 0;
+    g_top->clock = 0;
     g_top->eval();
 #ifdef ENABLE_FST
     if (g_tfp) g_tfp->dump(g_contextp->time());
@@ -89,7 +92,7 @@ void exec_once() {
     g_contextp->timeInc(1);
 
     // 上升沿
-    g_top->clk = 1;
+    g_top->clock = 1;
     g_top->eval();
 #ifdef ENABLE_FST
     if (g_tfp) g_tfp->dump(g_contextp->time());
@@ -100,16 +103,16 @@ void exec_once() {
     device_update();
 
 #ifdef ENABLE_TRACE
-    if (g_top->insdone_out) {
+    if (g_top->io_master_insdone_out) {  // Note: this signal needs to be verified
         ftrace_flush(g_print_itrace);
         itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
         mtrace_flush(g_print_itrace);
     }
 #endif
-    if (g_top->insdone_out) {
+    if (g_top->io_master_insdone_out) {
         difftest_step(current_pc, npc_get_pc());
     }
-    
+
 }
 
 // 设置itrace输出模式

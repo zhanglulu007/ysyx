@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cassert>
 #include "core/npc.h"
 #include "core/cpu.h"
 #include "core/memory.h"
@@ -19,6 +20,19 @@
 #include "trace/mtrace.h"
 #include "trace/ftrace.h"
 #endif
+
+// ysyxSoC DPI-C functions: flash_read and mrom_read
+extern "C" void flash_read(int32_t addr, int32_t *data) {
+    // Currently not implemented, assert(0) to catch usage
+    fprintf(stderr, "[ERROR] flash_read called at addr=0x%08x - not implemented\n", addr);
+    assert(0 && "flash_read not implemented");
+}
+
+extern "C" void mrom_read(int32_t addr, int32_t *data) {
+    // Currently not implemented, assert(0) to catch usage
+    fprintf(stderr, "[ERROR] mrom_read called at addr=0x%08x - not implemented\n", addr);
+    assert(0 && "mrom_read not implemented");
+}
 
 // 打印使用说明
 static void print_usage(const char* prog_name) {
@@ -132,28 +146,32 @@ int main(int argc, char** argv) {
     
     // 初始化子系统
     init_subsystems(log_file, elf_file);
-    
+
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
-    
+
+    // ysyxSoC requirement: pass command line args to Verilated
+    // This is needed for plusargs functionality in ysyxSoCFull.v
+    // Note: This will be called in init_cpu() if needed
+
     // 打印欢迎信息
     print_welcome();
-    
+
     // 加载程序
     if (!load_program(program_file)) {
         return 1;
     }
-    
+
     printf("\n");
-    
-    // 初始化CPU
+
+    // 初始化CPU (including Verilated::commandArgs if using verilator)
     if (!init_cpu(argc, argv)) {
         return 1;
     }
-    
+
     // 复位CPU
     reset_cpu();
-    
+
     // 初始化DiffTest
     init_difftest_if_needed(ref_so_file, program_file);
     
