@@ -9,6 +9,9 @@ module ysyx_26020070(
   input         reset,          // 复位 (高电平有效)
   input         io_interrupt,   // 外部中断 (目前不使用)
 
+  // ===== 输出信号 =====
+  output        io_master_insdone_out,  // 指令完成信号 (用于trace和difftest)
+
   // ===== AXI4 Master 总线 - 连接 ysyxSoC 的 AXI4 Xbar =====
   // AR 通道 (读地址)
   output        io_master_arvalid,
@@ -54,6 +57,9 @@ module ysyx_26020070(
 
   // 复位信号转换 (ysyxSoC高电平复位 -> NPC低电平复位)
   wire rst = reset;
+
+  // 输出信号连接
+  assign io_master_insdone_out = insdone;  // 连接到顶层输出端口
 
   // IFU <-> IDU
   wire [31:0] pc;
