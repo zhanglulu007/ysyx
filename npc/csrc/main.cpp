@@ -132,28 +132,28 @@ int main(int argc, char** argv) {
     
     // 初始化子系统
     init_subsystems(log_file, elf_file);
-    
+
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
-    
+
     // 打印欢迎信息
     print_welcome();
-    
+
     // 加载程序
     if (!load_program(program_file)) {
         return 1;
     }
-    
+
     printf("\n");
-    
+
     // 初始化CPU
     if (!init_cpu(argc, argv)) {
         return 1;
     }
-    
+
     // 复位CPU
     reset_cpu();
-    
+
     // 初始化DiffTest
     init_difftest_if_needed(ref_so_file, program_file);
     

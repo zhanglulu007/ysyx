@@ -1,6 +1,7 @@
 // IFU - Instruction Fetch Unit
-// 取指单元：通过 AXI4-Lite 从 MEM 模块取指令 (通过仲裁器)
+// 取指单元：通过 AXI4 从 MEM 模块取指令 (通过仲裁器)
 // 两状态状态机: IDLE (等待arready握手) / WAIT (等待rvalid握手/指令执行完成)
+// AXI4 扩展: 添加 id, len, size, burst, last 等信号
 
 module IFU(
   input clk,
@@ -10,44 +11,34 @@ module IFU(
   input mem_wen,                // 写使能 (store, 来自IDU)
   input [4:0] rd,              // 目的寄存器 (来自IDU)
 
-  // ===== AXI4-Lite AR 通道 (读地址) =====
-  input  ifu_arready,          
-  output ifu_arvalid,          
-  output [31:0] ifu_araddr,    
+  // ===== AXI4 AR 通道 (读地址) =====
+  input  ifu_arready,
+  output ifu_arvalid,
+  output [31:0] ifu_araddr,
+  output [ 3:0] ifu_arid,      // AXI4: Transaction ID
+  output [ 7:0] ifu_arlen,     // AXI4: Burst length
+  output [ 2:0] ifu_arsize,    // AXI4: Transfer size
+  output [ 1:0] ifu_arburst,   // AXI4: Burst type
 
-  // ===== AXI4-Lite R 通道 (读数据) =====
-  input  ifu_rvalid,           
-  output ifu_rready,           
-  input  [31:0] ifu_rdata,     
-  input  [ 1:0] ifu_rresp,     
+  // ===== AXI4 R 通道 (读数据) =====
+  input  ifu_rvalid,
+  output ifu_rready,
+  input  [31:0] ifu_rdata,
+  input  [ 1:0] ifu_rresp,
+  input  ifu_rlast,            // AXI4: Last beat
+  input  [ 3:0] ifu_rid,       // AXI4: Transaction ID
 
   // ===== LSU 完成信号 (来自 MEM 的 R/B 通道) =====
-  input  lsu_rvalid,           
-  input  lsu_bvalid,           
+  input  lsu_rvalid,
+  input  lsu_bvalid,
 
   // ===== 输出 =====
   output reg [31:0] pc,        // 当前PC
   output [31:0] inst,          // -> IDU: 当前指令
   output ifu_valid,            // -> IDU: 指令有效 (译码/执行周期)
   output load_wb,              // -> top: load 写回触发
-  output [4:0] load_rd,         // -> top: load 目的寄存器
-
-  output insdone
+  output [4:0] load_rd         // -> top: load 目的寄存器
 );
-
-  wire insdone_comb;
-  assign insdone_comb = (state == WAIT) && (
-    (!lsu_pending && ifu_rvalid && ifu_rready && !mem_valid) ||   // 非访存指令完成
-    (lsu_pending && is_load_pending && lsu_rvalid) ||             // load 完成
-    (lsu_pending && !is_load_pending && lsu_bvalid)               // store 完成
-  );
-
-  always @(posedge clk) begin
-    if (rst)
-        insdone <= 1'b0;
-    else
-        insdone <= insdone_comb;
-  end
 
   // DPI-C函数：通知C++侧
   import "DPI-C" function void update_pc_value(input int pc_val);
@@ -60,11 +51,19 @@ module IFU(
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
+  // AXI4 信号赋值
   assign ifu_araddr = pc;
   assign ifu_arvalid = (state == IDLE) && !rst;
+
+  // AXI4 扩展信号
+  assign ifu_arid = 4'b0000;      // ID固定为0
+  assign ifu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
+  assign ifu_arsize = 3'b010;     // 4字节传输 (2^2 = 4 bytes)
+  assign ifu_arburst = 2'b01;     // INCR模式 (增量突发)
+
   assign ifu_rready = (state == WAIT) && !lsu_pending && !rst;
   assign ifu_valid = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;
-  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop 
+  assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop
   assign load_wb = (state == WAIT) && lsu_pending && lsu_rvalid && is_load_pending;
   assign load_rd = load_rd_saved;
 
@@ -74,8 +73,8 @@ module IFU(
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
-      pc              <= 32'h80000000;
-      update_pc_value(32'h80000000);
+      pc              <= 32'h20000000;  // MROM base address
+      update_pc_value(32'h20000000);
     end else begin
       case (state)
         IDLE: begin

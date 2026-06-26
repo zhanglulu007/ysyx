@@ -12,7 +12,7 @@
 ######################################################################
 # Check for sanity to avoid later confusion
 
-	
+
 include ../Makefile
 
 ifneq ($(words $(CURDIR)),1)
@@ -50,10 +50,10 @@ endif
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
 	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
-	
+
 all:
 	@echo "Write this Makefile by your self."
-	
+
 WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
@@ -95,13 +95,43 @@ PROG  ?= test/mem.bin
 ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
-VERILATOR_FLAGS += --x-assign fast --x-initial fast
+
+# ysyxSoC paths
+YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
+YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
+YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
+
+VERILATOR_FLAGS += --top-module ysyxSoCFull
+VERILATOR_FLAGS += --x-assign fast --x-initial fast \
+						--timescale "1ns/1ns" \
+    					--no-timing \
+    					-I$(YSYXSOC_PERIP)/uart16550/rtl \
+    					-I$(YSYXSOC_PERIP)/spi/rtl
+
+# Verilog files: ysyxSoC top + peripherals
+VERILOG_FILES += \
+    				$(YSYXSOC_BUILD)/ysyxSoCFull.v
+
+# Add ysyxSoC peripheral verilog files (use wildcard to expand)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/vga/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/ps2/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/gpio/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/flash/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
 
 $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
 	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 	@echo "Usage examples:"
 	@echo "  make build                          # 全关（最快）"
 	@echo "  make build TRACE=1                  # 开 trace"
@@ -112,7 +142,7 @@ show-config:
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
 
 define VERILATE_CMD
-	$(VERILATOR) --top-module top -cc --exe --build -j \
+	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
 	$(VERILATOR_TRACE_FLAGS) \
 	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
 	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
@@ -122,6 +152,7 @@ define VERILATE_CMD
 	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
+	$(VERILOG_FILES) \
 	--Mdir $(OBJ_DIR)
 endef
 
@@ -140,15 +171,15 @@ run:
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
-	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
-		echo "Error: Vtop not found after build."; exit 1; \
+	@if [ ! -f $(OBJ_DIR)/VysyxSoCFull ]; then \
+		echo "Error: VysyxSoCFull not found after build."; exit 1; \
 	fi
 	@if [ ! -f "$(PROG)" ]; then \
 		echo "Error: Program file '$(PROG)' not found."; exit 1; \
 	fi
 	@echo "-- RUN [DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
-	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
-	@$(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
+	@echo "Running: $(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
+	@$(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
 .PHONY: build sim run clean
