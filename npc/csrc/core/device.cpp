@@ -96,7 +96,7 @@ void init_device() {
     boot_time = get_time_us();
     memset(g_fb, 0, sizeof(g_fb));
     init_keymap();
-    init_sdl();
+    //init_sdl();
 }
 
 void device_cleanup() {
