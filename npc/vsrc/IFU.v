@@ -51,6 +51,7 @@ module IFU(
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
   reg [31:0] dbg_cyc;       // [DEBUG] 周期计数, 仅前若干条指令输出 trace
+  integer dbg_fp;           // [DEBUG] 独立 trace 文件, 避免与 UART stdout 交错
 
   // AXI4 信号赋值
   assign ifu_araddr = pc;
@@ -76,6 +77,7 @@ module IFU(
       load_rd_saved   <= 5'b0;
       pc              <= 32'h20000000;  // MROM base address
       dbg_cyc         <= 32'b0;
+      dbg_fp          <= $fopen("ifu_trace.log", "w");
       update_pc_value(32'h20000000);
     end else begin
       dbg_cyc <= dbg_cyc + 1'b1;
@@ -91,8 +93,8 @@ module IFU(
           if (lsu_pending) begin
             if (lsu_rvalid || lsu_bvalid) begin
                 if (dbg_cyc < 200)
-                  $display("[IFU] cyc=%0d  MEM-DONE  pc=0x%08x -> pc_next=0x%08x inst=0x%08x mem_valid=%b mem_wen=%b",
-                           dbg_cyc, pc, pc_next, inst, mem_valid, mem_wen);
+                  $fwrite(dbg_fp, "[IFU] t=%0t cyc=%0d  MEM-DONE  pc=0x%08x -> pc_next=0x%08x inst=0x%08x mem_valid=%b mem_wen=%b\n",
+                          $time, dbg_cyc, pc, pc_next, inst, mem_valid, mem_wen);
                 pc               <= pc_next;
                 update_pc_value(pc_next);
                 state            <= IDLE;
@@ -101,8 +103,8 @@ module IFU(
             end
           end else if (ifu_rvalid && ifu_rready) begin
             if (dbg_cyc < 200)
-              $display("[IFU] cyc=%0d  FETCH-DONE pc=0x%08x inst=0x%08x mem_valid=%b mem_wen=%b pc_next=0x%08x",
-                       dbg_cyc, pc, ifu_rdata, mem_valid, mem_wen, pc_next);
+              $fwrite(dbg_fp, "[IFU] t=%0t cyc=%0d  FETCH-DONE pc=0x%08x inst=0x%08x mem_valid=%b mem_wen=%b pc_next=0x%08x\n",
+                      $time, dbg_cyc, pc, ifu_rdata, mem_valid, mem_wen, pc_next);
             update_inst_value(pc, ifu_rdata);
             if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
