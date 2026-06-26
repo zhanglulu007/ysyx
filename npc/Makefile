@@ -115,14 +115,16 @@ VERILOG_FILES += \
 # Add ysyxSoC peripheral verilog files (use wildcard to expand)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/rtl/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/vga/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/ps2/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/gpio/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/flash/*.v)
 VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v)
+VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
 
 $(shell mkdir -p $(BUILD_DIR))
 
