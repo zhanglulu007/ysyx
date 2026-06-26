@@ -225,7 +225,6 @@ module LSU(
               end
             end else begin
               // ===== 写操作 (AW + W → B) =====
-              $display("[LSU]");  // 调试用
               aw_done <= 1'b0;
               w_done  <= 1'b0;
 
