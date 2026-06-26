@@ -115,7 +115,6 @@ module ysyx_26020070(
   wire [31:0] pc;
   wire [31:0] inst;
   wire ifu_valid;
-  wire insdone;
   wire load_wb;
   wire [4:0] load_rd;
 
@@ -299,8 +298,7 @@ module ysyx_26020070(
     .inst(inst),
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
-    .load_rd(load_rd),
-    .insdone(insdone)
+    .load_rd(load_rd)
   );
 
   // IDU - 译码单元
