@@ -50,7 +50,47 @@ module ysyx_26020070(
   input         io_master_bvalid,
   output        io_master_bready,
   input  [ 1:0] io_master_bresp,
-  input  [ 3:0] io_master_bid
+  input  [ 3:0] io_master_bid,
+
+  // ===== AXI4 Slave 总线 - 用于调试 (目前不使用) =====
+  // AW 通道 (写地址)
+  input         io_slave_awready,
+  output        io_slave_awvalid,
+  output [ 3:0] io_slave_awid,
+  output [31:0] io_slave_awaddr,
+  output [ 7:0] io_slave_awlen,
+  output [ 2:0] io_slave_awsize,
+  output [ 1:0] io_slave_awburst,
+
+  // W 通道 (写数据)
+  input         io_slave_wready,
+  output        io_slave_wvalid,
+  output [31:0] io_slave_wdata,
+  output [ 3:0] io_slave_wstrb,
+  output        io_slave_wlast,
+
+  // B 通道 (写回复)
+  output        io_slave_bready,
+  input         io_slave_bvalid,
+  input  [ 3:0] io_slave_bid,
+  input  [ 1:0] io_slave_bresp,
+
+  // AR 通道 (读地址)
+  input         io_slave_arready,
+  output        io_slave_arvalid,
+  output [ 3:0] io_slave_arid,
+  output [31:0] io_slave_araddr,
+  output [ 7:0] io_slave_arlen,
+  output [ 2:0] io_slave_arsize,
+  output [ 1:0] io_slave_arburst,
+
+  // R 通道 (读数据)
+  output        io_slave_rready,
+  input         io_slave_rvalid,
+  input  [ 3:0] io_slave_rid,
+  input  [31:0] io_slave_rdata,
+  input  [ 1:0] io_slave_rresp,
+  input         io_slave_rlast
 );
 
   // ========== 内部信号定义 ==========
@@ -60,6 +100,26 @@ module ysyx_26020070(
 
   // 输出信号连接
   assign io_master_insdone_out = insdone;  // 连接到顶层输出端口
+
+  // ===== AXI4 Slave接口 (不使用，输出赋值为0) =====
+  assign io_slave_awvalid = 1'b0;
+  assign io_slave_awid    = 4'b0;
+  assign io_slave_awaddr  = 32'b0;
+  assign io_slave_awlen   = 8'b0;
+  assign io_slave_awsize  = 3'b0;
+  assign io_slave_awburst = 2'b0;
+  assign io_slave_wvalid  = 1'b0;
+  assign io_slave_wdata   = 32'b0;
+  assign io_slave_wstrb   = 4'b0;
+  assign io_slave_wlast   = 1'b0;
+  assign io_slave_bready  = 1'b0;
+  assign io_slave_arvalid = 1'b0;
+  assign io_slave_arid    = 4'b0;
+  assign io_slave_araddr  = 32'b0;
+  assign io_slave_arlen   = 8'b0;
+  assign io_slave_arsize  = 3'b0;
+  assign io_slave_arburst = 2'b0;
+  assign io_slave_rready  = 1'b0;
 
   // IFU <-> IDU
   wire [31:0] pc;
