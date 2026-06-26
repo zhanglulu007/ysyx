@@ -26,7 +26,6 @@
 // 全局变量：顶层模块指针和仿真上下文
 VysyxSoCFull* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
-uint32_t pc_cache;
 
 #ifdef ENABLE_FST
 static VerilatedFstC* g_tfp = NULL;
@@ -40,8 +39,7 @@ bool init_cpu(int argc, char** argv) {
     g_contextp = new VerilatedContext;
     g_contextp->commandArgs(argc, argv);  // ysyxSoC needs this for plusargs
     g_top = new VysyxSoCFull{g_contextp};
-    pc_cache = npc_get_pc();
-    printf("!!!!!!!!%d!!!!!!!!!!!",pc_cache);
+    
 #ifdef ENABLE_FST
     Verilated::traceEverOn(true);
     g_tfp = new VerilatedFstC;
@@ -84,38 +82,36 @@ void reset_cpu() {
 // 单步执行
 void exec_once() {
     uint32_t current_pc = npc_get_pc();
-    bool insdone = (pc_cache != current_pc);
-    // 下降沿
-    g_top->clock = 0;
-    g_top->eval();
-#ifdef ENABLE_FST
-    if (g_tfp) g_tfp->dump(g_contextp->time());
-#endif
-    g_contextp->timeInc(1);
 
-    // 上升沿
-    g_top->clock = 1;
-    g_top->eval();
-#ifdef ENABLE_FST
-    if (g_tfp) g_tfp->dump(g_contextp->time());
-#endif
-    g_contextp->timeInc(1);
-
-    npc_inc_cycle();
-    device_update();
-
-#ifdef ENABLE_TRACE
-    if (insdone) {  // Access CPU submodule signal
-        ftrace_flush(g_print_itrace);
-        itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
-        mtrace_flush(g_print_itrace);
-    }
-#endif
-    if (insdone) {
-        difftest_step(current_pc, npc_get_pc());
+    while(current_pc == npc_get_pc()) {
+         // 下降沿
+        g_top->clock = 0;
+        g_top->eval();
+    #ifdef ENABLE_FST
+        if (g_tfp) g_tfp->dump(g_contextp->time());
+    #endif
+        g_contextp->timeInc(1);
+        // 上升沿
+        g_top->clock = 1;
+        g_top->eval();
+    #ifdef ENABLE_FST
+        if (g_tfp) g_tfp->dump(g_contextp->time());
+    #endif
+        g_contextp->timeInc(1);
+        npc_inc_cycle();
+        device_update();
     }
 
-    pc_cache = current_pc;
+    #ifdef ENABLE_TRACE
+        if (insdone) {  // Access CPU submodule signal
+            ftrace_flush(g_print_itrace);
+            itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
+            mtrace_flush(g_print_itrace);
+        }
+    #endif
+
+    difftest_step(current_pc, npc_get_pc());
+    
 }
 
 // 设置itrace输出模式
