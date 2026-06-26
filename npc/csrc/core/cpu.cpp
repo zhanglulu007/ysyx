@@ -37,7 +37,7 @@ static bool g_print_itrace = false;
 // 初始化CPU
 bool init_cpu(int argc, char** argv) {
     g_contextp = new VerilatedContext;
-    g_contextp->commandArgs(argc, argv);  // ysyxSoC needs this for plusargs
+    g_contextp->commandArgs(argc, argv);
     g_top = new VysyxSoCFull{g_contextp};
     
 #ifdef ENABLE_FST
@@ -63,9 +63,6 @@ bool init_cpu(int argc, char** argv) {
 // 复位CPU
 void reset_cpu() {
     Log("Resetting NPC...");
-    // ysyxSoC uses high-level reset (active high)
-    // Reset needs to be held for at least 10 cycles for ChipLink
-    // For basic test, we use 2 cycles
     g_top->reset = 1;
     g_top->clock = 0;
     g_top->eval();
@@ -104,11 +101,9 @@ void exec_once() {
     }
 
     #ifdef ENABLE_TRACE
-        if (insdone) {  // Access CPU submodule signal
             ftrace_flush(g_print_itrace);
             itrace_log(npc_get_pc(), npc_get_inst(), g_print_itrace);
             mtrace_flush(g_print_itrace);
-        }
     #endif
 
     difftest_step(current_pc, npc_get_pc());

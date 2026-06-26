@@ -136,10 +136,6 @@ int main(int argc, char** argv) {
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
 
-    // ysyxSoC requirement: pass command line args to Verilated
-    // This is needed for plusargs functionality in ysyxSoCFull.v
-    // Note: This will be called in init_cpu() if needed
-
     // 打印欢迎信息
     print_welcome();
 
@@ -150,7 +146,7 @@ int main(int argc, char** argv) {
 
     printf("\n");
 
-    // 初始化CPU (including Verilated::commandArgs if using verilator)
+    // 初始化CPU
     if (!init_cpu(argc, argv)) {
         return 1;
     }
