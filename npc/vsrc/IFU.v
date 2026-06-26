@@ -73,8 +73,8 @@ module IFU(
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
-      pc              <= 32'h80000000;
-      update_pc_value(32'h80000000);
+      pc              <= 32'h20000000;  // MROM base address
+      update_pc_value(32'h20000000);
     end else begin
       case (state)
         IDLE: begin

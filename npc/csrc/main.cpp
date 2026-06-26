@@ -29,9 +29,10 @@ extern "C" void flash_read(int32_t addr, int32_t *data) {
 }
 
 extern "C" void mrom_read(int32_t addr, int32_t *data) {
-    // Currently not implemented, assert(0) to catch usage
-    fprintf(stderr, "[ERROR] mrom_read called at addr=0x%08x - not implemented\n", addr);
-    assert(0 && "mrom_read not implemented");
+    // Return ebreak instruction for MROM test
+    // ebreak instruction: 0x00100073
+    *data = 0x00100073;
+    Log("mrom_read: addr=0x%08x, returning ebreak instruction", addr);
 }
 
 // 打印使用说明
