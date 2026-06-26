@@ -96,6 +96,10 @@ module LSU(
   //   - 直到 mem_valid 下降 (新请求的到来必然伴随一次 0->1), 才允许接受下一次.
   reg req_active;
 
+  // [DEBUG] 独立 trace 文件, 记录每次写请求接受与 B 握手完成
+  integer dbg_lsu_fp;
+  reg [31:0] dbg_lsu_cyc;
+
   wire [1:0] mem_offset;
   assign mem_offset = mem_addr[1:0];
 
@@ -214,7 +218,10 @@ module LSU(
       aw_done          <= 1'b0;
       w_done           <= 1'b0;
       req_active       <= 1'b0;
+      dbg_lsu_cyc      <= 32'b0;
+      dbg_lsu_fp       <= $fopen("lsu_trace.log", "w");
     end else begin
+      dbg_lsu_cyc <= dbg_lsu_cyc + 1'b1;
       case (lsu_state)
         L_IDLE: begin
           // 请求已处理完, 等待 mem_valid 下降后重置门控, 准备接受下一个请求.
@@ -230,6 +237,9 @@ module LSU(
             latched_wdata <= computed_wdata;
             latched_wstrb <= computed_wstrb;
             req_active    <= 1'b1;
+            if (mem_wen)
+              $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d ACCEPT-WRITE addr=0x%08x wdata=0x%08x wstrb=0x%1h\n",
+                      $time, dbg_lsu_cyc, mem_addr, computed_wdata, computed_wstrb);
 
             if (!mem_wen) begin
               // ===== 读操作 (AR → R) =====
@@ -314,6 +324,7 @@ module LSU(
           // bready=1, 等待 bvalid 握手
           if (lsu_bvalid) begin
             // 握手完成: bvalid && bready
+            $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d B-DONE addr=0x%08x\n", $time, dbg_lsu_cyc, latched_addr);
             lsu_state <= L_IDLE;
           end
         end
