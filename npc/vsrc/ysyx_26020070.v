@@ -102,25 +102,20 @@ module ysyx_26020070(
   // 输出信号连接
   assign io_master_insdone_out = insdone;  // 连接到顶层输出端口
 
-  // ===== AXI4 Slave接口 (不使用，输出赋值为0) =====
-  assign io_slave_awvalid = 1'b0;
-  assign io_slave_awid    = 4'b0;
-  assign io_slave_awaddr  = 32'b0;
-  assign io_slave_awlen   = 8'b0;
-  assign io_slave_awsize  = 3'b0;
-  assign io_slave_awburst = 2'b0;
-  assign io_slave_wvalid  = 1'b0;
-  assign io_slave_wdata   = 32'b0;
-  assign io_slave_wstrb   = 4'b0;
-  assign io_slave_wlast   = 1'b0;
-  assign io_slave_bready  = 1'b0;
-  assign io_slave_arvalid = 1'b0;
-  assign io_slave_arid    = 4'b0;
-  assign io_slave_araddr  = 32'b0;
-  assign io_slave_arlen   = 8'b0;
-  assign io_slave_arsize  = 3'b0;
-  assign io_slave_arburst = 2'b0;
-  assign io_slave_rready  = 1'b0;
+  // ===== AXI4 Slave接口 (不使用，输出赋值为0表示slave未就绪) =====
+  // Slave outputs: 表示slave状态
+  assign io_slave_awready = 1'b0;   // slave not ready to accept write address
+  assign io_slave_wready  = 1'b0;   // slave not ready to accept write data
+  assign io_slave_bvalid  = 1'b0;   // slave not driving write response
+  assign io_slave_bid     = 4'b0;
+  assign io_slave_bresp   = 2'b0;
+  assign io_slave_arready = 1'b0;   // slave not ready to accept read address
+  assign io_slave_rvalid  = 1'b0;   // slave not driving read data
+  assign io_slave_rid     = 4'b0;
+  assign io_slave_rdata   = 32'b0;
+  assign io_slave_rresp   = 2'b0;
+  assign io_slave_rlast   = 1'b0;
+  // Slave inputs: 悬空即可（外部master不会访问我们）
 
   // IFU <-> IDU
   wire [31:0] pc;
