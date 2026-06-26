@@ -14,7 +14,7 @@
 typedef uint32_t word_t;
 
 // 前向声明
-class Vtop;
+class VysyxSoCFull;  // ysyxSoC顶层模块
 
 // 表达式求值
 word_t expr(char *e, bool *success);
@@ -43,6 +43,6 @@ extern bool in_pmem(uint32_t addr);
 extern void cpu_exec(uint64_t n);
 
 // 全局变量：顶层模块指针
-extern Vtop* g_top;
+extern VysyxSoCFull* g_top;  // ysyxSoC顶层模块
 
 #endif
