@@ -41,7 +41,7 @@ bool init_cpu(int argc, char** argv) {
     g_contextp->commandArgs(argc, argv);  // ysyxSoC needs this for plusargs
     g_top = new VysyxSoCFull{g_contextp};
     pc_cache = npc_get_pc();
-
+    printf("!!!!!!!!%d!!!!!!!!!!!",pc_cache);
 #ifdef ENABLE_FST
     Verilated::traceEverOn(true);
     g_tfp = new VerilatedFstC;
