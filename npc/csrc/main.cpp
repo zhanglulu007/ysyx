@@ -5,7 +5,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <cassert>
 #include "core/npc.h"
 #include "core/cpu.h"
 #include "core/memory.h"
@@ -20,20 +19,6 @@
 #include "trace/mtrace.h"
 #include "trace/ftrace.h"
 #endif
-
-// ysyxSoC DPI-C functions: flash_read and mrom_read
-extern "C" void flash_read(int32_t addr, int32_t *data) {
-    // Currently not implemented, assert(0) to catch usage
-    fprintf(stderr, "[ERROR] flash_read called at addr=0x%08x - not implemented\n", addr);
-    assert(0 && "flash_read not implemented");
-}
-
-extern "C" void mrom_read(int32_t addr, int32_t *data) {
-    // Return ebreak instruction for MROM test
-    // ebreak instruction: 0x00100073
-    *data = 0x00100073;
-    Log("mrom_read: addr=0x%08x, returning ebreak instruction", addr);
-}
 
 // 打印使用说明
 static void print_usage(const char* prog_name) {
