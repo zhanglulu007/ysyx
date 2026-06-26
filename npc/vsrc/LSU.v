@@ -222,6 +222,12 @@ module LSU(
       dbg_lsu_fp       <= $fopen("lsu_trace.log", "w");
     end else begin
       dbg_lsu_cyc <= dbg_lsu_cyc + 1'b1;
+      if (lsu_awvalid && lsu_awready)
+        $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d AW-HANDSHAKE addr=0x%08x wdata=0x%08x state=%0d\n",
+                $time, dbg_lsu_cyc, (lsu_state==L_IDLE)?mem_addr:latched_addr,
+                (lsu_state==L_IDLE)?computed_wdata:latched_wdata, lsu_state);
+      if (lsu_wvalid && lsu_wready)
+        $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d W-HANDSHAKE  state=%0d\n", $time, dbg_lsu_cyc, lsu_state);
       case (lsu_state)
         L_IDLE: begin
           // 请求已处理完, 等待 mem_valid 下降后重置门控, 准备接受下一个请求.
