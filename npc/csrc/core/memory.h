@@ -33,4 +33,7 @@ extern "C" {
     void pmem_write(int waddr, int wdata, char wmask);
 }
 
+extern "C" void flash_read(int32_t addr, int32_t *data);
+extern "C" void mrom_read(int32_t addr, int32_t *data); 
+
 #endif
