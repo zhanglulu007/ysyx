@@ -17,6 +17,10 @@
 #define RTC_ADDR_LO 0x10000048  // RTC低32位
 #define RTC_ADDR_HI 0x1000004c  // RTC高32位
 
+// MROM 配置 (0x2000_0000 ~ 0x2000_0fff, 共4KB)
+#define MROM_BASE 0x20000000
+#define MROM_SIZE 0x1000
+
 // 地址转换
 uint8_t* guest_to_host(uint32_t paddr);
 
@@ -26,6 +30,9 @@ bool in_pmem(uint32_t addr);
 
 // 程序加载
 bool load_program(const char* filename);
+
+// 读入二进制文件作为 MROM 内容 (偏移0对应 0x20000000)
+bool mrom_load(const char* filename);
 
 // DPI-C接口（供Verilog调用）
 extern "C" {

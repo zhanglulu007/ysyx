@@ -15,6 +15,9 @@
 // 物理内存
 static uint8_t pmem[PMEM_SIZE];
 
+// MROM 镜像 (内容由 mrom_load() 读入, 偏移0对应 0x20000000)
+static uint8_t mrom[MROM_SIZE];
+
 // mtrace去重变量（仅 TRACE 开启时使用）
 #ifdef ENABLE_TRACE
 static uint64_t last_read_cycle = 0;
@@ -157,5 +160,29 @@ bool load_program(const char* filename) {
     return true;
 }
 
+// 读入二进制文件作为 MROM 内容 (偏移0对应 0x20000000)
+bool mrom_load(const char* filename) {
+    FILE* fp = fopen(filename, "rb");
+    if (!fp) {
+        Log("ERROR: Cannot open MROM file '%s'", filename);
+        return false;
+    }
+    size_t bytes_read = fread(mrom, 1, MROM_SIZE, fp);
+    fclose(fp);
+    Log("Loaded %zu bytes from '%s' into MROM at 0x%08x", bytes_read, filename, MROM_BASE);
+    return true;
+}
+
 extern "C" void flash_read(int32_t addr, int32_t *data) { }
-extern "C" void mrom_read(int32_t addr, int32_t *data) { *data = 0x00100073; }
+
+// MROMHelper 会在 ar.fire 时组合调用本函数: addr 为 AXI AR 通道的完整字节地址
+// (0x20000000 起, 4字节对齐), 需返回该地址起 4 字节的小端数据。
+extern "C" void mrom_read(int32_t addr, int32_t *data) {
+    uint32_t off = (uint32_t)addr - MROM_BASE;
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i++) {
+        uint32_t boff = off + i;
+        value |= (boff < MROM_SIZE ? (uint32_t)mrom[boff] : 0u) << (8 * i);
+    }
+    *data = (int32_t)value;
+}

@@ -156,6 +156,16 @@ define VERILATE_CMD
 	--Mdir $(OBJ_DIR)
 endef
 
+# 编译 char-test: 用 riscv gcc 生成 ELF, 再 objcopy 抽取代码节为 binary
+# -O2: 消除无用的栈帧序言, 避免 _start 中对未初始化 sp 的访存导致总线死锁
+char-test: test/char-test.c
+	riscv64-linux-gnu-gcc -O2 -march=rv32e_zicsr -mabi=ilp32e \
+	  -fno-pic -mcmodel=medany -nostdlib -nostartfiles -ffreestanding -static \
+	  -Wl,-e,_start -o test/char-test.elf test/char-test.c
+	riscv64-linux-gnu-objcopy -O binary -j .text -j .text.startup -j .rodata \
+	  test/char-test.elf test/char-test.bin
+	@echo "Built test/char-test.bin"
+
 # 只编译不运行
 build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
@@ -182,4 +192,4 @@ run:
 	@$(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
-.PHONY: build sim run clean
+.PHONY: build sim run clean char-test
