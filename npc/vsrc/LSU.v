@@ -225,8 +225,7 @@ module LSU(
               end
             end else begin
               // ===== 写操作 (AW + W → B) =====
-              $display("[LSU] issue store: pc=%0d addr=0x%08x data=0x%08x @cycle=%0d",
-                 pc, mem_addr, computed_wdata, mcycle_out);  // 调试用
+              $display("[LSU]");  // 调试用
               aw_done <= 1'b0;
               w_done  <= 1'b0;
 
