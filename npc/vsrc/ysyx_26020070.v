@@ -614,6 +614,11 @@ module ysyx_26020070(
 
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
+      // [DEBUG] store 指令执行追踪
+      if (is_store) begin
+        $display("[STORE] PC=0x%08x inst=0x%08x addr=0x%08x wdata=0x%08x", pc, inst, mem_addr, rs2_data);
+      end
+
       // ebreak处理
       if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
