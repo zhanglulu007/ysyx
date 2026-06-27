@@ -79,7 +79,7 @@ void reset_cpu() {
 // 单步执行
 void exec_once() {
     uint32_t current_pc = npc_get_pc();
-    int cnt = 3;
+
     while(current_pc == npc_get_pc()) {
          // 下降沿
         g_top->clock = 0;
@@ -97,8 +97,7 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
-        if (npc_get_inst() == 0x00100073) cnt--;
-        if (!cnt) break;
+        if (npc_get_inst() == 0x00100073) break;
     }
 
     #ifdef ENABLE_TRACE
