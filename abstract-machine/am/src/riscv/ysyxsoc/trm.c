@@ -17,8 +17,7 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  /* 2x nop 确保 mv 写入 rf[10] (NBA) 在 ebreak 检测 (组合逻辑读 rf[10]) 前完成 */
-  asm volatile("mv a0, %0\n\tnop\n\tnop\n\tebreak" : : "r"(code) : "a0", "memory");
+  asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
   while (1);
 }
 

@@ -153,9 +153,6 @@ module ysyx_26020070(
   // IDU输出 - 系统指令
   wire is_ebreak, is_ecall, is_mret;
 
-  // ebreak 3态FSM: 0=idle, 1=lock_a0, 2=call_handler
-  reg [1:0] ebreak_state;
-  reg [31:0] ebreak_a0_latched;
 
   // IDU输出 - CSR指令
   wire is_csrrw, is_csrrs;
@@ -612,50 +609,26 @@ module ysyx_26020070(
 
   // ========== ebreak处理和trace ==========
 
-  import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
   always @(posedge clock) begin
-    if (rst) begin
-      ebreak_state <= 2'd0;
-      ebreak_a0_latched <= 32'b0;
-    end else begin
-      // === ebreak 3态FSM: 0=IDLE, 1=LATCH_A0, 2=CALL_HANDLER ===
-      case (ebreak_state)
-        2'd0: begin
-          if (ifu_valid && is_ebreak) begin
-            ebreak_a0_latched <= a0_value;
-            ebreak_state <= 2'd1;
-          end
-        end
-        2'd1: begin
-          // 等待1个周期让前序指令的 RegFile 写回 (NBA) 完成
-          ebreak_state <= 2'd2;
-        end
-        2'd2: begin
-          $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d",
-                   pc, ebreak_a0_latched, mcycle_out);
-          ebreak_handler(ebreak_a0_latched);
-          ebreak_state <= 2'd0;
-        end
-        default: ebreak_state <= 2'd0;
-      endcase
+    // ebreak 处理已移至 C++ 侧 (exec_once while 循环)
+    // 利用 DPI-C reg_cache 避免 RTL NBA 延迟问题
 
-      // ftrace检测
-      if (ifu_valid) begin
-        if (is_jalr) begin
-          if (rd == 5'd1) begin
-            ftrace_call_handler(pc, jump_target);
-          end
-          else if (rd == 5'd0 && rs1 == 5'd1) begin
-            ftrace_ret_handler(pc, jump_target);
-          end
+    // ftrace检测
+    if (!rst && ifu_valid) begin
+      if (is_jalr) begin
+        if (rd == 5'd1) begin
+          ftrace_call_handler(pc, jump_target);
         end
+        else if (rd == 5'd0 && rs1 == 5'd1) begin
+          ftrace_ret_handler(pc, jump_target);
+        end
+      end
 
-        if (is_jal && rd == 5'd1) begin
-          ftrace_call_handler(pc, branch_target);
-        end
+      if (is_jal && rd == 5'd1) begin
+        ftrace_call_handler(pc, branch_target);
       end
     end
   end
