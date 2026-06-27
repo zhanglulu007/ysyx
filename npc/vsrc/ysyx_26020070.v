@@ -152,7 +152,6 @@ module ysyx_26020070(
 
   // IDU输出 - 系统指令
   wire is_ebreak, is_ecall, is_mret;
-  reg  is_ebreak_d1;  // ebreak 延迟一周期（确保前序指令寄存器写回完成）
 
   // IDU输出 - CSR指令
   wire is_csrrw, is_csrrs;
@@ -615,12 +614,9 @@ module ysyx_26020070(
 
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
-      // ebreak打一拍延迟：确保前序指令 (如 mv a0,xx) 已完成寄存器写回
-      // 第N周期 is_ebreak=1 → 寄存器写回发生在同周期posedge
-      // 第N+1周期 is_ebreak_d1=1 → 此时rf[10]必然已更新
-      is_ebreak_d1 <= is_ebreak;
-
-      if (is_ebreak_d1) begin
+      // ebreak处理：直接检测 is_ebreak (ID stage)
+      // a0 值的 RAW hazard 由软件保证 (halt 中用 li a0,0; nop; ebreak)
+      if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
         ebreak_handler(a0_value);
       end
