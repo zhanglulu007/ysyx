@@ -23,10 +23,7 @@ void halt(int code) {
    * 缺少 RAW hazard 转发的问题。 */
   asm volatile(
     "mv a0, %0\n\t"
-    "nop\n\t"
-    "nop\n\t"
-    "nop\n\t"
-    "nop\n\t"
+
     "ebreak"
     : : "r"(code) : "a0", "memory");
   while (1);
