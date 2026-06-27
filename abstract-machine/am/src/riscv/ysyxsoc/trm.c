@@ -22,6 +22,7 @@ void halt(int code) {
    * 这是为了弥补 NPC 流水线中 mv 到 ebreak 之间
    * 缺少 RAW hazard 转发的问题。 */
   asm volatile(
+    "mv a0, %0\n\t"
 
     "ebreak"
     : : "r"(code) : "a0", "memory");
