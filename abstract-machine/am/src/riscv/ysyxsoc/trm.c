@@ -17,8 +17,7 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  //asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
-  npc_trap(code);
+  asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
   while (1);
 }
 
