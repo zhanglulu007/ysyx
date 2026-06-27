@@ -17,18 +17,8 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  /* 在 mv a0,code 和 ebreak 之间插入多条 nop，
-   * 确保 NPC 流水线在 ebreak 检测 a0 时已完成写回。
-   * 这是为了弥补 NPC 流水线中 mv 到 ebreak 之间
-   * 缺少 RAW hazard 转发的问题。 */
-  asm volatile(
-    "mv a0, %0\n\t"
-    "nop\n\t"
-    "nop\n\t"
-    "nop\n\t"
-    "nop\n\t"
-    "ebreak"
-    : : "r"(code) : "a0", "memory");
+  //asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
+  npc_trap(code);
   while (1);
 }
 
