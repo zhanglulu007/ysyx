@@ -88,18 +88,6 @@ module LSU(
   reg aw_done;  // AW 握手已完成
   reg w_done;   // W  握手已完成
 
-  // ========== 请求接受门控 ==========
-  // req_active=1 表示当前 mem_valid 请求已被 LSU 接受, 正在处理或刚处理完.
-  // 作用: 防止 mem_valid 残留电平在 L_IDLE 重复触发第二个写事务.
-  //   - L_IDLE 第一次看到 mem_valid 时若 req_active=0, 则接受请求并置 req_active<=1;
-  //   - 事务完成回到 L_IDLE 后, req_active 维持 1, 吃掉 mem_valid 的残留那一拍;
-  //   - 直到 mem_valid 下降 (新请求的到来必然伴随一次 0->1), 才允许接受下一次.
-  reg req_active;
-
-  // [DEBUG] 独立 trace 文件, 记录每次写请求接受与 B 握手完成
-  integer dbg_lsu_fp;
-  reg [31:0] dbg_lsu_cyc;
-
   wire [1:0] mem_offset;
   assign mem_offset = mem_addr[1:0];
 
@@ -107,12 +95,8 @@ module LSU(
   // AXI4 输出信号
   // ===================================================================
 
-  // 接受门控: L_IDLE 下仅当有请求且尚未接受 (req_active=0) 时才发 valid.
-  // 这保证一次 mem_valid 电平只产生一个 AXI 事务, 避免 mem_valid 残留导致重发.
-  wire idle_accept = (lsu_state == L_IDLE) && mem_valid && !req_active && !rst;
-
   // AR 通道
-  assign lsu_arvalid = idle_accept && !mem_wen ? 1'b1 :
+  assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
   assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
   assign lsu_arid = 4'b0000;      // ID固定为0
@@ -124,7 +108,7 @@ module LSU(
   assign lsu_rready = (lsu_state == L_WAIT_R);
 
   // AW 通道
-  assign lsu_awvalid = idle_accept && mem_wen ? 1'b1 :
+  assign lsu_awvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                        (lsu_state == L_WAIT_AW_W && !aw_done) ? 1'b1 : 1'b0;
   assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
   assign lsu_awid = 4'b0000;      // ID固定为0
@@ -133,7 +117,7 @@ module LSU(
   assign lsu_awburst = 2'b01;     // INCR模式 (增量突发)
 
   // W 通道
-  assign lsu_wvalid = idle_accept && mem_wen ? 1'b1 :
+  assign lsu_wvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                       (lsu_state == L_WAIT_AW_W && !w_done) ? 1'b1 : 1'b0;
   assign lsu_wlast = lsu_wvalid;  // 单次传输，wvalid时即为last beat
 
@@ -217,35 +201,15 @@ module LSU(
       latched_wstrb    <= 4'b0;
       aw_done          <= 1'b0;
       w_done           <= 1'b0;
-      req_active       <= 1'b0;
-      dbg_lsu_cyc      <= 32'b0;
-      dbg_lsu_fp       <= $fopen("lsu_trace.log", "w");
     end else begin
-      dbg_lsu_cyc <= dbg_lsu_cyc + 1'b1;
-      if (lsu_awvalid && lsu_awready)
-        $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d AW-HANDSHAKE addr=0x%08x wdata=0x%08x state=%0d\n",
-                $time, dbg_lsu_cyc, (lsu_state==L_IDLE)?mem_addr:latched_addr,
-                (lsu_state==L_IDLE)?computed_wdata:latched_wdata, lsu_state);
-      if (lsu_wvalid && lsu_wready)
-        $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d W-HANDSHAKE  state=%0d\n", $time, dbg_lsu_cyc, lsu_state);
       case (lsu_state)
         L_IDLE: begin
-          // 请求已处理完, 等待 mem_valid 下降后重置门控, 准备接受下一个请求.
-          // 这吃掉了 mem_valid 残留电平那一拍, 避免对同一 store 重发写事务.
-          if (req_active && !mem_valid) begin
-            req_active <= 1'b0;
-          end
-
-          if (idle_accept) begin
-            // 接受新请求: 锁存所有请求信息, 置门控
+          if (mem_valid) begin
+            // 锁存所有请求信息
             latched_addr  <= mem_addr;
             latched_wen   <= mem_wen;
             latched_wdata <= computed_wdata;
             latched_wstrb <= computed_wstrb;
-            req_active    <= 1'b1;
-            if (mem_wen)
-              $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d ACCEPT-WRITE addr=0x%08x wdata=0x%08x wstrb=0x%1h\n",
-                      $time, dbg_lsu_cyc, mem_addr, computed_wdata, computed_wstrb);
 
             if (!mem_wen) begin
               // ===== 读操作 (AR → R) =====
@@ -261,7 +225,6 @@ module LSU(
               end
             end else begin
               // ===== 写操作 (AW + W → B) =====
-              $display("[LSU]");  // 调试用
               aw_done <= 1'b0;
               w_done  <= 1'b0;
 
@@ -330,7 +293,6 @@ module LSU(
           // bready=1, 等待 bvalid 握手
           if (lsu_bvalid) begin
             // 握手完成: bvalid && bready
-            $fwrite(dbg_lsu_fp, "[LSU] t=%0t cyc=%0d B-DONE addr=0x%08x\n", $time, dbg_lsu_cyc, latched_addr);
             lsu_state <= L_IDLE;
           end
         end
