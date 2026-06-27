@@ -76,6 +76,9 @@ module WBU(
   assign exception_cause = 32'd11;  // Environment call from M-mode
   assign mret_en = is_mret;
   
+  // 将 is_ebreak 传递到 WB 阶段输出，eBreak 检测移到这里
+  assign is_ebreak_wb = is_ebreak;
+
   // ========== PC更新逻辑 ==========
   assign pc_next = is_ebreak ? pc :                           // ebreak：PC不变
                    is_ecall ? mtvec :                         // ecall：跳转到异常入口
