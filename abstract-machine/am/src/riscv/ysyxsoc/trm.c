@@ -17,7 +17,9 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  npc_trap(code);
+  /* 用 asm clobber "a0" 阻止编译器将 code 放入 a0，
+   * 从而避免 "mv a0,a0" 被优化成 nop 后 NPC 流水线读到旧值 */
+  asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
   while (1);
 }
 
