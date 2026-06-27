@@ -17,8 +17,7 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  /* mv a0 + nop + ebreak: nop 确保 mv 的 RegFile 写回 (NBA) 在 ebreak 检测前完成 */
-  asm volatile("mv a0, %0\n\tnop\n\tebreak" : : "r"(code) : "a0", "memory");
+  asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
   while (1);
 }
 

@@ -614,10 +614,9 @@ module ysyx_26020070(
 
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
-      // ebreak处理：直接检测 is_ebreak (ID stage)
-      // a0 值的 RAW hazard 由软件保证 (halt 中用 li a0,0; nop; ebreak)
+      // ebreak处理：检测 is_ebreak (ID stage)
       if (is_ebreak) begin
-        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, rf10=0x%08x, mcycle=%0d", pc, a0_value, u_regfile.rf[10], mcycle_out);
         ebreak_handler(a0_value);
       end
 
