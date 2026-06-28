@@ -62,7 +62,6 @@ bool init_cpu(int argc, char** argv) {
 
 // 复位CPU
 void reset_cpu() {
-    void reset_cpu() {
     Log("Resetting NPC...");
     g_top->reset = 1;
     for (int i = 0; i < 20; i++) {   // 持续复位 20 个完整时钟周期
