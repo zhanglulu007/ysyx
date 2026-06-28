@@ -612,12 +612,17 @@ module ysyx_26020070(
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
+  // DEBUG cycle counter
+  reg [31:0] dbg_cycle = 0;
+  always @(posedge clock) begin
+    if (!rst) dbg_cycle <= dbg_cycle + 1;
+  end
+
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
       // DEBUG: 打印每条执行指令的关键信号
-      $display("[CPU-DBG] pc=0x%08x inst=0x%08x is_jal=%b is_jalr=%b is_branch=%b bt=0x%08x jt=0x%08x taken=%b pc_next=0x%08x a0=0x%08x",
-               pc, inst, is_jal, is_jalr, (is_beq||is_bne||is_blt||is_bge||is_bltu||is_bgeu),
-               branch_target, jump_target, branch_taken, pc_next, a0_value);
+      $display("[CPU-DBG cyc=%0d] pc=0x%08x inst=0x%08x is_jal=%b is_jalr=%b pc_next=0x%08x a0=0x%08x",
+               dbg_cycle, pc, inst, is_jal, is_jalr, pc_next, a0_value);
       // ebreak处理
       if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);

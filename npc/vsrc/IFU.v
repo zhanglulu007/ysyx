@@ -95,8 +95,6 @@ module IFU(
                 is_load_pending  <= 1'b0;
             end
           end else if (ifu_rvalid && ifu_rready) begin
-            // DEBUG
-            $display("[IFU-COMMIT] state=WAIT pc=0x%08x pc_next=0x%08x mem_valid=%b -> pc<=pc_next", pc, pc_next, mem_valid);
             update_inst_value(pc, ifu_rdata);
             if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
