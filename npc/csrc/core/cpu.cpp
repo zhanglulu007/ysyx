@@ -63,15 +63,16 @@ bool init_cpu(int argc, char** argv) {
 // 复位CPU
 void reset_cpu() {
     Log("Resetting NPC...");
+    const int RESET_CYCLES = 10;
     g_top->reset = 1;
-    g_top->clock = 0;
-    g_top->eval();
-
-    g_contextp->timeInc(1);
-    g_top->clock = 1;
-    g_top->eval();
-
-    g_contextp->timeInc(1);
+    for (int i = 0; i < RESET_CYCLES; i++) {
+        g_top->clock = 0;
+        g_top->eval();
+        g_contextp->timeInc(1);
+        g_top->clock = 1;
+        g_top->eval();
+        g_contextp->timeInc(1);
+    }
     g_top->reset = 0;
     Log("Reset complete");
 }
