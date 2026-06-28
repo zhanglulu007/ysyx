@@ -615,7 +615,8 @@ module ysyx_26020070(
   // DEBUG cycle counter
   reg [31:0] dbg_cycle = 0;
   always @(posedge clock) begin
-    if (!rst) dbg_cycle <= dbg_cycle + 1;
+    if (rst) $display("[TOP-RST] reset=1 at posedge! dbg_cycle=%0d", dbg_cycle);
+    else dbg_cycle <= dbg_cycle + 1;
   end
 
   always @(posedge clock) begin
