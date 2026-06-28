@@ -613,6 +613,11 @@ module ysyx_26020070(
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
   always @(posedge clock) begin
+    if (rst)
+      $display("[TOP@RST] rst=1 -> resetting CPU | BEFORE: ifu_valid=%b inst=0x%08x pc=0x%08x ifu_rdata=0x%08x", ifu_valid, inst, pc, ifu_rdata);
+  end
+
+  always @(posedge clock) begin
     if (!rst && ifu_valid) begin
       // ebreak处理
       if (is_ebreak) begin
