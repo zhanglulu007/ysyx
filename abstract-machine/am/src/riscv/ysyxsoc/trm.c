@@ -30,8 +30,14 @@ static void bootloader() {
   uint8_t *src = (uint8_t *)&_data_lma;
   uint32_t  sz = (uint32_t)(uintptr_t)&_data_size;
 
-  for (uint32_t i = 0; i < sz; i++) {
-    dst[i] = src[i];
+  /* 注意: 不能直接写 for(i=0;i<sz;i++) 循环. 在 -O2 下编译器会把它优化成
+   * 先复制再判断终止地址的 do-while 形式, 当 sz==0 (本程序 .data 段为空) 时,
+   * 终止地址等于起始地址, do-while 至少执行一次后 a5 != a2 恒成立, 陷入死循环.
+   * 此处显式判断 sz>0, 阻止编译器做该优化. */
+  if (sz > 0) {
+    for (uint32_t i = 0; i < sz; i++) {
+      dst[i] = src[i];
+    }
   }
 
   for (uint8_t *p = (uint8_t *)&_bss_start; p < (uint8_t *)&_bss_end; p++) {
