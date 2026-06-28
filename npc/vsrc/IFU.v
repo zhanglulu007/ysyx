@@ -69,6 +69,7 @@ module IFU(
 
   always @(posedge clk) begin
     if (rst) begin
+      $display("[IFU-RST!] rst=1 detected, pc reset to 0x20000000 (prev pc=0x%08x)", pc);
       state           <= IDLE;
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
