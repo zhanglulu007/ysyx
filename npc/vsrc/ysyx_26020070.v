@@ -153,7 +153,6 @@ module ysyx_26020070(
   // IDU输出 - 系统指令
   wire is_ebreak, is_ecall, is_mret;
 
-
   // IDU输出 - CSR指令
   wire is_csrrw, is_csrrs;
 
@@ -609,15 +608,19 @@ module ysyx_26020070(
 
   // ========== ebreak处理和trace ==========
 
+  import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
   always @(posedge clock) begin
-    // ebreak 处理已移至 C++ 侧 (exec_once while 循环)
-    // 利用 DPI-C reg_cache 避免 RTL NBA 延迟问题
-
-    // ftrace检测
     if (!rst && ifu_valid) begin
+      // ebreak处理
+      if (is_ebreak) begin
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
+        ebreak_handler(a0_value);
+      end
+
+      // ftrace检测
       if (is_jalr) begin
         if (rd == 5'd1) begin
           ftrace_call_handler(pc, jump_target);

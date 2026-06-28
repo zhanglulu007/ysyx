@@ -17,7 +17,8 @@ void putch(char ch) {
 }
 
 void halt(int code) {
-  asm volatile("mv a0, %0\n\tebreak" : : "r"(code) : "a0", "memory");
+  // 使用ebreak指令通知NPC程序结束
+  npc_trap(code);
   while (1);
 }
 

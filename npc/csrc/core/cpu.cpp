@@ -97,18 +97,7 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
-        if (npc_should_exit()) {
-            printf("[exec_once] should_exit=true, breaking while loop\n");
-            break;
-        }
-        // ebreak检测: 从C++侧reg_cache读a0 (DPI-C同步更新, 不受RTL NBA延迟影响)
-        if (npc_get_inst() == 0x00100073) {
-            uint32_t a0 = npc_get_reg(10);
-            printf("\nEBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%lu\n",
-                   current_pc, a0, npc_get_cycle());
-            ebreak_handler((int)a0);
-            break;
-        }
+        if (npc_get_inst() == 0x00100073) break;
     }
 
     #ifdef ENABLE_TRACE
