@@ -612,21 +612,6 @@ module ysyx_26020070(
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
-  // 探针: 跟踪 reset 来源. reset 是 CPU 模块的 reset 端口(= SynchronizerShiftReg 输出)
-  reg reset_prev = 1'b1;
-  reg [31:0] probe_cyc = 0;
-  always @(posedge clock) begin
-    if (reset !== reset_prev)
-      $display("[RESET-CHG] cyc=%0d reset: %b -> %b", probe_cyc, reset_prev, reset);
-    // 在复位脉冲附近逐周期打印 AXI 总线状态
-    if (!reset && probe_cyc >= 5 && probe_cyc <= 22)
-      $display("[BUS cyc=%0d] arvalid=%b arready=%b araddr=0x%08x | rvalid=%b rready=%b rdata=0x%08x | pc=0x%08x ifu_rdata=0x%08x inst=0x%08x",
-               probe_cyc, io_master_arvalid, io_master_arready, io_master_araddr,
-               io_master_rvalid, io_master_rready, io_master_rdata, pc, ifu_rdata, inst);
-    reset_prev <= reset;
-    if (!reset) probe_cyc <= probe_cyc + 1;
-  end
-
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
       // ebreak处理
