@@ -179,6 +179,7 @@ module AXIArbiter(
       grant       <= IFU;
       lsu_is_read <= 1'b0;
     end else begin
+      $display("[ARB-TICK] state=%b grant=%b ifu_req=%b lsu_req=%b ifu_arvalid=%b ifu_arready=%b mem_arvalid=%b mem_arready=%b mem_rvalid=%b mem_rready=%b", state, grant, ifu_req, lsu_req, ifu_arvalid, ifu_arready, mem_arvalid, mem_arready, mem_rvalid, mem_rready);
       case (state)
         IDLE: begin
           if (ifu_req) begin
