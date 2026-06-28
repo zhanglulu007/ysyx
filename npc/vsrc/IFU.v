@@ -94,6 +94,8 @@ module IFU(
                 is_load_pending  <= 1'b0;
             end
           end else if (ifu_rvalid && ifu_rready) begin
+            // DEBUG: 打印 AR请求地址(pc) 与 实际返回的指令数据
+            $display("[IFU-DBG] pc_araddr=0x%08x rdata=0x%08x", pc, ifu_rdata);
             update_inst_value(pc, ifu_rdata);
             if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
