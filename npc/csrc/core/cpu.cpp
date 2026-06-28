@@ -76,7 +76,6 @@ void reset_cpu() {
     g_top->reset = 0;
     Log("Reset complete");
 }
-}
 
 // 单步执行
 void exec_once() {
