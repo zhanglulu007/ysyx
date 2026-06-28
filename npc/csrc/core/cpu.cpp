@@ -62,18 +62,20 @@ bool init_cpu(int argc, char** argv) {
 
 // 复位CPU
 void reset_cpu() {
+    void reset_cpu() {
     Log("Resetting NPC...");
     g_top->reset = 1;
-    g_top->clock = 0;
-    g_top->eval();
-
-    g_contextp->timeInc(1);
-    g_top->clock = 1;
-    g_top->eval();
-
-    g_contextp->timeInc(1);
+    for (int i = 0; i < 20; i++) {   // 持续复位 20 个完整时钟周期
+        g_top->clock = 0;
+        g_top->eval();
+        g_contextp->timeInc(1);
+        g_top->clock = 1;
+        g_top->eval();
+        g_contextp->timeInc(1);
+    }
     g_top->reset = 0;
     Log("Reset complete");
+}
 }
 
 // 单步执行
@@ -84,7 +86,6 @@ void exec_once() {
          // 下降沿
         g_top->clock = 0;
         g_top->eval();
-        if (g_top->reset) printf("[C++-RST-CK] reset=1 at clock=0 (falling), cycle=%lu pc=0x%x\n", (unsigned long)npc_get_cycle(), npc_get_pc());
     #ifdef ENABLE_FST
         if (g_tfp) g_tfp->dump(g_contextp->time());
     #endif
@@ -92,7 +93,6 @@ void exec_once() {
         // 上升沿
         g_top->clock = 1;
         g_top->eval();
-        if (g_top->reset) printf("[C++-RST-CK] reset=1 at clock=1 (rising), cycle=%lu pc=0x%x\n", (unsigned long)npc_get_cycle(), npc_get_pc());
     #ifdef ENABLE_FST
         if (g_tfp) g_tfp->dump(g_contextp->time());
     #endif

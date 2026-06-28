@@ -69,7 +69,6 @@ module IFU(
 
   always @(posedge clk) begin
     if (rst) begin
-      $display("[IFU-RST!] rst=1 at posedge, pc reset to 0x20000000 (prev pc=0x%08x state=%b)", pc, state);
       state           <= IDLE;
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
@@ -77,7 +76,6 @@ module IFU(
       pc              <= 32'h20000000;  // MROM base address
       update_pc_value(32'h20000000);
     end else begin
-      $display("[IFU-TICK] rst=%b state=%b pc=0x%08x arready=%b rvalid=%b rready=%b ifu_valid=%b rdata=0x%08x pc_next=0x%08x", rst, state, pc, ifu_arready, ifu_rvalid, ifu_rready, ifu_valid, ifu_rdata, pc_next);
       case (state)
         IDLE: begin
           if (ifu_arready) begin
