@@ -612,9 +612,16 @@ module ysyx_26020070(
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
 
+  // 探针: 只在 rst 上升沿打印一次
+  reg rst_prev = 1'b1;
+  reg [31:0] top_cyc = 0;
   always @(posedge clock) begin
-    if (rst)
-      $display("[TOP@RST] rst=1 -> resetting CPU | BEFORE: ifu_valid=%b inst=0x%08x pc=0x%08x ifu_rdata=0x%08x", ifu_valid, inst, pc, ifu_rdata);
+    if (!rst) top_cyc <= top_cyc + 1;
+    if (rst && !rst_prev)
+      $display("[TOP@RST-RISE] cyc=%0d ifu_valid=%b inst=0x%08x pc=0x%08x ifu_rdata=0x%08x", top_cyc, ifu_valid, inst, pc, ifu_rdata);
+    if (!rst && rst_prev)
+      $display("[TOP@RST-FALL] cyc=%0d ifu_valid=%b inst=0x%08x pc=0x%08x ifu_rdata=0x%08x", top_cyc, ifu_valid, inst, pc, ifu_rdata);
+    rst_prev <= rst;
   end
 
   always @(posedge clock) begin

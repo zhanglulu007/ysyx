@@ -69,7 +69,6 @@ module IFU(
 
   always @(posedge clk) begin
     if (rst) begin
-      $display("[IFU@RST] rst=1 -> state<=IDLE pc<=0x20000000 | BEFORE: state=%b pc=0x%08x ifu_rvalid=%b ifu_rdata=0x%08x inst=0x%08x", state, pc, ifu_rvalid, ifu_rdata, inst);
       state           <= IDLE;
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
