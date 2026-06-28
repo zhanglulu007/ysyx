@@ -113,8 +113,11 @@ module AXIArbiter(
 
   // ========== 组合逻辑授权 (IDLE 时零周期转发) ==========
   // 固定优先级: IFU > LSU
-  wire ifu_granted = (state == IDLE && ifu_req && !rst) || (state == BUSY && grant == IFU);
-  wire lsu_granted = (state == IDLE && lsu_req && !ifu_req && !rst) || (state == BUSY && grant == LSU);
+  // 注意: IDLE 状态下若总线仍有残留响应 (mem_rvalid/mem_bvalid), 必须禁止授权,
+  // 让残留响应通过下面的 mem_rready/mem_bready 排空逻辑被消费, 而不路由给 master.
+  wire drain = (state == IDLE) && (mem_rvalid || mem_bvalid);
+  wire ifu_granted = ((state == IDLE && ifu_req && !drain) || (state == BUSY && grant == IFU)) && !rst;
+  wire lsu_granted = ((state == IDLE && lsu_req && !ifu_req && !drain) || (state == BUSY && grant == LSU)) && !rst;
 
   // ========== AR 通道转发 ==========
   // Master → Slave
@@ -144,8 +147,12 @@ module AXIArbiter(
   assign lsu_rid    = mem_rid;
 
   // Master → Slave
+  // drain 期间 (IDLE 且总线有残留响应) 主动拉高 mem_rready, 把上一事务被复位打断后
+  // 残留在 R 通道的响应消费掉, 释放 MROM 等总线设备. 由于 drain 时无 master 被授权,
+  // 该响应不会路由给 IFU/LSU, 不会被误当作指令/数据.
   assign mem_rready = ifu_granted ? ifu_rready :
-                      lsu_granted ? lsu_rready : 1'b0;
+                      lsu_granted ? lsu_rready :
+                      drain ? 1'b1 : 1'b0;
 
   // ========== AW, W, B 通道转发 (仅 LSU) ==========
   assign mem_awvalid = lsu_granted ? lsu_awvalid : 1'b0;
@@ -165,7 +172,9 @@ module AXIArbiter(
   assign lsu_bvalid = lsu_granted ? mem_bvalid : 1'b0;
   assign lsu_bresp  = mem_bresp;
   assign lsu_bid    = mem_bid;
-  assign mem_bready = lsu_granted ? lsu_bready : 1'b0;
+  // drain 期间排空残留写响应 (与 R 通道同理)
+  assign mem_bready = lsu_granted ? lsu_bready :
+                      drain ? 1'b1 : 1'b0;
 
   // ========== 事务完成检测 ==========
   wire ifu_done  = mem_rvalid && mem_rready && mem_rlast;  // AXI4: 需要rlast
@@ -181,15 +190,21 @@ module AXIArbiter(
     end else begin
       case (state)
         IDLE: begin
-          if (ifu_req) begin
-            state       <= BUSY;
-            grant       <= IFU;
-            // IFU 只读, lsu_is_read 无关
-          end else if (lsu_req) begin
-            state <= BUSY;
-            grant <= LSU;
-            // 记录事务类型: arvalid 有效 = 读, 否则 = 写
-            lsu_is_read <= lsu_arvalid && !lsu_awvalid;
+          // 优先排空总线残留响应: 若 R/B 通道仍有上一事务(被复位打断)的响应,
+          // 必须先消费掉, 否则新请求会被 grant 并把残留 rdata 当作有效数据取走.
+          // 此时 ifu_granted/lsu_granted 均为 0 (见 grant 逻辑加的 !drain 条件),
+          // 残留响应不会路由给任何 master.
+          if (!mem_rvalid && !mem_bvalid) begin
+            if (ifu_req) begin
+              state       <= BUSY;
+              grant       <= IFU;
+              // IFU 只读, lsu_is_read 无关
+            end else if (lsu_req) begin
+              state <= BUSY;
+              grant <= LSU;
+              // 记录事务类型: arvalid 有效 = 读, 否则 = 写
+              lsu_is_read <= lsu_arvalid && !lsu_awvalid;
+            end
           end
         end
 
