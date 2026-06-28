@@ -84,6 +84,7 @@ void exec_once() {
          // 下降沿
         g_top->clock = 0;
         g_top->eval();
+        if (g_top->reset) printf("[C++-RST-CK] reset=1 at clock=0 (falling), cycle=%lu pc=0x%x\n", (unsigned long)npc_get_cycle(), npc_get_pc());
     #ifdef ENABLE_FST
         if (g_tfp) g_tfp->dump(g_contextp->time());
     #endif
@@ -91,6 +92,7 @@ void exec_once() {
         // 上升沿
         g_top->clock = 1;
         g_top->eval();
+        if (g_top->reset) printf("[C++-RST-CK] reset=1 at clock=1 (rising), cycle=%lu pc=0x%x\n", (unsigned long)npc_get_cycle(), npc_get_pc());
     #ifdef ENABLE_FST
         if (g_tfp) g_tfp->dump(g_contextp->time());
     #endif
