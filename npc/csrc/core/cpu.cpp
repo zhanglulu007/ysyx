@@ -63,22 +63,15 @@ bool init_cpu(int argc, char** argv) {
 // 复位CPU
 void reset_cpu() {
     Log("Resetting NPC...");
-    // ysyxSoC 要求仿真顶层复位信号维持足够长(至少 10 个周期以上).
-    // SoC.scala 中 cpu.module.reset := SynchronizerShiftReg(reset.asBool, 10) || reset.asBool
-    // 这是一个 10 级同步移位寄存器: 若顶层 reset 只持续 1 拍, 那个高电平脉冲会被
-    // 移位寄存器延迟 ~10 拍后重新输出, 形成"幽灵复位脉冲", 在 CPU 运行中途把 pc
-    // 重置为复位值, 导致执行流彻底错乱. 因此复位必须持续足够长, 让同步器在复位
-    // 期间稳定输出 1, 并在复位释放后单调下降.
-    const int RESET_CYCLES = 20;
     g_top->reset = 1;
-    for (int i = 0; i < RESET_CYCLES; i++) {
-        g_top->clock = 0;
-        g_top->eval();
-        g_contextp->timeInc(1);
-        g_top->clock = 1;
-        g_top->eval();
-        g_contextp->timeInc(1);
-    }
+    g_top->clock = 0;
+    g_top->eval();
+
+    g_contextp->timeInc(1);
+    g_top->clock = 1;
+    g_top->eval();
+
+    g_contextp->timeInc(1);
     g_top->reset = 0;
     Log("Reset complete");
 }
