@@ -64,14 +64,14 @@ bool init_cpu(int argc, char** argv) {
 void reset_cpu() {
     Log("Resetting NPC...");
     g_top->reset = 1;
-    for (int i = 0; i < 20; i++) {   // 持续复位 20 个完整时钟周期
-        g_top->clock = 0;
-        g_top->eval();
-        g_contextp->timeInc(1);
-        g_top->clock = 1;
-        g_top->eval();
-        g_contextp->timeInc(1);
-    }
+    g_top->clock = 0;
+    g_top->eval();
+
+    g_contextp->timeInc(1);
+    g_top->clock = 1;
+    g_top->eval();
+
+    g_contextp->timeInc(1);
     g_top->reset = 0;
     Log("Reset complete");
 }
