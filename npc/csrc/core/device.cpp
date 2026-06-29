@@ -128,6 +128,7 @@ bool is_fb_addr(uint32_t addr) {
 }
 
 uint32_t device_read(uint32_t addr) {
+    printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     // UART 寄存器组 (addr 已 4 字节对齐)
     //   SERIAL_PORT+0 (0x10000000): 字节 0-3 (THR/DLL, IER/DLM, IIR/FCR, LCR)
     //   SERIAL_PORT+4 (0x10000004): 字节 4-7 (MCR, LSR, MSR, SCR)
