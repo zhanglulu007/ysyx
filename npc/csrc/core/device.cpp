@@ -18,7 +18,7 @@ static uint64_t get_time_us() {
     return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-//  键盘 
+//  键盘
 #define KEYDOWN_MASK  0x8000
 #define KEY_QUEUE_LEN 256
 
@@ -63,7 +63,7 @@ static uint32_t key_dequeue() {
     return v;
 }
 
-// VGA / SDL 
+// VGA / SDL
 static SDL_Window   *g_window   = NULL;
 static SDL_Renderer *g_renderer = NULL;
 static SDL_Texture  *g_texture  = NULL;
@@ -97,9 +97,6 @@ void init_device() {
     memset(g_fb, 0, sizeof(g_fb));
     init_keymap();
     //init_sdl();
-    // 初始化 UART 寄存器: THRE=1, TEMT=1 (发送器空)
-    memset(uart_reg, 0, sizeof(uart_reg));
-    uart_reg[UART_LSR] = UART_LSR_THRE | UART_LSR_TEMT;  // 0x60
 }
 
 void device_cleanup() {
@@ -110,7 +107,7 @@ void device_cleanup() {
 }
 
 bool is_device_addr(uint32_t addr) {
-    return (addr >= SERIAL_PORT && addr < UART_END)  ||
+    return addr == SERIAL_PORT  ||
            addr == RTC_ADDR_LO  ||
            addr == RTC_ADDR_HI  ||
            addr == KBD_ADDR     ||
@@ -123,24 +120,6 @@ bool is_fb_addr(uint32_t addr) {
 }
 
 uint32_t device_read(uint32_t addr) {
-    printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    // UART 寄存器组 (addr 已 4 字节对齐)
-    //   SERIAL_PORT+0 (0x10000000): 字节 0-3 (THR/DLL, IER/DLM, IIR/FCR, LCR)
-    //   SERIAL_PORT+4 (0x10000004): 字节 4-7 (MCR, LSR, MSR, SCR)
-    if (addr == SERIAL_PORT) {
-        // LSR.THRE/TEMT 由 uart_reg 维护
-        return (uint32_t)uart_reg[0] |
-               ((uint32_t)uart_reg[1] << 8) |
-               ((uint32_t)uart_reg[2] << 16) |
-               ((uint32_t)uart_reg[3] << 24);
-    }
-    if (addr == SERIAL_PORT + 4) {
-        printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-        return (uint32_t)uart_reg[4] |
-               ((uint32_t)uart_reg[5] << 8) |   // LSR
-               ((uint32_t)uart_reg[6] << 16) |
-               ((uint32_t)uart_reg[7] << 24);
-    }
     if (addr == RTC_ADDR_LO) {
         uint64_t us = get_time_us() - boot_time;
         return (uint32_t)(us & 0xFFFFFFFF);
@@ -160,29 +139,9 @@ uint32_t device_read(uint32_t addr) {
 }
 
 void device_write(uint32_t addr, uint32_t data, uint8_t wmask) {
-    printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    // UART 寄存器组写入 (addr 已 4 字节对齐)
-    //   SERIAL_PORT+0 (0x10000000): wmask 指定写入字节 0-3
-    //   SERIAL_PORT+4 (0x10000004): wmask 指定写入字节 4-7
     if (addr == SERIAL_PORT) {
-        // 按 wmask 更新各字节寄存器
-        if (wmask & 0x01) uart_reg[0] = data & 0xFF;
-        if (wmask & 0x02) uart_reg[1] = (data >> 8) & 0xFF;
-        if (wmask & 0x04) uart_reg[2] = (data >> 16) & 0xFF;
-        if (wmask & 0x08) uart_reg[3] = (data >> 24) & 0xFF;
-
-        // THR 写入 (偏移 0, DLAB=0) → 输出字符
-        if ((wmask & 0x01) && !(uart_reg[UART_LCR] & 0x80)) {
-            putchar((char)uart_reg[0]);
-            fflush(stdout);
-        }
-        return;
-    }
-    if (addr == SERIAL_PORT + 4) {
-        if (wmask & 0x01) uart_reg[4] = data & 0xFF;
-        if (wmask & 0x02) uart_reg[5] = (data >> 8) & 0xFF;
-        if (wmask & 0x04) uart_reg[6] = (data >> 16) & 0xFF;
-        if (wmask & 0x08) uart_reg[7] = (data >> 24) & 0xFF;
+        putchar((char)(data & 0xFF));
+        fflush(stdout);
         return;
     }
     if (addr == VGASYNC_ADDR && data) {
@@ -210,7 +169,7 @@ void device_update() {
     // 每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
     static uint64_t last_update = 0;
     uint64_t now = get_time_us();
-    if (now - last_update < 1000) return;  
+    if (now - last_update < 1000) return;
     last_update = now;
 
     SDL_Event ev;
