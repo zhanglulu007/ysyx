@@ -192,6 +192,7 @@ extern "C" void mrom_read(int32_t addr, int32_t *data) {
     //   addr=0x10000004 → 字节 4-7 (MCR, LSR, MSR, SCR)
     // LSR (offset 5) 的 THRE (bit 5) 和 TEMT (bit 6) 在仿真环境恒为 1.
     if ((uint32_t)addr >= 0x10000000 && (uint32_t)addr < 0x10001000) {
+        printf("!!!!!!!!!!!!!!!!!!!!");
         uint32_t reg_off = (uint32_t)addr - 0x10000000;
         if (reg_off == 0) {
             // 字节 0-3: LCR (offset 3) 返回初始化值 0x03 (8N1)
