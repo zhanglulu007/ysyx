@@ -201,10 +201,10 @@ module AXIArbiter(
         else r_stall_cnt <= r_stall_cnt + 1;
       end else r_stall_cnt <= 32'h0;
 
-      // 探针: 每个 lsu_arvalid 有效周期都打印
-      if (lsu_arvalid)
-        $display("[ARB-PROBE] t=%0t lsu_arvalid=1 addr=0x%08x ifu_req=%0d lsu_granted=%0d arready=%0d state=%0d", 
-                 $time, lsu_araddr, ifu_req, lsu_granted, lsu_arready, state);
+      // 探针: 前5个周期打印状态确认探针生效, 之后只在 lsu_arvalid 时打印
+      if (ar_stall_cnt < 32'd3 || lsu_arvalid || lsu_awvalid)
+        $display("[ARB-PROBE] t=%0t arvalid=%0d awvalid=%0d araddr=0x%08x awaddr=0x%08x ifu_req=%0d state=%0d", 
+                 $time, lsu_arvalid, lsu_awvalid, lsu_araddr, lsu_awaddr, ifu_req, state);
     end
   end
 
