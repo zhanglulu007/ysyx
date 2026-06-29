@@ -619,6 +619,7 @@ module ysyx_26020070(
   import "DPI-C" function void access_fault_handler(input int pc_val, input int is_store);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
+  import "DPI-C" function void difftest_skip_ref();
 
   // Access Fault: 取指或访存返回 AXI resp 错误时, 跳转地址0
   // 通过 DPI 通知 C++ 仿真环境 (打印告警/可选停止), 避免错过错误事件
@@ -632,6 +633,19 @@ module ysyx_26020070(
     if (!rst && access_fault && !prev_access_fault) begin
       $display("ACCESS FAULT detected at PC=0x%08x, is_store=%0d, mcycle=%0d", pc, mem_wen, mcycle_out);
       access_fault_handler(pc, {31'b0, mem_wen});
+    end
+  end
+
+  // ========== DiffTest skip 检测 ==========
+  // 当访存指令(load/store)的目标地址落入 UART 区域(0x1000_0000~0x1000_0fff)时,
+  // 该指令在 NPC 中通过真实 AXI 访问 ysyxSoC 的 UART16550 硬件, 而 NEMU(REF)
+  // 没有对应设备模型, 行为不可对比. 因此通知 C++ 侧 difftest_skip_ref() 跳过本条
+  // 指令的寄存器对比 (将 DUT 状态同步给 REF, 不让 REF 执行该指令).
+  // ifu_valid 仅在指令执行的那一拍拉高, 故每条访存指令至多触发一次, 无需边沿检测.
+  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
+  always @(posedge clock) begin
+    if (!rst && ifu_valid && is_uart_access) begin
+      difftest_skip_ref();
     end
   end
 

@@ -98,7 +98,9 @@ void init_difftest(const char *ref_so_file, long img_size) {
 }
 
 // 跳过 REF 的执行
-void difftest_skip_ref() {
+// extern "C": 兼具 C 链接, 供 Verilator DPI-C (ysyx_26020070.v 中 import "DPI-C")
+// 与 C++ 代码 (memory.cpp/cpu.cpp) 共同调用.
+extern "C" void difftest_skip_ref() {
   if (!is_difftest_enabled) return;
   is_skip_ref = true;
 }
