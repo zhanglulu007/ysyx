@@ -22,24 +22,16 @@ void halt(int code) {
   while (1);
 }
  //bootloader: 将 .data 段从 MROM (LMA) 搬移到 SRAM (VMA)，并清零 .bss */
- static void bootloader() {
-   extern char _bss_start, _bss_end;
-   uint8_t *dst = (uint8_t *)&_data_start;
-   uint8_t *src = (uint8_t *)&_data_lma;
-   uint32_t  sz = (uint32_t)(uintptr_t)&_data_size;
-   /* 注意: 不能直接写 for(i=0;i<sz;i++) 循环. 在 -O2 下编译器会把它优化成
-    * 先复制再判断终止地址的 do-while 形式, 当 sz==0 (本程序 .data 段为空) 时,
-    * 终止地址等于起始地址, do-while 至少执行一次后 a5 != a2 恒成立, 陷入死循环.
-    * 此处显式判断 sz>0, 阻止编译器做该优化. */
-   if (sz > 0) {
-     for (uint32_t i = 0; i < sz; i++) {
-       dst[i] = src[i];
-     }
-   }
-   for (uint8_t *p = (uint8_t *)&_bss_start; p < (uint8_t *)&_bss_end; p++) {
-     *p = 0;
-   }
- }
+void bootloader() {
+  extern char _data_start, _data_end, _data_lma;
+  uint32_t sz = (uint32_t)(uintptr_t)&_data_end - (uint32_t)(uintptr_t)&_data_start;
+  uint8_t *dst = (uint8_t *)&_data_start;
+  uint8_t *src = (uint8_t *)&_data_lma;   // MROM 中的加载地址
+  for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
+  // 别忘了清 .bss
+  extern char _bss_start, _bss_end;
+  for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
+}
 
 void _trm_init() {
   bootloader();
