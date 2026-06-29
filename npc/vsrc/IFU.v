@@ -31,13 +31,15 @@ module IFU(
   // ===== LSU 完成信号 (来自 MEM 的 R/B 通道) =====
   input  lsu_rvalid,
   input  lsu_bvalid,
+  input  lsu_access_fault,  // LSU 报告的 load/store 访问异常
 
   // ===== 输出 =====
   output reg [31:0] pc,        // 当前PC
   output [31:0] inst,          // -> IDU: 当前指令
   output ifu_valid,            // -> IDU: 指令有效 (译码/执行周期)
   output load_wb,              // -> top: load 写回触发
-  output [4:0] load_rd         // -> top: load 目的寄存器
+  output [4:0] load_rd,        // -> load 目的寄存器
+  output ifu_access_fault      // -> top: 取指访问异常 (跳转地址0)
 );
 
   // DPI-C函数：通知C++侧
@@ -50,6 +52,7 @@ module IFU(
   reg lsu_pending;          // 1 = 在 WAIT 状态中等待 LSU 响应
   reg is_load_pending;      // 1 = 等待中的 LSU 操作是 load (需要写回)
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
+  reg ifu_fault_reg;        // 取指访问异常锁存 (rresp[1]错误)
 
   // AXI4 信号赋值
   assign ifu_araddr = pc;
@@ -67,12 +70,16 @@ module IFU(
   assign load_wb = (state == WAIT) && lsu_pending && lsu_rvalid && is_load_pending;
   assign load_rd = load_rd_saved;
 
+  // 取指访问异常: 在取指握手完成且 rresp[1]=1 时置位, 输出给 top 用于跳转地址0
+  assign ifu_access_fault = ifu_fault_reg;
+
   always @(posedge clk) begin
     if (rst) begin
       state           <= IDLE;
       lsu_pending     <= 1'b0;
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
+      ifu_fault_reg   <= 1'b0;
       pc              <= 32'h20000000;  // MROM base address
       update_pc_value(32'h20000000);
     end else begin
@@ -87,24 +94,40 @@ module IFU(
         WAIT: begin
           if (lsu_pending) begin
             if (lsu_rvalid || lsu_bvalid) begin
+              if (lsu_access_fault) begin
+                // load/store 访问异常: 跳转地址0
+                ifu_fault_reg    <= 1'b1;
+                pc               <= 32'h00000000;
+                update_pc_value(32'h00000000);
+              end else begin
+                pc               <= pc_next;
+                update_pc_value(pc_next);
+              end
+              state            <= IDLE;
+              lsu_pending      <= 1'b0;
+              is_load_pending  <= 1'b0;
+            end
+          end else if (ifu_rvalid && ifu_rready) begin
+            // 取指访问异常: rresp[1]=1 表示设备返回错误 (SLVERR/DECERR)
+            // 即使程序未启动CTE, 也跳转到地址0, 让你察觉程序运行不正常
+            if (ifu_rresp[1]) begin
+              ifu_fault_reg <= 1'b1;
+              pc            <= 32'h00000000;
+              update_pc_value(32'h00000000);
+              state         <= IDLE;
+            end else begin
+              update_inst_value(pc, ifu_rdata);
+              if (mem_valid) begin
+                // Load 或 Store: 需要等待 LSU 完成
+                lsu_pending     <= 1'b1;
+                is_load_pending <= !mem_wen;  // mem_wen=0 -> load, mem_wen=1 -> store
+                load_rd_saved   <= rd;
+              end else begin
+                // 非访存指令: 本周期完成执行, 写回寄存器 (由 top.v 处理)
                 pc               <= pc_next;
                 update_pc_value(pc_next);
                 state            <= IDLE;
-                lsu_pending      <= 1'b0;
-                is_load_pending  <= 1'b0;
-            end
-          end else if (ifu_rvalid && ifu_rready) begin
-            update_inst_value(pc, ifu_rdata);
-            if (mem_valid) begin
-              // Load 或 Store: 需要等待 LSU 完成
-              lsu_pending     <= 1'b1;
-              is_load_pending <= !mem_wen;  // mem_wen=0 -> load, mem_wen=1 -> store
-              load_rd_saved   <= rd;
-            end else begin
-              // 非访存指令: 本周期完成执行, 写回寄存器 (由 top.v 处理)
-              pc               <= pc_next;
-              update_pc_value(pc_next);
-              state            <= IDLE;
+              end
             end
           end
         end

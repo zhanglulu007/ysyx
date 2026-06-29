@@ -62,7 +62,8 @@ module LSU(
   input  [ 3:0] lsu_bid,      // AXI4: Transaction ID
 
   // ===== 输出 =====
-  output reg [31:0] rdata     // 字节/半字选择后的数据
+  output reg [31:0] rdata,    // 字节/半字选择后的数据
+  output reg lsu_access_fault // 访问异常 (load rresp / store bresp 返回错误)
 );
 
   // ========== 状态机定义 ==========
@@ -201,6 +202,7 @@ module LSU(
       latched_wstrb    <= 4'b0;
       aw_done          <= 1'b0;
       w_done           <= 1'b0;
+      lsu_access_fault <= 1'b0;
     end else begin
       case (lsu_state)
         L_IDLE: begin
@@ -260,6 +262,8 @@ module LSU(
           // rready=1, 等待 rvalid 握手
           if (lsu_rvalid) begin
             // 握手完成: rvalid && rready
+            // 检查读访问异常 (rresp[1]=1 表示设备返回错误)
+            if (lsu_rresp[1]) lsu_access_fault <= 1'b1;
             lsu_state <= L_IDLE;
           end
         end
@@ -293,6 +297,8 @@ module LSU(
           // bready=1, 等待 bvalid 握手
           if (lsu_bvalid) begin
             // 握手完成: bvalid && bready
+            // 检查写访问异常 (bresp[1]=1 表示设备返回错误)
+            if (lsu_bresp[1]) lsu_access_fault <= 1'b1;
             lsu_state <= L_IDLE;
           end
         end

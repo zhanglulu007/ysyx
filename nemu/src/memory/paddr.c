@@ -27,12 +27,6 @@ static uint8_t pmem[CONFIG_MSIZE] PG_ALIGN = {};
 uint8_t* guest_to_host(paddr_t paddr) { return pmem + paddr - CONFIG_MBASE; }
 paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 
-/* ========== ysyxSoC: MROM 与 SRAM 物理内存区域 ==========
- * 为了在 ysyxSoC 场景下重新添加 DiffTest, NEMU 需要能够访问 NPC 复位取指的
- * MROM (0x2000_0000) 和数据所在的 SRAM (0x0f00_0000)。
- * 注意: 这两块必须走 paddr_read/paddr_write (即真正的物理内存), 而不能注册为
- * MMIO 区域 —— 因为 find_mapid_by_addr() 会在每次 MMIO 访问时调用
- * difftest_skip_ref(), 那样会导致所有指令都被跳过, DiffTest 形同虚设。*/
 #define CONFIG_MROM_SIZE 0x1000   /* 4KB, 与 ysyxSoC 的 MROM 一致 */
 #define CONFIG_SRAM_SIZE 0x2000   /* 8KB, 与 ysyxSoC 的 SRAM 一致 */
 
