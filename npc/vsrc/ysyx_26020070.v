@@ -96,20 +96,6 @@ module ysyx_26020070(
   // 复位信号转换 (ysyxSoC高电平复位 -> NPC低电平复位)
   wire rst = reset;
 
-  // ========== 地址范围判定函数 (与 NEMU 建模的内存区域一致) ==========
-  // NEMU 建模了 MROM(0x2000_0000~0x2000_0fff), SRAM(0x0f00_0000~0x0f00_1fff),
-  // 物理内存(0x8000_0000~0x87ff_ffff); 这些范围之外的 load/store 是访问设备,
-  // DiffTest 时需要跳过 REF.
-  function automatic in_pmem(input [31:0] a);
-    in_pmem = (a >= 32'h80000000) && (a < 32'h88000000);
-  endfunction
-  function automatic in_sram(input [31:0] a);
-    in_sram = (a >= 32'h0f000000) && (a < 32'h0f002000);
-  endfunction
-  function automatic in_mrom(input [31:0] a);
-    in_mrom = (a >= 32'h20000000) && (a < 32'h20001000);
-  endfunction
-
   // ===== AXI4 Slave接口 (不使用，输出赋值为0表示slave未就绪) =====
   // Slave outputs: 表示slave状态
   assign io_slave_awready = 1'b0;   // slave not ready to accept write address
@@ -633,8 +619,6 @@ module ysyx_26020070(
   import "DPI-C" function void access_fault_handler(input int pc_val, input int is_store);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
-  // DiffTest: 访问 NEMU 未建模的设备地址时, 通知 C++ 跳过 REF 的本次执行
-  import "DPI-C" function void difftest_skip_ref_dpi();
 
   // Access Fault: 取指或访存返回 AXI resp 错误时, 跳转地址0
   // 通过 DPI 通知 C++ 仿真环境 (打印告警/可选停止), 避免错过错误事件
@@ -657,12 +641,6 @@ module ysyx_26020070(
       if (is_ebreak) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
         ebreak_handler(a0_value);
-      end
-
-      // DiffTest: 若本条指令是访问设备的 load/store (地址不在 NEMU 建模的
-      // MROM/SRAM/物理内存范围内), 则跳过 REF 的本次执行, 避免 NEMU out_of_bound.
-      if (mem_valid && !in_pmem(mem_addr) && !in_sram(mem_addr) && !in_mrom(mem_addr)) begin
-        difftest_skip_ref_dpi();
       end
 
       // ftrace检测

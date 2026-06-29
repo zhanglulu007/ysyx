@@ -103,12 +103,6 @@ void difftest_skip_ref() {
   is_skip_ref = true;
 }
 
-// DPI-C 接口: 供 RTL 在访问设备地址时调用, 跳过 REF 的本次执行
-// (使用独立名称, 避免与上方 C++ 链接的同名函数冲突)
-extern "C" void difftest_skip_ref_dpi() {
-  difftest_skip_ref();
-}
-
 // 检查单个寄存器
 bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t dut) {
   if (ref != dut) {
