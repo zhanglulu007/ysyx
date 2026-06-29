@@ -7,6 +7,7 @@
 #include "npc.h"
 #include "memory.h"
 #include "device.h"
+#include "uart_rx.h"
 #include "../utils/log.h"
 #include "../utils/difftest.h"
 #include "../sdb/sdb.h"
@@ -98,6 +99,8 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
+        /* 采样 UART 串行输出引脚, 解码出字符并显示到终端 */
+        uart_rx_sample(g_top->externalPins_uart_tx);
         if (npc_get_inst() == 0x00100073) break;
     }
 
