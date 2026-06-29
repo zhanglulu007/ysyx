@@ -12,7 +12,8 @@ Area heap = RANGE(&_heap_start, SRAM_BASE + SRAM_SIZE);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 
 void putch(char ch) {
-  /* [临时调试] 不轮询, 直接写, 验证写路径是否正常 */
+  /* 轮询 UART 线路状态寄存器，等待发送保持寄存器为空 */
+  while ((*(volatile uint8_t *)(UART_BASE + UART_LSR) & UART_LSR_THRE) == 0);
   *(volatile uint8_t *)(UART_BASE + UART_TX) = ch;
 }
 
@@ -42,8 +43,8 @@ void bootloader() {
 }
 
 void _trm_init() {
-  uart_init();
-  bootloader();
+  
+  bootloader();uart_init();
   int ret = main(mainargs);
   halt(ret);
 }
