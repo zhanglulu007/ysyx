@@ -201,16 +201,16 @@ module AXIArbiter(
         else r_stall_cnt <= r_stall_cnt + 1;
       end else r_stall_cnt <= 32'h0;
 
-      // 探针: lsu_arvalid 刚拉起且地址是 UART 时打印
-      if (lsu_arvalid && !last_lsu_arvalid && is_uart)
-        $display("[ARB-PROBE] t=%0t LSU AR up: lsu_araddr=0x%08x ifu_req=%0d lsu_granted=%0d state=%0d drain=%0d", 
-                 $time, lsu_araddr, ifu_req, lsu_granted, state, drain);
+      // 探针: lsu_arvalid 刚拉起时打印 (不限地址)
+      if (lsu_arvalid && !last_lsu_arvalid)
+        $display("[ARB-PROBE] t=%0t LSU AR up: lsu_araddr=0x%08x ifu_req=%0d lsu_granted=%0d state=%0d", 
+                 $time, lsu_araddr, ifu_req, lsu_granted, state);
       last_lsu_arvalid <= lsu_arvalid;
 
       // 探针: LSU 读请求等待授权超过阈值
-      if (lsu_arvalid && !lsu_arready && ar_stall_cnt == 32'd3 && is_uart)
-        $display("[ARB-PROBE] t=%0t LSU AR STALL: lsu_araddr=0x%08x ifu_req=%0d ifu_granted=%0d state=%0d", 
-                 $time, lsu_araddr, ifu_req, ifu_granted, state);
+      if (lsu_arvalid && !lsu_arready && ar_stall_cnt == 32'd3)
+        $display("[ARB-PROBE] t=%0t LSU AR STALL: lsu_araddr=0x%08x ifu_req=%0d ifu_granted=%0d", 
+                 $time, lsu_araddr, ifu_req, ifu_granted);
     end
   end
 
