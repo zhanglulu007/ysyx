@@ -184,29 +184,36 @@ module AXIArbiter(
   // ========== [调试探针] 监测死锁: mem_arvalid 拉起后长时间无 rvalid ==========
   reg [31:0] ar_stall_cnt;
   reg [31:0] r_stall_cnt;
-  wire is_uart = (mem_araddr[31:16] == 16'h1000);
+  wire is_uart = (lsu_araddr[31:16] == 16'h1000) || (mem_araddr[31:16] == 16'h1000);
+  reg last_lsu_arvalid;
   always @(posedge clk) begin
     if (rst) begin
       ar_stall_cnt <= 32'h0;
       r_stall_cnt <= 32'h0;
+      last_lsu_arvalid <= 1'b0;
     end else begin
       // AR 握手等待计数
       if (mem_arvalid && mem_arready) ar_stall_cnt <= 32'h0;
       else if (mem_arvalid && !mem_arready) ar_stall_cnt <= ar_stall_cnt + 1;
-      // R 握手等待计数 (AR已握手后等rvalid)
+      // R 握手等待计数
       if (lsu_granted && lsu_is_read) begin
         if (mem_rvalid && mem_rready) r_stall_cnt <= 32'h0;
         else r_stall_cnt <= r_stall_cnt + 1;
       end else r_stall_cnt <= 32'h0;
 
-      // 探针: AR 发起时打印一次
-      if (mem_arvalid && mem_arready && is_uart)
-        $display("[ARB-PROBE] t=%0t AR fire: addr=0x%08x arsize=%0d arlen=%0d", $time, mem_araddr, mem_arsize, mem_arlen);
-      // 探针: R 等待超过阈值
-      if (r_stall_cnt == 32'd5 && lsu_granted && lsu_is_read)
-        $display("[ARB-PROBE] t=%0t R STALL: waiting rvalid, araddr was=0x%08x grant=%0d", $time, mem_araddr, grant);
+      // 探针: lsu_arvalid 刚拉起且地址是 UART 时打印
+      if (lsu_arvalid && !last_lsu_arvalid && is_uart)
+        $display("[ARB-PROBE] t=%0t LSU AR up: lsu_araddr=0x%08x ifu_req=%0d lsu_granted=%0d state=%0d drain=%0d", 
+                 $time, lsu_araddr, ifu_req, lsu_granted, state, drain);
+      last_lsu_arvalid <= lsu_arvalid;
+
+      // 探针: LSU 读请求等待授权超过阈值
+      if (lsu_arvalid && !lsu_arready && ar_stall_cnt == 32'd3 && is_uart)
+        $display("[ARB-PROBE] t=%0t LSU AR STALL: lsu_araddr=0x%08x ifu_req=%0d ifu_granted=%0d state=%0d", 
+                 $time, lsu_araddr, ifu_req, ifu_granted, state);
     end
   end
+
 
 
 
