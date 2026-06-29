@@ -14,7 +14,7 @@
 #define UART_LSR_THRE 0x20         // 发送保持寄存器空 (THRE, bit 5)
 #define UART_LCR_DLAB 0x80         // 除数访问位 (LCR bit 7)
 #define UART_LCR_8N1  0x03         // 8 数据位, 无校验, 1 停止位
-#define UART_DIVISOR  0x00         // 波特率除数 (仿真环境可任意取值)
+#define UART_DIVISOR  0x01         // 波特率除数 (必须非零: dl=0 时 enable 永远为 0, block_cnt 无法递减, THRE 锁死)
 
 #define SRAM_BASE     0x0f000000
 #define SRAM_SIZE     0x2000       // 8KB
