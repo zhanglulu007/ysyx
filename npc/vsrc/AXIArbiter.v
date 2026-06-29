@@ -181,6 +181,18 @@ module AXIArbiter(
   wire lsu_done  = lsu_is_read ? (mem_rvalid && mem_rready && mem_rlast)
                                : (mem_bvalid && mem_bready);
 
+  // ========== [调试探针] 监测死锁: mem_arvalid 拉起后长时间无 rvalid ==========
+  reg [31:0] ar_stall_cnt;
+  wire is_uart_read = mem_arvalid && (mem_araddr[31:16] == 16'h1000);
+  always @(posedge clk) begin
+    if (rst) ar_stall_cnt <= 32'h0;
+    else if (mem_arvalid && mem_arready) ar_stall_cnt <= 32'h0;       // AR握手完成, 清零
+    else if (mem_arvalid && !mem_arready) ar_stall_cnt <= ar_stall_cnt + 1;  // 等待AR握手
+    if (is_uart_read && mem_arvalid && !mem_arready && ar_stall_cnt == 32'h0)
+      $display("[ARB-PROBE] t=%0t UART read AR waiting: araddr=0x%08x arsize=%0d arlen=%0d", $time, mem_araddr, mem_arsize, mem_arlen);
+  end
+
+
   // ========== 状态机 ==========
   always @(posedge clk) begin
     if (rst) begin
