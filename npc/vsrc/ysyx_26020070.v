@@ -631,7 +631,7 @@ module ysyx_26020070(
   always @(posedge clock) begin
     if (!rst && access_fault && !prev_access_fault) begin
       $display("ACCESS FAULT detected at PC=0x%08x, is_store=%0d, mcycle=%0d", pc, mem_wen, mcycle_out);
-      access_fault_handler(pc, mem_wen);
+      access_fault_handler(pc, {31'b0, mem_wen});
     end
   end
 
