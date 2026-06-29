@@ -139,6 +139,7 @@ uint32_t device_read(uint32_t addr) {
                ((uint32_t)uart_reg[3] << 24);
     }
     if (addr == SERIAL_PORT + 4) {
+        printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         return (uint32_t)uart_reg[4] |
                ((uint32_t)uart_reg[5] << 8) |   // LSR
                ((uint32_t)uart_reg[6] << 16) |
