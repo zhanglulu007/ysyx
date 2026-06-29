@@ -187,6 +187,10 @@ module ysyx_26020070(
   wire [31:0] exception_cause;
   wire mret_en;
 
+  // ========== Access Fault 异常信号 (跳转地址0) ==========
+  wire ifu_access_fault;   // 取指访问异常
+  wire lsu_access_fault;   // load/store 访问异常
+
   // ========== AXI4 总线连接信号 ==========
 
   // IFU <-> Arbiter (Master 0, 只读)
@@ -293,12 +297,14 @@ module ysyx_26020070(
     // LSU 完成信号
     .lsu_rvalid(lsu_rvalid),
     .lsu_bvalid(lsu_bvalid),
+    .lsu_access_fault(lsu_access_fault),
     // 输出
     .pc(pc),
     .inst(inst),
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
-    .load_rd(load_rd)
+    .load_rd(load_rd),
+    .ifu_access_fault(ifu_access_fault)
   );
 
   // IDU - 译码单元
@@ -483,7 +489,8 @@ module ysyx_26020070(
     .lsu_bresp(lsu_bresp),
     .lsu_bid(lsu_bid),
     // 输出
-    .rdata(lsu_mem_rdata)
+    .rdata(lsu_mem_rdata),
+    .lsu_access_fault(lsu_access_fault)
   );
 
   // AXIArbiter - AXI4 仲裁器 (IFU + LSU → 外部 Xbar)
@@ -609,8 +616,33 @@ module ysyx_26020070(
   // ========== ebreak处理和trace ==========
 
   import "DPI-C" function void ebreak_handler(input int a0_value);
+  import "DPI-C" function void access_fault_handler(input int pc_val, input int is_store);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
+  import "DPI-C" function void difftest_skip_ref();
+
+  // Access Fault: 取指或访存返回 AXI resp 错误时, 跳转地址0
+  // 通过 DPI 通知 C++ 仿真环境 (打印告警/可选停止), 避免错过错误事件
+  reg prev_access_fault;
+  wire access_fault = ifu_access_fault | lsu_access_fault;
+  always @(posedge clock) begin
+    if (rst) prev_access_fault <= 1'b0;
+    else     prev_access_fault <= access_fault;
+  end
+  always @(posedge clock) begin
+    if (!rst && access_fault && !prev_access_fault) begin
+      $display("ACCESS FAULT detected at PC=0x%08x, is_store=%0d, mcycle=%0d", pc, mem_wen, mcycle_out);
+      access_fault_handler(pc, {31'b0, mem_wen});
+    end
+  end
+
+  // ========== DiffTest skip 检测 ==========
+  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
+  always @(posedge clock) begin
+    if (!rst && ifu_valid && is_uart_access) begin
+      difftest_skip_ref();
+    end
+  end
 
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin

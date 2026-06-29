@@ -22,10 +22,13 @@ SECTIONS {
   } > mrom AT> mrom
 
   /* 数据段：VMA在SRAM（运行时访问），LMA在MROM（烧录位置）
-   * bootloader 将在启动时将其从 MROM 复制到 SRAM */
+   * bootloader 将在启动时将其从 MROM 复制到 SRAM
+   * 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
+   *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
   .data : {
     _data_start = .;
     *(.data*)
+    *(.sdata*)
     _data_end = .;
   } > sram AT> mrom : data
   _data_lma = LOADADDR(.data);
@@ -40,12 +43,16 @@ SECTIONS {
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > sram
+  } > sram AT> mrom : data
 
-  _stack_top = ALIGN(0x1000);
-  . = _stack_top + 0x800;
-  _stack_pointer = .;
+  /* 栈区与堆区布局 (按 B2.md 内存访问测试要求):
+   *   栈区位于 SRAM 末尾, 从栈顶 (SRAM_BASE + SRAM_SIZE) 向低地址生长;
+   *   堆区从 SRAM 起始处开始, 其结束地址即栈顶初值.
+   * 这样 mem-test 可以把 [SRAM_BASE, 栈顶) 作为可写测试范围, 并在运行时绕开
+   * 自身栈帧所占据的字节. */
+  . = ORIGIN(sram) + LENGTH(sram);   /* 移到 SRAM 末尾 */
+  _stack_pointer = .;                /* 栈顶 = SRAM_BASE + SRAM_SIZE, sp 向下生长 */
   end = .;
   _end = .;
-  _heap_start = ALIGN(0x1000);
+  _heap_start = ORIGIN(sram);        /* 堆起始 = SRAM_BASE */
 }

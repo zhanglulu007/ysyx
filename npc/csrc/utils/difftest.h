@@ -30,7 +30,8 @@ extern void (*ref_difftest_init)(int port);
 // DiffTest 初始化和控制函数
 void init_difftest(const char *ref_so_file, long img_size);
 void difftest_step(uint32_t pc, uint32_t npc);
-void difftest_skip_ref();
+// extern "C": 同时作为 Verilator DPI-C 入口 (供 ysyx_26020070.v 的 import "DPI-C" 调用)
+extern "C" void difftest_skip_ref();
 
 // 辅助函数
 bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t dut);

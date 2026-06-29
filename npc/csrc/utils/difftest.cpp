@@ -64,14 +64,17 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  if (img_size < 0 || img_size > PMEM_SIZE) {
-    Log("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)", img_size, PMEM_SIZE);
-    printf("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)\n", img_size, PMEM_SIZE);
+  // NPC 复位后从 MROM(0x2000_0000) 取指执行, 镜像实际位于 MROM 中 (由 mrom_load 填充)。
+  // 因此 DiffTest 初始化时应将 MROM 内容同步到 NEMU 的 MROM 区域, 而非旧的 0x80000000。
+  if (img_size < 0 || img_size > MROM_SIZE) {
+    Log("ERROR: invalid image size for difftest: %ld (MROM_SIZE=%d)", img_size, MROM_SIZE);
+    printf("ERROR: invalid image size for difftest: %ld (MROM_SIZE=%d)\n", img_size, MROM_SIZE);
     return;
   }
 
-  // 同步内存
-  ref_difftest_memcpy(0x80000000, guest_to_host(0x80000000), img_size, DIFFTEST_TO_REF);
+  // 同步内存: 将 NPC 侧 MROM 镜像内容拷贝到 NEMU 的 MROM 区域 (0x2000_0000)
+  uint32_t sync_size = (uint32_t)img_size;
+  ref_difftest_memcpy(MROM_BASE, get_mrom_buffer(), sync_size, DIFFTEST_TO_REF);
   
   // 同步寄存器
   DiffTestState dut_state;
@@ -95,7 +98,9 @@ void init_difftest(const char *ref_so_file, long img_size) {
 }
 
 // 跳过 REF 的执行
-void difftest_skip_ref() {
+// extern "C": 兼具 C 链接, 供 Verilator DPI-C (ysyx_26020070.v 中 import "DPI-C")
+// 与 C++ 代码 (memory.cpp/cpu.cpp) 共同调用.
+extern "C" void difftest_skip_ref() {
   if (!is_difftest_enabled) return;
   is_skip_ref = true;
 }
