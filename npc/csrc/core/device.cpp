@@ -165,6 +165,7 @@ uint32_t device_read(uint32_t addr) {
 }
 
 void device_write(uint32_t addr, uint32_t data, uint8_t wmask) {
+    printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     // UART 寄存器组写入 (addr 已 4 字节对齐)
     //   SERIAL_PORT+0 (0x10000000): wmask 指定写入字节 0-3
     //   SERIAL_PORT+4 (0x10000004): wmask 指定写入字节 4-7
