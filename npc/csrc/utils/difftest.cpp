@@ -73,8 +73,8 @@ void init_difftest(const char *ref_so_file, long img_size) {
   }
 
   // 同步内存: 将 NPC 侧 MROM 镜像内容拷贝到 NEMU 的 MROM 区域 (0x2000_0000)
-  uint32_t sync_size = (uint32_t)img_size > 4 ? (uint32_t)img_size - 4 : 0;
-  ref_difftest_memcpy(MROM_BASE, get_mrom_buffer(), sync_size, DIFFTEST_TO_REF);
+  uint32_t sync_size = (uint32_t)img_size;
+  ref_difftest_memcpy(MROM_BASE, get_mrom_buffer() + 4, sync_size, DIFFTEST_TO_REF);
   
   // 同步寄存器
   DiffTestState dut_state;
