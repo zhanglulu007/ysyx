@@ -182,31 +182,7 @@ extern "C" void flash_read(int32_t addr, int32_t *data) { }
 
 // MROMHelper 会在 ar.fire 时组合调用本函数: addr 为 AXI AR 通道的完整字节地址
 // (0x20000000 起, 4字节对齐), 需返回该地址起 4 字节的小端数据。
-//
-// 注意: 如果对 UART 地址 (0x10000000~0x10000FFF) 的读操作因上层 AXI4Fragmenter
-// 的地址对齐调整被路由到此, 需要在此处理 UART 寄存器读取 (主要是 LSR/THRE bit 5).
 extern "C" void mrom_read(int32_t addr, int32_t *data) {
-    // UART 地址空间: 0x10000000 ~ 0x10000FFF
-    // addr 是 4 字节对齐的地址.
-    //   addr=0x10000000 → 字节 0-3 (THR/DLL, IER/DLM, IIR/FCR, LCR)
-    //   addr=0x10000004 → 字节 4-7 (MCR, LSR, MSR, SCR)
-    // LSR (offset 5) 的 THRE (bit 5) 和 TEMT (bit 6) 在仿真环境恒为 1.
-    if ((uint32_t)addr >= 0x10000000 && (uint32_t)addr < 0x10001000) {
-        printf("!!!!!!!!!!!!!!!!!!!!");
-        uint32_t reg_off = (uint32_t)addr - 0x10000000;
-        if (reg_off == 0) {
-            // 字节 0-3: LCR (offset 3) 返回初始化值 0x03 (8N1)
-            *data = 0x03000000;  // little-endian: byte0=0, byte1=0, byte2=0, byte3=0x03
-        } else if (reg_off == 4) {
-            // 字节 4-7: LSR (offset 5, byte 1) = 0x60 (THRE=1, TEMT=1)
-            //           MCR=0, MSR=0, SCR=0
-            *data = 0x00006000;  // little-endian: byte0(MCR)=0, byte1(LSR)=0x60, byte2(MSR)=0, byte3(SCR)=0
-        } else {
-            *data = 0;
-        }
-        return;
-    }
-
     uint32_t off = (uint32_t)addr - MROM_BASE;
     uint32_t value = 0;
     for (int i = 0; i < 4; i++) {
