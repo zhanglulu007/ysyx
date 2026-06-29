@@ -22,10 +22,13 @@ SECTIONS {
   } > mrom AT> mrom
 
   /* 数据段：VMA在SRAM（运行时访问），LMA在MROM（烧录位置）
-   * bootloader 将在启动时将其从 MROM 复制到 SRAM */
+   * bootloader 将在启动时将其从 MROM 复制到 SRAM
+   * 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
+   *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
   .data : {
     _data_start = .;
     *(.data*)
+    *(.sdata*)
     _data_end = .;
   } > sram AT> mrom : data
   _data_lma = LOADADDR(.data);
