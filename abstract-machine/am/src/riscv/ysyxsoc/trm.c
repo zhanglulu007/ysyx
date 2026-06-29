@@ -17,6 +17,15 @@ void putch(char ch) {
   *(volatile uint8_t *)(UART_BASE + UART_TX) = ch;
 }
 
+/* 串口初始化: 设置除数寄存器, 否则 block_cnt 无法归零, THRE 位被永久屏蔽,
+ * putch() 轮询 THRE 时会陷入死循环. 仿真环境无接收端/电气特性, 除数可任意取值. */
+static void uart_init() {
+  *(volatile uint8_t *)(UART_BASE + UART_LCR) = UART_LCR_DLAB;          // 进入除数访问模式 (DLAB=1)
+  *(volatile uint8_t *)(UART_BASE + UART_TX)  = UART_DIVISOR & 0xff;    // 除数低字节
+  *(volatile uint8_t *)(UART_BASE + UART_IE)  = (UART_DIVISOR >> 8) & 0xff; // 除数高字节
+  *(volatile uint8_t *)(UART_BASE + UART_LCR) = UART_LCR_8N1;           // DLAB=0, 8N1
+}
+
 void halt(int code) {
   // 使用ebreak指令通知NPC程序结束
   npc_trap(code);
@@ -34,6 +43,7 @@ void bootloader() {
 }
 
 void _trm_init() {
+  uart_init();
   bootloader();
   int ret = main(mainargs);
   halt(ret);
