@@ -9,13 +9,28 @@
 #include <cstdint>
 
 // ── 设备 MMIO 地址（与 npc.h / NEMU 保持一致）──────────────────────────
-#define SERIAL_PORT    0x10000000   // 串口（只写，输出字符）
+#define SERIAL_PORT    0x10000000   // 串口基地址 (UART16550, 8字节寄存器空间)
+#define UART_END       0x10000008   // 串口地址空间结束
 #define RTC_ADDR_LO    0x10000048   // RTC 低32位（只读）
 #define RTC_ADDR_HI    0x1000004c   // RTC 高32位（只读）
 #define KBD_ADDR       0x10000060   // 键盘数据寄存器（只读）
 #define VGACTL_ADDR    0x10000100   // VGA 控制寄存器：高16位=宽，低16位=高
 #define VGASYNC_ADDR   0x10000104   // VGA 同步寄存器（写1触发刷屏）
 #define FB_ADDR        0x11000000   // 帧缓冲起始地址（MMIO）
+
+// UART16550 寄存器偏移
+#define UART_RBR_THR 0   // DLAB=0: 接收缓冲/发送保持
+#define UART_IER_DLM 1   // DLAB=0: 中断使能 / DLAB=1: 除数高字节
+#define UART_IIR_FCR 2   // 中断标识 / FIFO 控制
+#define UART_LCR     3   // 线路控制
+#define UART_MCR     4   // Modem 控制
+#define UART_LSR     5   // 线路状态
+#define UART_MSR     6   // Modem 状态
+#define UART_SCR     7   // 暂存器
+
+// LSR 位定义
+#define UART_LSR_THRE 0x20  // 发送保持寄存器空
+#define UART_LSR_TEMT 0x40  // 发送器空
 
 // 屏幕分辨率
 #define SCREEN_W  400

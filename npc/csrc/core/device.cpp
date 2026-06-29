@@ -12,6 +12,11 @@
 
 static uint64_t boot_time = 0;
 
+// ── UART16550 寄存器状态（仿真用简化模型）─────────────────────────────────
+// 软件通过 4 字节对齐的 AXI4 访问，pmem_read 会将字节地址对齐后传给本模块。
+// 我们按原始字节偏移处理，同时在 LSR 返回时保证 THRE 位有效。
+static uint8_t uart_reg[8];   // 8 字节 UART 寄存器空间
+
 static uint64_t get_time_us() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -107,7 +112,7 @@ void device_cleanup() {
 }
 
 bool is_device_addr(uint32_t addr) {
-    return addr == SERIAL_PORT  ||
+    return (addr >= SERIAL_PORT && addr < UART_END)  ||
            addr == RTC_ADDR_LO  ||
            addr == RTC_ADDR_HI  ||
            addr == KBD_ADDR     ||
