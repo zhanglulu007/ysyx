@@ -7,6 +7,7 @@ extern char _data_start, _data_end;
 extern char _data_lma, _data_size;
 int main(const char *args);
 
+/* 堆区: 从 SRAM 起始到栈顶 (SRAM 末尾), 栈顶即栈指针初值 */
 Area heap = RANGE(&_heap_start, SRAM_BASE + SRAM_SIZE);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 
