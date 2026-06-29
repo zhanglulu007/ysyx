@@ -96,13 +96,22 @@ module LSU(
   // AXI4 输出信号
   // ===================================================================
 
+  // AXI4 size: 按 funct3 动态设置传输粒度, 使总线不对地址做越界的字节对齐.
+  //   funct3=000(LB/LBU/SB) -> size=000 (1字节)
+  //   funct3=001/101(LH/LHU/SH) -> size=001 (2字节)
+  //   funct3=010(LW/SW) -> size=010 (4字节)
+  // 否则 size 固定为 4 字节时, AXI Xbar 会把地址强制对齐到 4 字节边界
+  // (addr & ~0x3), 导致 UART16550 等字节粒度设备的寄存器地址低位丢失.
+  // 注: IFU 取指期间指令未变, funct3 在整个 LSU 事务期间稳定, 可直接组合使用.
+  wire [2:0] lsu_axi_size = {1'b0, funct3[1:0]};
+
   // AR 通道
   assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
   assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
   assign lsu_arid = 4'b0000;      // ID固定为0
   assign lsu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_arsize = 3'b010;     // 4字节传输 (2^2 = 4 bytes)
+  assign lsu_arsize = lsu_axi_size; // 按 funct3 动态: 1/2/4字节
   assign lsu_arburst = 2'b01;     // INCR模式 (增量突发)
 
   // R 通道
@@ -114,7 +123,7 @@ module LSU(
   assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
   assign lsu_awid = 4'b0000;      // ID固定为0
   assign lsu_awlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_awsize = 3'b010;     // 4字节传输 (2^2 = 4 bytes)
+  assign lsu_awsize = lsu_axi_size; // 按 funct3 动态: 1/2/4字节
   assign lsu_awburst = 2'b01;     // INCR模式 (增量突发)
 
   // W 通道
