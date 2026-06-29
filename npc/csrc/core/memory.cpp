@@ -173,6 +173,11 @@ bool mrom_load(const char* filename) {
     return true;
 }
 
+// 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+uint8_t* get_mrom_buffer() {
+    return mrom;
+}
+
 extern "C" void flash_read(int32_t addr, int32_t *data) { }
 
 // MROMHelper 会在 ar.fire 时组合调用本函数: addr 为 AXI AR 通道的完整字节地址

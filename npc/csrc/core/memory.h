@@ -34,6 +34,9 @@ bool load_program(const char* filename);
 // 读入二进制文件作为 MROM 内容 (偏移0对应 0x20000000)
 bool mrom_load(const char* filename);
 
+// 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+uint8_t* get_mrom_buffer();
+
 // DPI-C接口（供Verilog调用）
 extern "C" {
     int pmem_read(int raddr);

@@ -28,7 +28,6 @@ void bootloader() {
   uint8_t *dst = (uint8_t *)&_data_start;
   uint8_t *src = (uint8_t *)&_data_lma;   // MROM 中的加载地址
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
-  // 别忘了清 .bss
   extern char _bss_start, _bss_end;
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 }

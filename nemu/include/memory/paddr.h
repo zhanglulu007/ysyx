@@ -31,6 +31,12 @@ static inline bool in_pmem(paddr_t addr) {
   return addr - CONFIG_MBASE < CONFIG_MSIZE;
 }
 
+/* ysyxSoC: MROM 与 SRAM 物理内存区域 (供 difftest_memcpy 分流使用) */
+bool in_mrom(paddr_t addr);
+bool in_sram(paddr_t addr);
+uint8_t* mrom_to_host(paddr_t paddr);
+uint8_t* sram_to_host(paddr_t paddr);
+
 word_t paddr_read(paddr_t addr, int len);
 void paddr_write(paddr_t addr, int len, word_t data);
 
