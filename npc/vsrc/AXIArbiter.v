@@ -181,36 +181,6 @@ module AXIArbiter(
   wire lsu_done  = lsu_is_read ? (mem_rvalid && mem_rready && mem_rlast)
                                : (mem_bvalid && mem_bready);
 
-  // ========== [调试探针] 监测死锁: mem_arvalid 拉起后长时间无 rvalid ==========
-  reg [31:0] ar_stall_cnt;
-  reg [31:0] r_stall_cnt;
-  wire is_uart = (lsu_araddr[31:16] == 16'h1000) || (mem_araddr[31:16] == 16'h1000);
-  reg last_lsu_arvalid;
-  always @(posedge clk) begin
-    if (rst) begin
-      ar_stall_cnt <= 32'h0;
-      r_stall_cnt <= 32'h0;
-      last_lsu_arvalid <= 1'b0;
-    end else begin
-      // AR 握手等待计数
-      if (mem_arvalid && mem_arready) ar_stall_cnt <= 32'h0;
-      else if (mem_arvalid && !mem_arready) ar_stall_cnt <= ar_stall_cnt + 1;
-      // R 握手等待计数
-      if (lsu_granted && lsu_is_read) begin
-        if (mem_rvalid && mem_rready) r_stall_cnt <= 32'h0;
-        else r_stall_cnt <= r_stall_cnt + 1;
-      end else r_stall_cnt <= 32'h0;
-
-      // 探针: 前5个周期打印状态确认探针生效, 之后只在 lsu_arvalid 时打印
-      if (ar_stall_cnt < 32'd3 || lsu_arvalid || lsu_awvalid)
-        $display("[ARB-PROBE] t=%0t arvalid=%0d awvalid=%0d araddr=0x%08x awaddr=0x%08x ifu_req=%0d state=%0d", 
-                 $time, lsu_arvalid, lsu_awvalid, lsu_araddr, lsu_awaddr, ifu_req, state);
-    end
-  end
-
-
-
-
   // ========== 状态机 ==========
   always @(posedge clk) begin
     if (rst) begin
