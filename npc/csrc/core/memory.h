@@ -21,6 +21,12 @@
 #define MROM_BASE 0x20000000
 #define MROM_SIZE 0x1000
 
+// Flash 配置 (0x3000_0000 ~ 0x3fff_ffff, 共256MB地址空间, 模拟16MB颗粒)
+// spi_top_apb.v 的 FAST_FLASH 路径调用 flash_read(addr, data) 时, addr 已经是
+// flash 颗粒内部的字节偏移 (in_paddr[23:0], 已 &~3 字对齐), 而非完整物理地址.
+#define FLASH_BASE 0x30000000
+#define FLASH_SIZE 0x1000000   // 16MB (W25Q128JV 颗粒容量)
+
 // 地址转换
 uint8_t* guest_to_host(uint32_t paddr);
 
@@ -36,6 +42,9 @@ bool mrom_load(const char* filename);
 
 // 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
 uint8_t* get_mrom_buffer();
+
+// 初始化 flash 颗粒内容 (模拟烧录器烧录数据)
+void flash_init();
 
 // DPI-C接口（供Verilog调用）
 extern "C" {

@@ -149,6 +149,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 初始化 flash 颗粒内容 (模拟烧录器烧录数据, 供后续 flash 读出测试)
+    flash_init();
+
     printf("\n");
 
     // 初始化CPU

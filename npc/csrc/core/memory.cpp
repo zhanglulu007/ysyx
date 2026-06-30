@@ -18,6 +18,10 @@ static uint8_t pmem[PMEM_SIZE];
 // MROM 镜像 (内容由 mrom_load() 读入, 偏移0对应 0x20000000)
 static uint8_t mrom[MROM_SIZE];
 
+// Flash 颗粒镜像 (W25Q128JV, 16MB). 偏移0对应 flash 物理地址 0x30000000.
+// 仿真初始化时往其中写入内容, 相当于模拟了用烧录器往 flash 颗粒中烧录数据的过程.
+static uint8_t flash[FLASH_SIZE];
+
 // mtrace去重变量（仅 TRACE 开启时使用）
 #ifdef ENABLE_TRACE
 static uint64_t last_read_cycle = 0;
@@ -178,7 +182,30 @@ uint8_t* get_mrom_buffer() {
     return mrom;
 }
 
-extern "C" void flash_read(int32_t addr, int32_t *data) { }
+// Flash 颗粒初始化: 往 flash 数组中写入若干内容, 模拟烧录器烧录数据的过程.
+// 这里约定: flash 中第 off 个字节的内容为 (uint8_t)(off ^ 0x5a), 这一规律便于
+// 测试程序根据读取地址推算出预期值并校验. (与"烧录"的真实内容无关, 仅用于测试)
+static void flash_init() {
+    for (uint32_t off = 0; off < FLASH_SIZE; off++) {
+        flash[off] = (uint8_t)(off ^ 0x5a);
+    }
+    Log("Flash initialized: %d bytes at 0x%08x (content = byte_offset ^ 0x5a)",
+        FLASH_SIZE, FLASH_BASE);
+}
+
+// spi_top_apb.v 的 FAST_FLASH 路径在收到 flash 空间的读请求时, 会通过 flash_cmd
+// 模块调用本 DPI-C 函数. 参数 addr 已经是 flash 颗粒内部的字节偏移
+// (in_paddr[23:0], 已由 Verilog 侧 &~3 做了字对齐), 需按 4 字节小端拼出一个字
+// 通过 *data 返回. flash 按 8 位寻址, 字节选择由 CPU 侧 LSU 完成.
+extern "C" void flash_read(int32_t addr, int32_t *data) {
+    uint32_t off = (uint32_t)addr & ~0x3u;
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i++) {
+        uint32_t boff = off + i;
+        value |= (boff < FLASH_SIZE ? (uint32_t)flash[boff] : 0u) << (8 * i);
+    }
+    *data = (int32_t)value;
+}
 
 // MROMHelper 会在 ar.fire 时组合调用本函数: addr 为 AXI AR 通道的完整字节地址
 // (0x20000000 起). MROM 按 32 位字组织, 需返回"地址对齐到 4 字节边界"那个字的
