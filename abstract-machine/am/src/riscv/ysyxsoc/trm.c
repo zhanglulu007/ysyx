@@ -64,6 +64,7 @@ static void print_student_id() {
   int n = 0;
   if (arch == 0) buf[n++] = '0';
   for (uint32_t t = arch; t; t /= 10) buf[n++] = "0123456789"[t % 10];
+  putch('\n');
   while (n > 0) putch(buf[--n]);
   putstr(" (mvendorid=0x"); put_hex32(vendor);
   putstr(", marchid=0x");   put_hex32(arch);
