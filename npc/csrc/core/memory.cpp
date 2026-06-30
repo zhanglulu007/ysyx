@@ -187,21 +187,15 @@ uint8_t* get_flash_buffer() {
     return flash;
 }
 
-// Flash 颗粒初始化: 模拟用烧录器把内容烧进 flash 颗粒.
-//   1. 背景填充 byte_offset ^ 0x5a (可预测的校验模式, 覆盖未用区域)
-//   2. 若 program_file != NULL, 把程序镜像烧录到 flash 偏移 0 (用 flash 替代
-//      MROM: NPC 复位 PC=0x30000000, 从 flash 偏移 0 取第一条指令)
-//   3. 尝试把 char-test.bin 烧录到偏移 FLASH_PROG_OFF (0x1000), 供
-//      flash-load-test / flash-xip-exec-test 读出执行
-void flash_init(const char* program_file) {
-    // 1. 背景填充
-    for (uint32_t off = 0; off < FLASH_SIZE; off++) {
-        flash[off] = (uint8_t)(off ^ 0x5a);
-    }
-    Log("Flash initialized: %d bytes at 0x%08x (background = byte_offset ^ 0x5a)",
-        FLASH_SIZE, FLASH_BASE);
 
-    // 2. 烧录程序镜像到 flash 偏移 0 (复位取指入口)
+void flash_init(const char* program_file) {
+    
+    // for (uint32_t off = 0; off < FLASH_SIZE; off++) {
+    //     flash[off] = (uint8_t)(off ^ 0x5a);
+    // }
+    // Log("Flash initialized: %d bytes at 0x%08x (background = byte_offset ^ 0x5a)",
+    //     FLASH_SIZE, FLASH_BASE);
+
     if (program_file) {
         FILE *fp = fopen(program_file, "rb");
         if (fp) {
@@ -214,18 +208,17 @@ void flash_init(const char* program_file) {
         }
     }
 
-    // 3. 烧录 char-test.bin 到 FLASH_PROG_OFF
-    #define FLASH_PROG_OFF 0x1000
-    FILE *fp = fopen("test/char-test.bin", "rb");
-    if (fp) {
-        size_t max = FLASH_SIZE - FLASH_PROG_OFF;
-        size_t n = fread(flash + FLASH_PROG_OFF, 1, max, fp);
-        fclose(fp);
-        Log("Flash programmed: char-test.bin (%zu bytes) burned at offset 0x%x (phys 0x%08x)",
-            n, FLASH_PROG_OFF, FLASH_BASE + FLASH_PROG_OFF);
-    } else {
-        Log("Flash program skipped: test/char-test.bin not found");
-    }
+    // #define FLASH_PROG_OFF 0x1000
+    // FILE *fp = fopen("test/char-test.bin", "rb");
+    // if (fp) {
+    //     size_t max = FLASH_SIZE - FLASH_PROG_OFF;
+    //     size_t n = fread(flash + FLASH_PROG_OFF, 1, max, fp);
+    //     fclose(fp);
+    //     Log("Flash programmed: char-test.bin (%zu bytes) burned at offset 0x%x (phys 0x%08x)",
+    //         n, FLASH_PROG_OFF, FLASH_BASE + FLASH_PROG_OFF);
+    // } else {
+    //     Log("Flash program skipped: test/char-test.bin not found");
+    // }
 }
 
 // spi_top_apb.v 

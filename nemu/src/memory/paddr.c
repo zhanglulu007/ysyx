@@ -40,9 +40,7 @@ paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 
 static uint8_t mrom[CONFIG_MROM_SIZE] PG_ALIGN = {};  /* MROM 镜像 (只读) */
 static uint8_t sram[CONFIG_SRAM_SIZE] PG_ALIGN = {};  /* SRAM 镜像 (可读写) */
-/* Flash 镜像 (只读). 用 flash 替代 MROM 后, 复位 PC=0x30000000 从此取指.
- * 内容由 difftest_memcpy 从 NPC 侧同步过来 (NPC 的 flash_init 烧录的程序镜像). */
-static uint8_t flash[CONFIG_FLASH_SIZE] PG_ALIGN = {};
+static uint8_t flash[CONFIG_FLASH_SIZE] PG_ALIGN = {};/* Flash 镜像 (只读) */
 
 bool in_mrom(paddr_t addr) { return addr - MROM_LEFT < CONFIG_MROM_SIZE; }
 bool in_sram(paddr_t addr) { return addr - SRAM_LEFT < CONFIG_SRAM_SIZE; }
