@@ -149,8 +149,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // 初始化 flash 颗粒内容 (模拟烧录器烧录数据, 供后续 flash 读出测试)
-    flash_init();
+    // 初始化 flash 颗粒内容: 把程序镜像烧录到 flash 偏移 0 (用 flash 替代 MROM,
+    // NPC 复位 PC=0x30000000 从 flash 取指), 并烧录 char-test.bin 到 0x1000
+    flash_init(program_file);
 
     printf("\n");
 

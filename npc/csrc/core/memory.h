@@ -40,8 +40,9 @@ bool mrom_load(const char* filename);
 // 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
 uint8_t* get_mrom_buffer();
 
-// 初始化 flash 颗粒内容 (模拟烧录器烧录数据)
-void flash_init();
+// 初始化 flash 颗粒内容 (模拟烧录器烧录数据). program_file 非 NULL 时
+// 将程序镜像烧录到 flash 偏移 0 (用 flash 替代 MROM, 复位从 flash 取指).
+void flash_init(const char* program_file = nullptr);
 
 // DPI-C接口（供Verilog调用）
 extern "C" {
