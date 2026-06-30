@@ -31,16 +31,19 @@ static inline const char* reg_name(int idx) {
 }
 
 // CSR register access helper
+// 注: csrr/csr 指令的 CSR 地址在指令 [31:20] 共 12 位, 经 I-type 立即数解码后
+// 会被符号扩展为 32 位 (如 0xF11 -> 0xFFFFFF11), 故此处需 & 0xfff 取低 12 位.
 #define csr(addr) (*({ \
+  word_t __csr_addr = (addr) & 0xfff; \
   word_t *__csr_ptr = NULL; \
-  switch (addr) { \
+  switch (__csr_addr) { \
     case 0x300: __csr_ptr = &cpu.mstatus; break;  \
     case 0x305: __csr_ptr = &cpu.mtvec; break;    \
     case 0x341: __csr_ptr = &cpu.mepc; break;     \
     case 0x342: __csr_ptr = &cpu.mcause; break;   \
     case 0xF11: __csr_ptr = &cpu.mvendorid; break; \
     case 0xF12: __csr_ptr = &cpu.marchid; break;   \
-    default: panic("Unknown CSR register: 0x%x", addr); \
+    default: panic("Unknown CSR register: 0x%x", __csr_addr); \
   } \
   __csr_ptr; \
 }))
