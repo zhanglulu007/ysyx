@@ -182,9 +182,6 @@ uint8_t* get_mrom_buffer() {
     return mrom;
 }
 
-// Flash 颗粒初始化: 往 flash 数组中写入若干内容, 模拟烧录器烧录数据的过程.
-// 这里约定: flash 中第 off 个字节的内容为 (uint8_t)(off ^ 0x5a), 这一规律便于
-// 测试程序根据读取地址推算出预期值并校验. (与"烧录"的真实内容无关, 仅用于测试)
 void flash_init() {
     for (uint32_t off = 0; off < FLASH_SIZE; off++) {
         flash[off] = (uint8_t)(off ^ 0x5a);
@@ -193,10 +190,7 @@ void flash_init() {
         FLASH_SIZE, FLASH_BASE);
 }
 
-// spi_top_apb.v 的 FAST_FLASH 路径在收到 flash 空间的读请求时, 会通过 flash_cmd
-// 模块调用本 DPI-C 函数. 参数 addr 已经是 flash 颗粒内部的字节偏移
-// (in_paddr[23:0], 已由 Verilog 侧 &~3 做了字对齐), 需按 4 字节小端拼出一个字
-// 通过 *data 返回. flash 按 8 位寻址, 字节选择由 CPU 侧 LSU 完成.
+// spi_top_apb.v 
 extern "C" void flash_read(int32_t addr, int32_t *data) {
     uint32_t off = (uint32_t)addr & ~0x3u;
     uint32_t value = 0;
@@ -207,9 +201,6 @@ extern "C" void flash_read(int32_t addr, int32_t *data) {
     *data = (int32_t)value;
 }
 
-// MROMHelper 会在 ar.fire 时组合调用本函数: addr 为 AXI AR 通道的完整字节地址
-// (0x20000000 起). MROM 按 32 位字组织, 需返回"地址对齐到 4 字节边界"那个字的
-// 4 字节小端数据, 字节选择由 CPU 侧 LSU 用 mem_addr[1:0] 完成.
 // 注意: 当 LSU 以 1/2 字节粒度访问 (如 lbu) 时, araddr 不再被总线对齐,
 // 若不在此处 &~3, 会以非对齐地址为起点拼 4 字节, 导致 LSU 字节选择错位.
 extern "C" void mrom_read(int32_t addr, int32_t *data) {

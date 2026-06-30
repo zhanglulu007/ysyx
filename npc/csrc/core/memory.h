@@ -21,9 +21,6 @@
 #define MROM_BASE 0x20000000
 #define MROM_SIZE 0x1000
 
-// Flash 配置 (0x3000_0000 ~ 0x3fff_ffff, 共256MB地址空间, 模拟16MB颗粒)
-// spi_top_apb.v 的 FAST_FLASH 路径调用 flash_read(addr, data) 时, addr 已经是
-// flash 颗粒内部的字节偏移 (in_paddr[23:0], 已 &~3 字对齐), 而非完整物理地址.
 #define FLASH_BASE 0x30000000
 #define FLASH_SIZE 0x1000000   // 16MB (W25Q128JV 颗粒容量)
 
