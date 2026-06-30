@@ -58,7 +58,7 @@ static void put_hex32(uint32_t v) {
 static void print_student_id() {
   uint32_t vendor = CSR_READ(0xf11);   // mvendorid
   uint32_t arch   = CSR_READ(0xf12);   // marchid
-  putstr("NPC student id: ysyx_");
+  putstr("\nNPC student id: ysyx_");
   /* marchid 是学号十进制值, 按十进制打印 */
   char buf[12];
   int n = 0;
