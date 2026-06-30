@@ -49,16 +49,12 @@ void bootloader() {
   _v; \
 })
 
-/* 以十六进制打印 32 位无符号数 (不依赖 printf) */
 static void put_hex32(uint32_t v) {
   for (int i = 7; i >= 0; i--) {
     putch("0123456789abcdef"[(v >> (4 * i)) & 0xf]);
   }
 }
 
-/* 输出学号标识: 从 mvendorid / marchid CSR 读出, 经 UART 打印.
- * mvendorid = "ysyx" 的 ASCII (0x79737978); marchid = 学号数字部分的十进制值
- * (如 ysyx_26020070 -> 0x02602007? 实际为 26020070 = 0x18d3a36). */
 static void print_student_id() {
   uint32_t vendor = CSR_READ(0xf11);   // mvendorid
   uint32_t arch   = CSR_READ(0xf12);   // marchid
