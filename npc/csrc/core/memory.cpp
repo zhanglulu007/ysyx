@@ -185,7 +185,7 @@ uint8_t* get_mrom_buffer() {
 // Flash 颗粒初始化: 往 flash 数组中写入若干内容, 模拟烧录器烧录数据的过程.
 // 这里约定: flash 中第 off 个字节的内容为 (uint8_t)(off ^ 0x5a), 这一规律便于
 // 测试程序根据读取地址推算出预期值并校验. (与"烧录"的真实内容无关, 仅用于测试)
-static void flash_init() {
+void flash_init() {
     for (uint32_t off = 0; off < FLASH_SIZE; off++) {
         flash[off] = (uint8_t)(off ^ 0x5a);
     }
