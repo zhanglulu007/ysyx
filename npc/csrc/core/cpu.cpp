@@ -107,6 +107,21 @@ void exec_once() {
             mtrace_flush(g_print_itrace);
     #endif
 
+    // 学号标识 CSR (mvendorid=0xF11 / marchid=0xF12) 是 NPC 独有的只读标识寄存器,
+    // NEMU 不模拟它们. 当 NPC 执行读这两个 CSR 的指令时, 调用 difftest_skip_ref()
+    // 跳过与 NEMU 的对比 (NEMU 不执行该指令, 直接用 NPC 的状态同步过去).
+    // 检测指令编码: opcode=SYSTEM(1110011), funct3=csrrs(010), csr地址在[31:20].
+    {
+        uint32_t inst = npc_get_inst();
+        uint32_t csr_addr = inst >> 20;   // [31:20]
+        uint8_t  opcode  = inst & 0x7f;   // [6:0]
+        uint8_t  funct3  = (inst >> 12) & 0x7;  // [14:12]
+        if (opcode == 0x73 && funct3 == 0x2 &&
+            (csr_addr == 0xF11 || csr_addr == 0xF12)) {
+            difftest_skip_ref();
+        }
+    }
+
     difftest_step(current_pc, npc_get_pc());
 
 }

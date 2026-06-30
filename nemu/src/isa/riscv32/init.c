@@ -35,9 +35,6 @@ static void restart() {
   
   /* Initialize CSR registers for DiffTest */
   cpu.mstatus = 0x1800;  // Set MPP to Machine mode for riscv32
-  /* 学号标识 CSR (与 NPC 的 CSR.v 一致): mvendorid="ysyx", marchid=学号十进制值 */
-  cpu.mvendorid = 0x79737978;  // "ysyx" ASCII
-  cpu.marchid   = 0x018d08e6;  // 26020070 (十进制) = 0x018d08e6
 }
 
 void init_isa() {
