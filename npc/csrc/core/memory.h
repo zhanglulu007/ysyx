@@ -44,6 +44,9 @@ uint8_t* get_mrom_buffer();
 // 将程序镜像烧录到 flash 偏移 0 (用 flash 替代 MROM, 复位从 flash 取指).
 void flash_init(const char* program_file = nullptr);
 
+// 获取 flash 颗粒镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+uint8_t* get_flash_buffer();
+
 // DPI-C接口（供Verilog调用）
 extern "C" {
     int pmem_read(int raddr);

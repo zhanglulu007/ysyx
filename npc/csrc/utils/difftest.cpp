@@ -64,17 +64,19 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  // NPC 复位后从 MROM(0x2000_0000) 取指执行, 镜像实际位于 MROM 中 (由 mrom_load 填充)。
-  // 因此 DiffTest 初始化时应将 MROM 内容同步到 NEMU 的 MROM 区域, 而非旧的 0x80000000。
-  if (img_size < 0 || img_size > MROM_SIZE) {
-    Log("ERROR: invalid image size for difftest: %ld (MROM_SIZE=%d)", img_size, MROM_SIZE);
-    printf("ERROR: invalid image size for difftest: %ld (MROM_SIZE=%d)\n", img_size, MROM_SIZE);
+  // NPC 复位后从 flash(0x3000_0000) 取指执行 (用 flash 替代 MROM), 程序镜像由
+  // flash_init 烧录在 flash 偏移 0 处。因此 DiffTest 初始化时应将 flash 内容
+  // 同步到 NEMU 的 flash 区域 (0x3000_0000), NEMU 复位 PC 也由 regcpy 设为
+  // 0x3000_0000, 从而与 NPC 一致地从 flash 取指。
+  if (img_size < 0 || img_size > FLASH_SIZE) {
+    Log("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)", img_size, FLASH_SIZE);
+    printf("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)\n", img_size, FLASH_SIZE);
     return;
   }
 
-  // 同步内存: 将 NPC 侧 MROM 镜像内容拷贝到 NEMU 的 MROM 区域 (0x2000_0000)
+  // 同步内存: 将 NPC 侧 flash 镜像内容拷贝到 NEMU 的 flash 区域 (0x3000_0000)
   uint32_t sync_size = (uint32_t)img_size;
-  ref_difftest_memcpy(MROM_BASE, get_mrom_buffer(), sync_size, DIFFTEST_TO_REF);
+  ref_difftest_memcpy(FLASH_BASE, get_flash_buffer(), sync_size, DIFFTEST_TO_REF);
   
   // 同步寄存器
   DiffTestState dut_state;

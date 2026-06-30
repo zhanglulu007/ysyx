@@ -182,6 +182,11 @@ uint8_t* get_mrom_buffer() {
     return mrom;
 }
 
+// 获取 flash 颗粒镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+uint8_t* get_flash_buffer() {
+    return flash;
+}
+
 // Flash 颗粒初始化: 模拟用烧录器把内容烧进 flash 颗粒.
 //   1. 背景填充 byte_offset ^ 0x5a (可预测的校验模式, 覆盖未用区域)
 //   2. 若 program_file != NULL, 把程序镜像烧录到 flash 偏移 0 (用 flash 替代
