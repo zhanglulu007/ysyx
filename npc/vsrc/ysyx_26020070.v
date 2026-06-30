@@ -637,11 +637,6 @@ module ysyx_26020070(
   end
 
   // ========== DiffTest skip 检测 ==========
-  // 当访存指令(load/store)的目标地址落入 UART 区域(0x1000_0000~0x1000_0fff)时,
-  // 该指令在 NPC 中通过真实 AXI 访问 ysyxSoC 的 UART16550 硬件, 而 NEMU(REF)
-  // 没有对应设备模型, 行为不可对比. 因此通知 C++ 侧 difftest_skip_ref() 跳过本条
-  // 指令的寄存器对比 (将 DUT 状态同步给 REF, 不让 REF 执行该指令).
-  // ifu_valid 仅在指令执行的那一拍拉高, 故每条访存指令至多触发一次, 无需边沿检测.
   wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
   always @(posedge clock) begin
     if (!rst && ifu_valid && is_uart_access) begin
