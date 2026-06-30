@@ -1,36 +1,34 @@
 MEMORY {
-  mrom : ORIGIN = 0x20000000, LENGTH = 4K
-  sram : ORIGIN = 0x0f000000, LENGTH = 8K
+  flash : ORIGIN = 0x30000000, LENGTH = 16M
+  sram  : ORIGIN = 0x0f000000, LENGTH = 8K
 }
 
 ENTRY(_start)
 PHDRS { text PT_LOAD; data PT_LOAD; }
 
 SECTIONS {
-  . = ORIGIN(mrom);
+  . = ORIGIN(flash);
 
   .text : {
     *(entry)
     *(.text*)
-  } > mrom AT> mrom : text
+  } > flash AT> flash : text
 
   etext = .;
   _etext = .;
 
   .rodata : {
     *(.rodata*)
-  } > mrom AT> mrom
+  } > flash AT> flash
 
-  /* 数据段：VMA在SRAM（运行时访问），LMA在MROM（烧录位置）
-   * bootloader 将在启动时将其从 MROM 复制到 SRAM
-   * 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
+   /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
    *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > sram AT> mrom : data
+  } > sram AT> flash : data
   _data_lma = LOADADDR(.data);
   _data_size = _data_end - _data_start;
 
@@ -43,7 +41,7 @@ SECTIONS {
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > sram AT> mrom : data
+  } > sram AT> flash : data
 
   /* 栈区与堆区布局 (按 B2.md 内存访问测试要求):
    *   栈区位于 SRAM 末尾, 从栈顶 (SRAM_BASE + SRAM_SIZE) 向低地址生长;
