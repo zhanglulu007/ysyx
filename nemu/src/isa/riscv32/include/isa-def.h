@@ -26,6 +26,9 @@ typedef struct {
   word_t mtvec;    // Machine trap-handler base address
   word_t mepc;     // Machine exception program counter
   word_t mcause;   // Machine trap cause
+  // Machine ISA info registers (用于标识 NPC, 与 NPC 的 CSR.v 保持一致)
+  word_t mvendorid;  // 0xF11: "ysyx" ASCII = 0x79737978
+  word_t marchid;    // 0xF12: 学号十进制值 26020070 = 0x018d08e6
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 // decode

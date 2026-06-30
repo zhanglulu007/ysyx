@@ -38,6 +38,8 @@ static inline const char* reg_name(int idx) {
     case 0x305: __csr_ptr = &cpu.mtvec; break;    \
     case 0x341: __csr_ptr = &cpu.mepc; break;     \
     case 0x342: __csr_ptr = &cpu.mcause; break;   \
+    case 0xF11: __csr_ptr = &cpu.mvendorid; break; \
+    case 0xF12: __csr_ptr = &cpu.marchid; break;   \
     default: panic("Unknown CSR register: 0x%x", addr); \
   } \
   __csr_ptr; \
