@@ -182,12 +182,30 @@ uint8_t* get_mrom_buffer() {
     return mrom;
 }
 
+// Flash 颗粒初始化: 默认按 byte_offset ^ 0x5a 的规律填充 (供 flash-spi-test
+// 校验读取正确性). 此外, 尝试将 char-test.bin "烧录" 到 flash 的固定偏移
+// FLASH_PROG_OFF 处, 模拟用烧录器把程序烧进 flash 颗粒的过程, 供
+// flash-load-test 通过 flash_read() 读出后加载到 SRAM 执行.
+// 烧录位置选在 0x1000, 避开 flash-spi-test 校验区 (0x0~0x40).
+#define FLASH_PROG_OFF 0x1000
 void flash_init() {
     for (uint32_t off = 0; off < FLASH_SIZE; off++) {
         flash[off] = (uint8_t)(off ^ 0x5a);
     }
     Log("Flash initialized: %d bytes at 0x%08x (content = byte_offset ^ 0x5a)",
         FLASH_SIZE, FLASH_BASE);
+
+    // 尝试烧录 char-test.bin 到 FLASH_PROG_OFF; 文件不存在则跳过 (不影响 ^0x5a 填充)
+    FILE *fp = fopen("test/char-test.bin", "rb");
+    if (fp) {
+        size_t max = FLASH_SIZE - FLASH_PROG_OFF;
+        size_t n = fread(flash + FLASH_PROG_OFF, 1, max, fp);
+        fclose(fp);
+        Log("Flash programmed: char-test.bin (%zu bytes) burned at offset 0x%x (phys 0x%08x)",
+            n, FLASH_PROG_OFF, FLASH_BASE + FLASH_PROG_OFF);
+    } else {
+        Log("Flash program skipped: test/char-test.bin not found");
+    }
 }
 
 // spi_top_apb.v 
