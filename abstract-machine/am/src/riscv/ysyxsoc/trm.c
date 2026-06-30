@@ -42,9 +42,42 @@ void bootloader() {
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 }
 
+/* 读取 CSR 寄存器 (csrr 指令). csr_addr 为 12 位 CSR 地址. */
+#define CSR_READ(csr_addr) ({ \
+  uint32_t _v; \
+  asm volatile ("csrr %0, " #csr_addr : "=r"(_v)); \
+  _v; \
+})
+
+/* 以十六进制打印 32 位无符号数 (不依赖 printf) */
+static void put_hex32(uint32_t v) {
+  for (int i = 7; i >= 0; i--) {
+    putch("0123456789abcdef"[(v >> (4 * i)) & 0xf]);
+  }
+}
+
+/* 输出学号标识: 从 mvendorid / marchid CSR 读出, 经 UART 打印.
+ * mvendorid = "ysyx" 的 ASCII (0x79737978); marchid = 学号数字部分的十进制值
+ * (如 ysyx_26020070 -> 0x02602007? 实际为 26020070 = 0x18d3a36). */
+static void print_student_id() {
+  uint32_t vendor = CSR_READ(0xf11);   // mvendorid
+  uint32_t arch   = CSR_READ(0xf12);   // marchid
+  putstr("NPC student id: ysyx_");
+  /* marchid 是学号十进制值, 按十进制打印 */
+  char buf[12];
+  int n = 0;
+  if (arch == 0) buf[n++] = '0';
+  for (uint32_t t = arch; t; t /= 10) buf[n++] = "0123456789"[t % 10];
+  while (n > 0) putch(buf[--n]);
+  putstr(" (mvendorid=0x"); put_hex32(vendor);
+  putstr(", marchid=0x");   put_hex32(arch);
+  putstr(")\n");
+}
+
 void _trm_init() {
   uart_init();
   bootloader();
+  print_student_id();   // 进入 main() 前输出学号
   int ret = main(mainargs);
   halt(ret);
 }

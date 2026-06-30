@@ -31,8 +31,10 @@ module CSR(
   reg [31:0] mcause;    // 0x342 
   reg [63:0] mcycle;    
   
-  wire [31:0] mvendorid = 32'h79737978;  
-  wire [31:0] marchid   = 32'h26020070;
+  wire [31:0] mvendorid = 32'h79737978;  // "ysyx" 的 ASCII: 'y''s''y''x'
+  // marchid 读出学号数字部分的十进制表示 (讲义: ysyx_22068888 -> 22068888 = 0x150be98).
+  // 本学号 ysyx_26020070 -> 十进制 26020070 = 0x018d08e6.
+  wire [31:0] marchid   = 32'h018d08e6;
   
   // ========== mcycle计数器 ==========
   always @(posedge clk) begin
