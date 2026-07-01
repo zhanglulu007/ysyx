@@ -5,7 +5,7 @@ MEMORY {
 }
 
 ENTRY(_start)
-PHDRS { flash_text PT_LOAD; psram_text PT_LOAD; data PT_LOAD; }
+PHDRS { flash_text PT_LOAD; sram_text PT_LOAD; data PT_LOAD; }
 
 SECTIONS {
   /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
@@ -19,44 +19,44 @@ SECTIONS {
   etext = .;
   _etext = .;
 
-  /* ===== 搬到 PSRAM 中执行（bootloader 负责从 Flash 复制） ===== */
-  . = ORIGIN(psram);
+  /* ===== 搬到 SRAM 中执行（bootloader 负责从 Flash 复制） ===== */
+  . = ORIGIN(sram);
 
   _text_lma = LOADADDR(.text);
   .text : {
     _text_start = .;
     *(.text*)
     _text_end = .;
-  } > psram AT> flash : psram_text
+  } > sram AT> flash : sram_text
 
   _rodata_lma = LOADADDR(.rodata);
   .rodata : {
     _rodata_start = .;
     *(.rodata*)
     _rodata_end = .;
-  } > psram AT> flash
+  } > sram AT> flash : sram_text
 
-  /* 已初始化全局变量 (.data, .sdata) 也搬到 PSRAM,
-   * VMA=PSRAM, LMA=Flash, 由 bootloader 在 _trm_init 中复制. */
+  /* 已初始化全局变量 (.data, .sdata) 也搬到 SRAM,
+   * VMA=SRAM, LMA=Flash, 由 bootloader 在 _trm_init 中复制. */
   _data_lma = LOADADDR(.data);
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > psram AT> flash : data
+  } > sram AT> flash : data
 
   edata = .;
   _data = .;
 
-  /* 未初始化全局变量 (.bss, .sbss) 分配在 PSRAM 中, bootloader 负责清零. */
+  /* 未初始化全局变量 (.bss, .sbss) 分配在 SRAM 中, bootloader 负责清零. */
   .bss : {
     _bss_start = .;
     *(.bss*)
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > psram
+  } > sram
 
   /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率. */
   . = ORIGIN(sram) + LENGTH(sram);
