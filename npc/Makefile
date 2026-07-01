@@ -108,8 +108,6 @@ VERILATOR_FLAGS += --x-assign fast --x-initial fast \
     					-I$(YSYXSOC_PERIP)/uart16550/rtl \
     					-I$(YSYXSOC_PERIP)/spi/rtl \
 						--autoflush
-VERILATOR_FLAGS += -Wno-UNOPTTHREADS --threads 7
-#VERILATOR_FLAGS += -DFAST_FLASH
 
 # Verilog files: ysyxSoC top + peripherals
 VERILOG_FILES += \
