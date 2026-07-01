@@ -80,7 +80,7 @@ module IFU(
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
       ifu_fault_reg   <= 1'b0;
-      pc              <= 32'h30000000;  // flash base address (用 flash 替代 MROM 取指)
+      pc              <= 32'h30000000;  // flash 
       update_pc_value(32'h30000000);
     end else begin
       case (state)

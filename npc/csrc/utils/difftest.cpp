@@ -64,10 +64,6 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  // NPC 复位后从 flash(0x3000_0000) 取指执行 (用 flash 替代 MROM), 程序镜像由
-  // flash_init 烧录在 flash 偏移 0 处。因此 DiffTest 初始化时应将 flash 内容
-  // 同步到 NEMU 的 flash 区域 (0x3000_0000), NEMU 复位 PC 也由 regcpy 设为
-  // 0x3000_0000, 从而与 NPC 一致地从 flash 取指。
   if (img_size < 0 || img_size > FLASH_SIZE) {
     Log("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)", img_size, FLASH_SIZE);
     printf("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)\n", img_size, FLASH_SIZE);
