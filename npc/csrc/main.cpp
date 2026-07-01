@@ -149,6 +149,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    flash_init(program_file);
+
     printf("\n");
 
     // 初始化CPU

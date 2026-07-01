@@ -107,6 +107,17 @@ void exec_once() {
             mtrace_flush(g_print_itrace);
     #endif
 
+    {
+        uint32_t inst = npc_get_inst();
+        uint32_t csr_addr = inst >> 20;   // [31:20]
+        uint8_t  opcode  = inst & 0x7f;   // [6:0]
+        uint8_t  funct3  = (inst >> 12) & 0x7;  // [14:12]
+        if (opcode == 0x73 && funct3 == 0x2 &&
+            (csr_addr == 0xF11 || csr_addr == 0xF12)) {
+            difftest_skip_ref();
+        }
+    }
+
     difftest_step(current_pc, npc_get_pc());
 
 }

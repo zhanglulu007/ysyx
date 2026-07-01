@@ -21,6 +21,9 @@
 #define MROM_BASE 0x20000000
 #define MROM_SIZE 0x1000
 
+#define FLASH_BASE 0x30000000
+#define FLASH_SIZE 0x1000000   // 16MB (W25Q128JV 颗粒容量)
+
 // 地址转换
 uint8_t* guest_to_host(uint32_t paddr);
 
@@ -36,6 +39,13 @@ bool mrom_load(const char* filename);
 
 // 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
 uint8_t* get_mrom_buffer();
+
+// 初始化 flash 颗粒内容 (模拟烧录器烧录数据). program_file 非 NULL 时
+// 将程序镜像烧录到 flash 偏移 0 (用 flash 替代 MROM, 复位从 flash 取指).
+void flash_init(const char* program_file = nullptr);
+
+// 获取 flash 颗粒镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+uint8_t* get_flash_buffer();
 
 // DPI-C接口（供Verilog调用）
 extern "C" {

@@ -29,19 +29,25 @@ paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 
 #define CONFIG_MROM_SIZE 0x1000   /* 4KB, 与 ysyxSoC 的 MROM 一致 */
 #define CONFIG_SRAM_SIZE 0x2000   /* 8KB, 与 ysyxSoC 的 SRAM 一致 */
+#define CONFIG_FLASH_SIZE 0x1000000  /* 16MB, 与 ysyxSoC 的 flash 颗粒(W25Q128JV)一致 */
 
 #define MROM_LEFT  ((paddr_t)0x20000000)
 #define MROM_RIGHT (MROM_LEFT + CONFIG_MROM_SIZE - 1)
 #define SRAM_LEFT  ((paddr_t)0x0f000000)
 #define SRAM_RIGHT (SRAM_LEFT + CONFIG_SRAM_SIZE - 1)
+#define FLASH_LEFT  ((paddr_t)0x30000000)
+#define FLASH_RIGHT (FLASH_LEFT + CONFIG_FLASH_SIZE - 1)
 
 static uint8_t mrom[CONFIG_MROM_SIZE] PG_ALIGN = {};  /* MROM 镜像 (只读) */
 static uint8_t sram[CONFIG_SRAM_SIZE] PG_ALIGN = {};  /* SRAM 镜像 (可读写) */
+static uint8_t flash[CONFIG_FLASH_SIZE] PG_ALIGN = {};/* Flash 镜像 (只读) */
 
 bool in_mrom(paddr_t addr) { return addr - MROM_LEFT < CONFIG_MROM_SIZE; }
 bool in_sram(paddr_t addr) { return addr - SRAM_LEFT < CONFIG_SRAM_SIZE; }
+bool in_flash(paddr_t addr) { return addr - FLASH_LEFT < CONFIG_FLASH_SIZE; }
 uint8_t* mrom_to_host(paddr_t paddr) { return mrom + (paddr - MROM_LEFT); }
 uint8_t* sram_to_host(paddr_t paddr) { return sram + (paddr - SRAM_LEFT); }
+uint8_t* flash_to_host(paddr_t paddr) { return flash + (paddr - FLASH_LEFT); }
 
 #ifdef CONFIG_MTRACE
 static void mtrace_read(paddr_t addr, int len, word_t data) {
@@ -103,6 +109,11 @@ word_t paddr_read(paddr_t addr, int len) {
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
+  if (in_flash(addr)) {
+    word_t ret = host_read(flash_to_host(addr), len);
+    IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
+    return ret;
+  }
   IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
   out_of_bound(addr);
   return 0;
@@ -111,9 +122,10 @@ word_t paddr_read(paddr_t addr, int len) {
 void paddr_write(paddr_t addr, int len, word_t data) {
   IFDEF(CONFIG_MTRACE, mtrace_write(addr, len, data));
   if (likely(in_pmem(addr))) { pmem_write(addr, len, data); return; }
-  /* ysyxSoC: SRAM 可写; MROM 只读, 静默丢弃写 (与 NPC 中写 MROM 无效果一致) */
+  /* ysyxSoC: SRAM 可写; MROM/Flash 只读, 静默丢弃写 (与只读介质一致) */
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
   if (in_mrom(addr)) { return; }
+  if (in_flash(addr)) { return; }
   IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
   out_of_bound(addr);
 }

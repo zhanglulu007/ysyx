@@ -32,7 +32,7 @@ module CSR(
   reg [63:0] mcycle;    
   
   wire [31:0] mvendorid = 32'h79737978;  
-  wire [31:0] marchid   = 32'h26020070;
+  wire [31:0] marchid   = 32'h018d08e6;
   
   // ========== mcycle计数器 ==========
   always @(posedge clk) begin
