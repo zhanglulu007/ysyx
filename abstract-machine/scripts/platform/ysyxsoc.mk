@@ -27,6 +27,6 @@ image: image-dep
 
 run: insert-arg
 	@echo "Running on ysyxSoC (NPC)..."
-	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
+	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf) YSYX_HOME=$(YSYX_HOME)
 
 .PHONY: insert-arg
