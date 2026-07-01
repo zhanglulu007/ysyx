@@ -97,7 +97,7 @@ BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 
 # ysyxSoC paths
-YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
+YSYXSOC_ROOT ?= $(abspath $(CURDIR)/..)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
 YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
 
