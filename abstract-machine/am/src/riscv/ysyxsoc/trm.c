@@ -2,13 +2,13 @@
 #include <klib-macros.h>
 #include "ysyxsoc.h"
 
-extern char _heap_start;
+extern char _heap_start, _heap_end;
 extern char _data_start, _data_end;
 extern char _data_lma, _data_size;
 int main(const char *args);
 
-/* 堆区: 从 SRAM 起始到栈顶 (SRAM 末尾), 栈顶即栈指针初值 */
-Area heap = RANGE(&_heap_start, SRAM_BASE + SRAM_SIZE);
+/* 堆区: PSRAM 空间 (4MB), 从 _heap_start 到 _heap_end */
+Area heap = RANGE(&_heap_start, &_heap_end);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 
 void putch(char ch) {

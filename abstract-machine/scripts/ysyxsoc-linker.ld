@@ -1,6 +1,7 @@
 MEMORY {
   flash : ORIGIN = 0x30000000, LENGTH = 16M
   sram  : ORIGIN = 0x0f000000, LENGTH = 8K
+  psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
 ENTRY(_start)
@@ -21,36 +22,37 @@ SECTIONS {
     *(.rodata*)
   } > flash AT> flash
 
-   /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
-   *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
+   /* 已初始化全局变量 (.data, .sdata) 分配在 PSRAM 中,
+    * VMA=PSRAM, LMA=Flash, 由 bootloader 在 _trm_init 中复制. */
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > sram AT> flash : data
+  } > psram AT> flash : data
   _data_lma = LOADADDR(.data);
   _data_size = _data_end - _data_start;
 
   edata = .;
   _data = .;
 
+  /* 未初始化全局变量 (.bss, .sbss) 分配在 PSRAM 中, bootloader 负责清零. */
   .bss : {
     _bss_start = .;
     *(.bss*)
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > sram AT> flash : data
+  } > psram
 
-  /* 栈区与堆区布局 (按 B2.md 内存访问测试要求):
-   *   栈区位于 SRAM 末尾, 从栈顶 (SRAM_BASE + SRAM_SIZE) 向低地址生长;
-   *   堆区从 SRAM 起始处开始, 其结束地址即栈顶初值.
-   * 这样 mem-test 可以把 [SRAM_BASE, 栈顶) 作为可写测试范围, 并在运行时绕开
-   * 自身栈帧所占据的字节. */
-  . = ORIGIN(sram) + LENGTH(sram);   /* 移到 SRAM 末尾 */
-  _stack_pointer = .;                /* 栈顶 = SRAM_BASE + SRAM_SIZE, sp 向下生长 */
+  /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率. */
+  . = ORIGIN(sram) + LENGTH(sram);
+  _stack_pointer = .;
+
+  /* 堆区紧跟在 .bss 之后 (PSRAM 中), 向上生长至 PSRAM 末尾. */
+  _heap_start = _bss_end;
+  _heap_end = ORIGIN(psram) + LENGTH(psram);
+
   end = .;
   _end = .;
-  _heap_start = ORIGIN(sram);        /* 堆起始 = SRAM_BASE */
 }

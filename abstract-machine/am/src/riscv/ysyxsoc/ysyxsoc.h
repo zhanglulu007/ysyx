@@ -19,6 +19,9 @@
 #define SRAM_BASE     0x0f000000
 #define SRAM_SIZE     0x2000       // 8KB
 
+#define PSRAM_BASE    0x80000000
+#define PSRAM_SIZE    0x400000     // 4MB
+
 #define MROM_BASE     0x20000000
 #define MROM_SIZE     0x1000       // 4KB
 
