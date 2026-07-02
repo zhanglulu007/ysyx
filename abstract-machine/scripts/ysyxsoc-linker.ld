@@ -1,78 +1,56 @@
 MEMORY {
   flash : ORIGIN = 0x30000000, LENGTH = 16M
   sram  : ORIGIN = 0x0f000000, LENGTH = 8K
-  psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
-/* 三个 PT_LOAD 段:
- *   boot - Flash 中执行的入口 + bootloader (VMA=LMA=Flash)
- *   main - VMA=SRAM / LMA=Flash 的 .text/.rodata (bootloader 复制到 SRAM 后执行)
- *   data - VMA=SRAM / LMA=Flash 的 .data (bootloader 复制)
- * 关键点: VMA=SRAM 的节必须放在独立的 PHDR 中, 否则与 VMA=Flash 的 .text.bootloader
- * 同处一个 PHDR 时, ld 会因两段 VMA 不连续而报 "can't be allocated in segment",
- * 并把这些节丢弃到空段, 导致 objcopy 生成巨大的稀疏 bin 且 _text_lma 等符号失效. */
-PHDRS { boot PT_LOAD; main PT_LOAD; data PT_LOAD; }
+ENTRY(_start)
+PHDRS { text PT_LOAD; data PT_LOAD; }
 
 SECTIONS {
-  /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
   . = ORIGIN(flash);
 
-  .text.bootloader : {
+  .text : {
     *(entry)
-    *(.text.bootloader*)
-  } > flash AT> flash : boot
+    *(.text*)
+  } > flash AT> flash : text
 
   etext = .;
   _etext = .;
 
-  /* ===== 搬到 SRAM 中执行（bootloader 负责从 Flash 复制） ===== */
-  . = ORIGIN(sram);
-
-  _text_lma = LOADADDR(.text);
-  .text : {
-    _text_start = .;
-    *(.text*)
-    _text_end = .;
-  } > sram AT> flash : main
-
-  _rodata_lma = LOADADDR(.rodata);
   .rodata : {
-    _rodata_start = .;
     *(.rodata*)
-    _rodata_end = .;
-  } > sram AT> flash : main
+  } > flash AT> flash
 
-  /* 已初始化全局变量 (.data, .sdata) 也搬到 SRAM,
-   * VMA=SRAM, LMA=Flash, 由 bootloader 在 _trm_init 中复制. */
-  _data_lma = LOADADDR(.data);
+   /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
+   *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
   } > sram AT> flash : data
- 
+  _data_lma = LOADADDR(.data);
+  _data_size = _data_end - _data_start;
+
   edata = .;
   _data = .;
- 
-  /* 未初始化全局变量 (.bss, .sbss) 分配在 SRAM 中, bootloader 负责清零. */
+
   .bss : {
     _bss_start = .;
     *(.bss*)
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > sram
- 
-  /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率. */
-  . = ORIGIN(sram) + LENGTH(sram);
-  _stack_pointer = .;
- 
-  /* 堆区在 PSRAM 中 (供需要大量堆空间的程序使用). */
-  _heap_start = ORIGIN(psram);
-  _heap_end = ORIGIN(psram) + LENGTH(psram);
- 
-  end = .;
-}
+  } > sram AT> flash : data
 
-ENTRY(_start)
+  /* 栈区与堆区布局 (按 B2.md 内存访问测试要求):
+   *   栈区位于 SRAM 末尾, 从栈顶 (SRAM_BASE + SRAM_SIZE) 向低地址生长;
+   *   堆区从 SRAM 起始处开始, 其结束地址即栈顶初值.
+   * 这样 mem-test 可以把 [SRAM_BASE, 栈顶) 作为可写测试范围, 并在运行时绕开
+   * 自身栈帧所占据的字节. */
+  . = ORIGIN(sram) + LENGTH(sram);   /* 移到 SRAM 末尾 */
+  _stack_pointer = .;                /* 栈顶 = SRAM_BASE + SRAM_SIZE, sp 向下生长 */
+  end = .;
+  _end = .;
+  _heap_start = ORIGIN(sram);        /* 堆起始 = SRAM_BASE */
+}

@@ -3,14 +3,12 @@
 #include "ysyxsoc.h"
 
 extern char _heap_start;
-extern char _text_start, _text_end, _text_lma;
-extern char _rodata_start, _rodata_end, _rodata_lma;
-extern char _data_start, _data_end, _data_lma;
-extern char _bss_start, _bss_end;
+extern char _data_start, _data_end;
+extern char _data_lma, _data_size;
 int main(const char *args);
 
-/* 堆区: 从 PSRAM 起始到 PSRAM 末尾 (4MB), 提供大容量可写空间 (microbench 等需要) */
-Area heap = RANGE(&_heap_start, PSRAM_BASE + PSRAM_SIZE);
+/* 堆区: 从 SRAM 起始到栈顶 (SRAM 末尾), 栈顶即栈指针初值 */
+Area heap = RANGE(&_heap_start, SRAM_BASE + SRAM_SIZE);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 
 void putch(char ch) {
@@ -33,27 +31,14 @@ void halt(int code) {
   npc_trap(code);
   while (1);
 }
- /*bootloader: 将 .data 段从 flash (LMA) 搬移到 PSRAM (VMA)，并清零 .bss */
-__attribute__((section(".text.bootloader")))
+ //bootloader: 将 .data 段从 MROM (LMA) 搬移到 SRAM (VMA)，并清零 .bss */
 void bootloader() {
-  uint32_t sz;
-  uint8_t *dst, *src;
-
-  /* 复制 .text: Flash → SRAM */
-  sz = (uint32_t)(uintptr_t)&_text_end - (uint32_t)(uintptr_t)&_text_start;
-  dst = (uint8_t *)&_text_start;
-  src = (uint8_t *)&_text_lma;
+  extern char _data_start, _data_end, _data_lma;
+  uint32_t sz = (uint32_t)(uintptr_t)&_data_end - (uint32_t)(uintptr_t)&_data_start;
+  uint8_t *dst = (uint8_t *)&_data_start;
+  uint8_t *src = (uint8_t *)&_data_lma;   // MROM 中的加载地址
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
-  sz = (uint32_t)(uintptr_t)&_rodata_end - (uint32_t)(uintptr_t)&_rodata_start;
-  dst = (uint8_t *)&_rodata_start;
-  src = (uint8_t *)&_rodata_lma;
-  for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
-
-  /* 复制 .data: Flash → SRAM */
-  sz = (uint32_t)(uintptr_t)&_data_end - (uint32_t)(uintptr_t)&_data_start;
-  dst = (uint8_t *)&_data_start;
-  src = (uint8_t *)&_data_lma;
-  for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
+  extern char _bss_start, _bss_end;
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 }
 
@@ -88,7 +73,7 @@ void bootloader() {
 
 void _trm_init() {
   uart_init();
-  //bootloader();
+  bootloader();
   //print_student_id();   // 进入 main() 前输出学号
   int ret = main(mainargs);
   halt(ret);
