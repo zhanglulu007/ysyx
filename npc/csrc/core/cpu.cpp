@@ -98,7 +98,7 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
-        //if (npc_get_inst() == 0x00100073) break;
+        if (npc_get_inst() == 0x00100073) break;
     }
 
     #ifdef ENABLE_TRACE
