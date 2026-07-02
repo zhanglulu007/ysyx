@@ -239,24 +239,36 @@ module ysyx_26020070(
   wire [ 1:0] lsu_bresp;
   wire [ 3:0] lsu_bid;
 
-  // Arbiter <-> CLINT (CLINT slave 端口)
+  // Arbiter <-> CLINT (CLINT slave 端口, 完整 AXI4)
   wire        clint_arvalid;
   wire        clint_arready;
   wire [31:0] clint_araddr;
+  wire [ 3:0] clint_arid;
+  wire [ 7:0] clint_arlen;
+  wire [ 2:0] clint_arsize;
+  wire [ 1:0] clint_arburst;
   wire        clint_rvalid;
   wire        clint_rready;
   wire [31:0] clint_rdata;
   wire [ 1:0] clint_rresp;
+  wire        clint_rlast;
+  wire [ 3:0] clint_rid;
   wire        clint_awvalid;
   wire        clint_awready;
   wire [31:0] clint_awaddr;
+  wire [ 3:0] clint_awid;
+  wire [ 7:0] clint_awlen;
+  wire [ 2:0] clint_awsize;
+  wire [ 1:0] clint_awburst;
   wire        clint_wvalid;
   wire        clint_wready;
   wire [31:0] clint_wdata;
   wire [ 3:0] clint_wstrb;
+  wire        clint_wlast;
   wire        clint_bvalid;
   wire        clint_bready;
   wire [ 1:0] clint_bresp;
+  wire [ 3:0] clint_bid;
 
   // 访存地址计算
   wire [31:0] mem_addr;
@@ -493,7 +505,47 @@ module ysyx_26020070(
     .lsu_access_fault(lsu_access_fault)
   );
 
-  // AXIArbiter - AXI4 仲裁器 (IFU + LSU → 外部 Xbar)
+  // CLINT - 核心局部中断控制器 (完整 AXI4, 本地接入)
+  CLINT u_clint(
+    .clk(clock),
+    .rst(rst),
+    // AR 通道
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen),
+    .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    // R 通道
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp),
+    .clint_rlast(clint_rlast),
+    .clint_rid(clint_rid),
+    // AW 通道
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen),
+    .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst),
+    // W 通道
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    .clint_wlast(clint_wlast),
+    // B 通道
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp),
+    .clint_bid(clint_bid)
+  );
+
+  // AXIArbiter - AXI4 仲裁器 (IFU + LSU → CLINT / 外部 Xbar)
   AXIArbiter u_arbiter(
     .clk(clock),
     .rst(rst),
@@ -541,6 +593,36 @@ module ysyx_26020070(
     .lsu_bready(lsu_bready),
     .lsu_bresp(lsu_bresp),
     .lsu_bid(lsu_bid),
+    // CLINT 端口
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen),
+    .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp),
+    .clint_rlast(clint_rlast),
+    .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen),
+    .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst),
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp),
+    .clint_bid(clint_bid),
     // Slave: 外部 ysyxSoC Xbar
     .mem_arvalid(io_master_arvalid),
     .mem_arready(io_master_arready),

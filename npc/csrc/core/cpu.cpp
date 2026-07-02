@@ -98,7 +98,7 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
-        if (npc_get_inst() == 0x00100073) break;
+        if (npc_get_state()->state == NPC_END) break;
     }
 
     #ifdef ENABLE_TRACE
@@ -154,10 +154,11 @@ void cpu_exec(uint64_t n) {
     while (cycles < n || n == (uint64_t)-1) {
         exec_once();
         cycles++;
+        if (cycles % 10000 == 0) printf("Execution-----%lu\n", cycles);
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
-            Log("Execution stopped at cycle %lu due to EBREAK", cycles);
+            Log("Execution stopped at inst %lu due to EBREAK", cycles);
             break;
         }
         
@@ -165,7 +166,7 @@ void cpu_exec(uint64_t n) {
         if (check_watchpoints()) {
             hit_watchpoint = true;
             state->state = NPC_STOP;
-            Log("Execution stopped at cycle %lu due to watchpoint", cycles);
+            Log("Execution stopped at inst %lu due to watchpoint", cycles);
             printf("Program stopped due to watchpoint.\n");
             break;
         }
@@ -173,8 +174,8 @@ void cpu_exec(uint64_t n) {
         // 避免无限循环（仅 TRACE 开启时打印进度，避免频繁 I/O）
 #ifdef ENABLE_TRACE
         if (cycles % 1000000 == 0 && n == (uint64_t)-1) {
-            Log("Executed %lu cycles...", cycles);
-            printf("Executed %lu cycles...\n", cycles);
+            Log("Executed %lu inst...", cycles);
+            printf("Executed %lu inst...\n", cycles);
         }
 #endif
     }
@@ -189,8 +190,8 @@ void cpu_exec(uint64_t n) {
     
     if (!hit_watchpoint && state->state == NPC_STOP) {
 #ifdef ENABLE_TRACE
-        Log("Executed %lu cycles", cycles);
-        printf("Executed %lu cycles.\n", cycles);
+        Log("Executed %lu inst", cycles);
+        printf("Executed %lu inst.\n", cycles);
 #endif
     }
 }

@@ -227,18 +227,18 @@ static word_t eval(int p, int q, bool *success) {
     return eval(p + 1, q - 1, success);
   }
   else {
-    if (tokens[p].type == TK_DEREF) {
-      word_t addr = eval(p + 1, q, success);
-      if (!*success) return 0;
+    // if (tokens[p].type == TK_DEREF) {
+    //   word_t addr = eval(p + 1, q, success);
+    //   if (!*success) return 0;
       
-      if (!in_pmem(addr)) {
-        printf("Invalid memory address: 0x%08x\n", addr);
-        *success = false;
-        return 0;
-      }
+    //   if (!in_pmem(addr)) {
+    //     printf("Invalid memory address: 0x%08x\n", addr);
+    //     *success = false;
+    //     return 0;
+    //   }
       
-      return pmem_read_word(addr);
-    }
+    //   return pmem_read_word(addr);
+    // }
     
     int op = find_main_op(p, q);
     if (op == -1) {

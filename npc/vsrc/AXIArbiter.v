@@ -1,5 +1,4 @@
 // AXIArbiter - AXI4 仲裁器
-//
 // 状态机:
 //   IDLE: 无 master 获得授权, 检测请求
 //   BUSY: 已授权某个 master, 转发其事务直到完成
@@ -63,7 +62,41 @@ module AXIArbiter(
   output [ 1:0] lsu_bresp,
   output [ 3:0] lsu_bid,
 
-  // ===== Slave: MEM (单一 AXI4 接口) =====
+  // ===== Slave 0: CLINT (本地, AXI4, 只读) =====
+  output        clint_arvalid,
+  input         clint_arready,
+  output [31:0] clint_araddr,
+  output [ 3:0] clint_arid,
+  output [ 7:0] clint_arlen,
+  output [ 2:0] clint_arsize,
+  output [ 1:0] clint_arburst,
+  input         clint_rvalid,
+  output        clint_rready,
+  input  [31:0] clint_rdata,
+  input  [ 1:0] clint_rresp,
+  input         clint_rlast,
+  input  [ 3:0] clint_rid,
+  // AW 通道 (CLINT 不支持写)
+  output        clint_awvalid,
+  input         clint_awready,
+  output [31:0] clint_awaddr,
+  output [ 3:0] clint_awid,
+  output [ 7:0] clint_awlen,
+  output [ 2:0] clint_awsize,
+  output [ 1:0] clint_awburst,
+  // W 通道
+  output        clint_wvalid,
+  input         clint_wready,
+  output [31:0] clint_wdata,
+  output [ 3:0] clint_wstrb,
+  output        clint_wlast,
+  // B 通道
+  input         clint_bvalid,
+  output        clint_bready,
+  input  [ 1:0] clint_bresp,
+  input  [ 3:0] clint_bid,
+
+  // ===== Slave 1: 外部 MEM (ysyxSoC Xbar, AXI4) =====
   // AR 通道
   output        mem_arvalid,
   input         mem_arready,
@@ -100,86 +133,119 @@ module AXIArbiter(
   input  [ 3:0] mem_bid
 );
 
-  localparam IDLE = 1'b0 , BUSY = 1'b1;
-  localparam IFU = 1'b0 , LSU = 1'b1;
+  localparam IDLE = 1'b0, BUSY = 1'b1;
+  localparam IFU = 1'b0, LSU = 1'b1;
 
   reg state;
   reg grant;          // 0 = IFU, 1 = LSU
   reg lsu_is_read;    // LSU 事务类型: 1 = 读(AR), 0 = 写(AW+W)
 
+  // ========== CLINT 地址空间检测 (LSU 访问) ==========
+  wire lsu_is_clint = (lsu_araddr[31:20] == 12'h020) || (lsu_awaddr[31:20] == 12'h020);
+  // CLINT 地址空间: 0x0200_0000 ~ 0x0200_ffff
+
   // ========== 请求检测 ==========
   wire ifu_req = ifu_arvalid;
   wire lsu_req = lsu_arvalid || lsu_awvalid;
+  // LSU 请求: 如果是 CLINT 地址，走 CLINT 端口；否则走外部 MEM
+  wire lsu_req_clint = lsu_req && lsu_is_clint;
+  wire lsu_req_mem   = lsu_req && !lsu_is_clint;
 
   // ========== 组合逻辑授权 (IDLE 时零周期转发) ==========
-  // 固定优先级: IFU > LSU
-  // 注意: IDLE 状态下若总线仍有残留响应 (mem_rvalid/mem_bvalid), 必须禁止授权,
-  // 让残留响应通过下面的 mem_rready/mem_bready 排空逻辑被消费, 而不路由给 master.
   wire drain = (state == IDLE) && (mem_rvalid || mem_bvalid);
   wire ifu_granted = ((state == IDLE && ifu_req && !drain) || (state == BUSY && grant == IFU)) && !rst;
   wire lsu_granted = ((state == IDLE && lsu_req && !ifu_req && !drain) || (state == BUSY && grant == LSU)) && !rst;
 
-  // ========== AR 通道转发 ==========
-  // Master → Slave
-  assign mem_arvalid = ifu_granted ? ifu_arvalid :
-                       lsu_granted ? lsu_arvalid : 1'b0;
-  assign mem_araddr  = ifu_granted ? ifu_araddr  : lsu_araddr;
-  assign mem_arid    = ifu_granted ? ifu_arid    : lsu_arid;
-  assign mem_arlen   = ifu_granted ? ifu_arlen   : lsu_arlen;
-  assign mem_arsize  = ifu_granted ? ifu_arsize  : lsu_arsize;
-  assign mem_arburst = ifu_granted ? ifu_arburst : lsu_arburst;
+  // ========== AR 通道转发 (IFU/LSU → 目标 Slave) ==========
+  // IFU 请求永远走外部 MEM (IFU 不会取指到 CLINT 空间)
+  assign mem_arvalid  = ifu_granted ? ifu_arvalid :
+                        (lsu_granted && !lsu_is_clint) ? lsu_arvalid : 1'b0;
+  assign mem_araddr   = ifu_granted ? ifu_araddr  : lsu_araddr;
+  assign mem_arid     = ifu_granted ? ifu_arid    : lsu_arid;
+  assign mem_arlen    = ifu_granted ? ifu_arlen   : lsu_arlen;
+  assign mem_arsize   = ifu_granted ? ifu_arsize  : lsu_arsize;
+  assign mem_arburst  = ifu_granted ? ifu_arburst : lsu_arburst;
 
-  // Slave → Master (阻塞未授权 master: ready = 0)
+  // CLINT AR: 只有 LSU 的 CLINT 读请求
+  assign clint_arvalid = lsu_granted && lsu_is_clint && lsu_arvalid;
+  assign clint_araddr  = lsu_araddr;
+  assign clint_arid    = lsu_arid;
+  assign clint_arlen   = lsu_arlen;
+  assign clint_arsize  = lsu_arsize;
+  assign clint_arburst = lsu_arburst;
+
+  // Slave → Master (阻塞未授权 master)
   assign ifu_arready = ifu_granted ? mem_arready : 1'b0;
-  assign lsu_arready = lsu_granted ? mem_arready : 1'b0;
+  assign lsu_arready = lsu_granted ? (lsu_is_clint ? clint_arready : mem_arready) : 1'b0;
 
-  // ========== R 通道转发 ==========
-  // Slave → Master (阻塞未授权 master: valid = 0)
+  // ========== R 通道转发 (Slave → Master) ==========
+  // MEM → Master
   assign ifu_rvalid = ifu_granted ? mem_rvalid : 1'b0;
-  assign lsu_rvalid = lsu_granted ? mem_rvalid : 1'b0;
+  assign lsu_rvalid = lsu_granted && !lsu_is_clint ? mem_rvalid :
+                      lsu_granted && lsu_is_clint ? clint_rvalid : 1'b0;
   assign ifu_rdata  = mem_rdata;
-  assign lsu_rdata  = mem_rdata;
+  assign lsu_rdata  = lsu_is_clint ? clint_rdata : mem_rdata;
   assign ifu_rresp  = mem_rresp;
-  assign lsu_rresp  = mem_rresp;
+  assign lsu_rresp  = lsu_is_clint ? clint_rresp : mem_rresp;
   assign ifu_rlast  = mem_rlast;
-  assign lsu_rlast  = mem_rlast;
+  assign lsu_rlast  = lsu_is_clint ? clint_rlast : mem_rlast;
   assign ifu_rid    = mem_rid;
-  assign lsu_rid    = mem_rid;
+  assign lsu_rid    = lsu_is_clint ? clint_rid : mem_rid;
 
-  // Master → Slave
-  // drain 期间 (IDLE 且总线有残留响应) 主动拉高 mem_rready, 把上一事务被复位打断后
-  // 残留在 R 通道的响应消费掉, 释放 MROM 等总线设备. 由于 drain 时无 master 被授权,
-  // 该响应不会路由给 IFU/LSU, 不会被误当作指令/数据.
-  assign mem_rready = ifu_granted ? ifu_rready :
-                      lsu_granted ? lsu_rready :
-                      drain ? 1'b1 : 1'b0;
+  // Master → Slave (R ready)
+  // drain 期间排空残留响应
+  assign mem_rready   = ifu_granted ? ifu_rready :
+                         lsu_granted && !lsu_is_clint ? lsu_rready :
+                         drain ? 1'b1 : 1'b0;
+  assign clint_rready = lsu_granted && lsu_is_clint ? lsu_rready : 1'b0;
 
-  // ========== AW, W, B 通道转发 (仅 LSU) ==========
-  assign mem_awvalid = lsu_granted ? lsu_awvalid : 1'b0;
+  // ========== AW, W, B 通道转发 (仅 LSU, 且非 CLINT 空间) ==========
+  // 外部 MEM 的写通道
+  assign mem_awvalid = lsu_granted && !lsu_is_clint ? lsu_awvalid : 1'b0;
   assign mem_awaddr  = lsu_awaddr;
   assign mem_awid    = lsu_awid;
   assign mem_awlen   = lsu_awlen;
   assign mem_awsize  = lsu_awsize;
   assign mem_awburst = lsu_awburst;
-  assign lsu_awready = lsu_granted ? mem_awready : 1'b0;
+  assign lsu_awready = lsu_granted ? (lsu_is_clint ? clint_awready : mem_awready) : 1'b0;
 
-  assign mem_wvalid = lsu_granted ? lsu_wvalid : 1'b0;
+  assign mem_wvalid = lsu_granted && !lsu_is_clint ? lsu_wvalid : 1'b0;
   assign mem_wdata  = lsu_wdata;
   assign mem_wstrb  = lsu_wstrb;
   assign mem_wlast  = lsu_wlast;
-  assign lsu_wready = lsu_granted ? mem_wready : 1'b0;
+  assign lsu_wready = lsu_granted ? (lsu_is_clint ? clint_wready : mem_wready) : 1'b0;
 
-  assign lsu_bvalid = lsu_granted ? mem_bvalid : 1'b0;
-  assign lsu_bresp  = mem_bresp;
-  assign lsu_bid    = mem_bid;
-  // drain 期间排空残留写响应 (与 R 通道同理)
-  assign mem_bready = lsu_granted ? lsu_bready :
+  assign lsu_bvalid = lsu_granted && !lsu_is_clint ? mem_bvalid :
+                      lsu_granted && lsu_is_clint ? clint_bvalid : 1'b0;
+  assign lsu_bresp  = lsu_is_clint ? clint_bresp : mem_bresp;
+  assign lsu_bid    = lsu_is_clint ? clint_bid : mem_bid;
+  assign mem_bready = lsu_granted && !lsu_is_clint ? lsu_bready :
                       drain ? 1'b1 : 1'b0;
+  assign clint_bready = lsu_granted && lsu_is_clint ? lsu_bready : 1'b0;
+
+  // CLINT 写通道 (不支持写，CLINT 内部会返回 SLVERR)
+  // 只要 LSU 选中 CLINT 且是写操作，就转发 AW/W 到 CLINT
+  assign clint_awvalid = lsu_granted && lsu_is_clint ? lsu_awvalid : 1'b0;
+  assign clint_awaddr  = lsu_awaddr;
+  assign clint_awid    = lsu_awid;
+  assign clint_awlen   = lsu_awlen;
+  assign clint_awsize  = lsu_awsize;
+  assign clint_awburst = lsu_awburst;
+
+  assign clint_wvalid = lsu_granted && lsu_is_clint ? lsu_wvalid : 1'b0;
+  assign clint_wdata  = lsu_wdata;
+  assign clint_wstrb  = lsu_wstrb;
+  assign clint_wlast  = lsu_wlast;
 
   // ========== 事务完成检测 ==========
-  wire ifu_done  = mem_rvalid && mem_rready && mem_rlast;  // AXI4: 需要rlast
-  wire lsu_done  = lsu_is_read ? (mem_rvalid && mem_rready && mem_rlast)
-                               : (mem_bvalid && mem_bready);
+  // IFU 读: 取指用外部 MEM
+  wire ifu_done  = mem_rvalid && mem_rready && mem_rlast;
+  // LSU 读: 可能走 CLINT 或外部 MEM
+  wire lsu_rdone = lsu_is_read ?
+                   (lsu_is_clint ? (clint_rvalid && clint_rready && clint_rlast)
+                                 : (mem_rvalid && mem_rready && mem_rlast)) :
+                   (lsu_is_clint ? (clint_bvalid && clint_bready)
+                                 : (mem_bvalid && mem_bready));
 
   // ========== 状态机 ==========
   always @(posedge clk) begin
@@ -190,19 +256,13 @@ module AXIArbiter(
     end else begin
       case (state)
         IDLE: begin
-          // 优先排空总线残留响应: 若 R/B 通道仍有上一事务(被复位打断)的响应,
-          // 必须先消费掉, 否则新请求会被 grant 并把残留 rdata 当作有效数据取走.
-          // 此时 ifu_granted/lsu_granted 均为 0 (见 grant 逻辑加的 !drain 条件),
-          // 残留响应不会路由给任何 master.
           if (!mem_rvalid && !mem_bvalid) begin
             if (ifu_req) begin
               state       <= BUSY;
               grant       <= IFU;
-              // IFU 只读, lsu_is_read 无关
             end else if (lsu_req) begin
               state <= BUSY;
               grant <= LSU;
-              // 记录事务类型: arvalid 有效 = 读, 否则 = 写
               lsu_is_read <= lsu_arvalid && !lsu_awvalid;
             end
           end
@@ -214,7 +274,7 @@ module AXIArbiter(
               state <= IDLE;
             end
           end else begin
-            if (lsu_done) begin
+            if (lsu_rdone) begin
               state <= IDLE;
               lsu_is_read <= 1'b0;
             end

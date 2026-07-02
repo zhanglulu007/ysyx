@@ -49,32 +49,32 @@ void bootloader() {
   _v; \
 })
 
-static void put_hex32(uint32_t v) {
-  for (int i = 7; i >= 0; i--) {
-    putch("0123456789abcdef"[(v >> (4 * i)) & 0xf]);
-  }
-}
+// static void put_hex32(uint32_t v) {
+//   for (int i = 7; i >= 0; i--) {
+//     putch("0123456789abcdef"[(v >> (4 * i)) & 0xf]);
+//   }
+// }
 
-static void print_student_id() {
-  uint32_t vendor = CSR_READ(0xf11);   // mvendorid
-  uint32_t arch   = CSR_READ(0xf12);   // marchid
-  putstr("\nNPC student id: ysyx_");
-  /* marchid 是学号十进制值, 按十进制打印 */
-  char buf[12];
-  int n = 0;
-  if (arch == 0) buf[n++] = '0';
-  for (uint32_t t = arch; t; t /= 10) buf[n++] = "0123456789"[t % 10];
-  while (n > 0) putch(buf[--n]);
-  putch('\n');
-  putstr(" (mvendorid=0x"); put_hex32(vendor);
-  putstr(", marchid=0x");   put_hex32(arch);
-  putstr(")\n\n");
-}
+// static void print_student_id() {
+//   uint32_t vendor = CSR_READ(0xf11);   // mvendorid
+//   uint32_t arch   = CSR_READ(0xf12);   // marchid
+//   putstr("\nNPC student id: ysyx_");
+//   /* marchid 是学号十进制值, 按十进制打印 */
+//   char buf[12];
+//   int n = 0;
+//   if (arch == 0) buf[n++] = '0';
+//   for (uint32_t t = arch; t; t /= 10) buf[n++] = "0123456789"[t % 10];
+//   while (n > 0) putch(buf[--n]);
+//   putch('\n');
+//   putstr(" (mvendorid=0x"); put_hex32(vendor);
+//   putstr(", marchid=0x");   put_hex32(arch);
+//   putstr(")\n\n");
+// }
 
 void _trm_init() {
   uart_init();
   bootloader();
-  print_student_id();   // 进入 main() 前输出学号
+  //print_student_id();   // 进入 main() 前输出学号
   int ret = main(mainargs);
   halt(ret);
 }
