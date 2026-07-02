@@ -237,7 +237,8 @@ static word_t eval(int p, int q, bool *success) {
     //     return 0;
     //   }
       
-    //   return pmem_read_word(addr);
+    //   return pmem_read_word(addr)
+    ;
     }
     
     int op = find_main_op(p, q);
