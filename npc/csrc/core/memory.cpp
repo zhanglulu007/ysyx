@@ -177,15 +177,15 @@ static uint8_t flash[FLASH_SIZE];
 //     return true;
 // }
 
-// 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
-uint8_t* get_mrom_buffer() {
-    return mrom;
-}
+// // 获取 MROM 镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+// uint8_t* get_mrom_buffer() {
+//     return mrom;
+// }
 
-// 获取 flash 颗粒镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
-uint8_t* get_flash_buffer() {
-    return flash;
-}
+// // 获取 flash 颗粒镜像缓冲区指针 (供 DiffTest 同步到 NEMU 使用)
+// uint8_t* get_flash_buffer() {
+//     return flash;
+// }
 
 
 void flash_init(const char* program_file) {
