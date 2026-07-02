@@ -22,6 +22,9 @@
 #define MROM_BASE     0x20000000
 #define MROM_SIZE     0x1000       // 4KB
 
+#define PSRAM_BASE    0x80000000
+#define PSRAM_SIZE    0x400000     // 4MB
+
 #define npc_trap(code) asm volatile("mv a0, %0; ebreak" : :"r"(code))
 
 #endif
