@@ -4,55 +4,75 @@ MEMORY {
   psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
-ENTRY(_start)
-PHDRS { text PT_LOAD; data PT_LOAD; }
+/* 三个 PT_LOAD 段:
+ *   boot - Flash 中执行的入口 + bootloader (VMA=LMA=Flash)
+ *   main - VMA=SRAM / LMA=Flash 的 .text/.rodata (bootloader 复制到 SRAM 后执行)
+ *   data - VMA=SRAM / LMA=Flash 的 .data (bootloader 复制)
+ * 关键点: VMA=SRAM 的节必须放在独立的 PHDR 中, 否则与 VMA=Flash 的 .text.bootloader
+ * 同处一个 PHDR 时, ld 会因两段 VMA 不连续而报 "can't be allocated in segment",
+ * 并把这些节丢弃到空段, 导致 objcopy 生成巨大的稀疏 bin 且 _text_lma 等符号失效. */
+PHDRS { boot PT_LOAD; main PT_LOAD; data PT_LOAD; }
 
 SECTIONS {
+  /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
   . = ORIGIN(flash);
 
-  .text : {
+  .text.bootloader : {
     *(entry)
-    *(.text*)
-  } > flash AT> flash : text
+    *(.text.bootloader*)
+  } > flash AT> flash : boot
 
   etext = .;
   _etext = .;
 
-  .rodata : {
-    *(.rodata*)
-  } > flash AT> flash
+  /* ===== 搬到 SRAM 中执行（bootloader 负责从 Flash 复制） ===== */
+  . = ORIGIN(sram);
 
-   /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
-    *       否则 bootloader 不会复制它们, 运行时读到的是 PSRAM 中的无效数据 */
+  _text_lma = LOADADDR(.text);
+  .text : {
+    _text_start = .;
+    *(.text*)
+    _text_end = .;
+  } > sram AT> flash : main
+
+  _rodata_lma = LOADADDR(.rodata);
+  .rodata : {
+    _rodata_start = .;
+    *(.rodata*)
+    _rodata_end = .;
+  } > sram AT> flash : main
+
+  /* 已初始化全局变量 (.data, .sdata) 也搬到 SRAM,
+   * VMA=SRAM, LMA=Flash, 由 bootloader 在 _trm_init 中复制. */
+  _data_lma = LOADADDR(.data);
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > psram AT> flash : data
-  _data_lma = LOADADDR(.data);
-  _data_size = _data_end - _data_start;
-
+  } > sram AT> flash : data
+ 
   edata = .;
   _data = .;
-
+ 
+  /* 未初始化全局变量 (.bss, .sbss) 分配在 SRAM 中, bootloader 负责清零. */
   .bss : {
     _bss_start = .;
     *(.bss*)
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > psram AT> flash : data
-
-  /* 内存布局 (B2.md "在ysyxSoC上运行microbench"):
-   *   .data/.bss 位于 PSRAM (4MB, 0x8000_0000) 起始;
-   *   堆区紧跟 .bss 结束位置 (_end) 起, 延伸至 PSRAM 末尾 —— 注意堆区必须从
-   *   数据段之后开始, 否则 bench_alloc 会覆盖 benchmarks[] 等全局变量!
-   *   栈区位于 SRAM 末尾 (8KB, 0x0f00_2000), 利用 SRAM 低延迟提升调用效率. */
-  . = ALIGN(8);
-  _heap_start = .;                             /* 堆起始 = .bss 结束处 (8字节对齐) */
-  end = .;                                     /* 程序数据结束 = 堆起始 (传统语义) */
-  _end = .;
-  _heap_end   = ORIGIN(psram) + LENGTH(psram); /* 堆结束 = PSRAM_BASE + PSRAM_SIZE */
-  _stack_pointer = ORIGIN(sram) + LENGTH(sram);/* 栈顶 = SRAM 末尾, sp 向下生长 */
+  } > sram
+ 
+  /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率. */
+  . = ORIGIN(sram) + LENGTH(sram);
+  _stack_pointer = .;
+ 
+  /* 堆区在 PSRAM 中 (供需要大量堆空间的程序使用). */
+  _heap_start = ORIGIN(psram);
+  _heap_end = ORIGIN(psram) + LENGTH(psram);
+ 
+  end = .;
 }
+
+ENTRY(_start)
