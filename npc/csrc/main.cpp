@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
         printf("Entering interactive mode. Type 'help' for commands.\n\n");
     }
     
-    Log("Starting simulation from PC=0x%08x", FALSH_BASE);
+    Log("Starting simulation from PC=0x%08x", FLASH_BASE);
     
     // 进入sdb主循环
     sdb_mainloop();
