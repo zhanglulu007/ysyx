@@ -139,15 +139,15 @@ int main(int argc, char** argv) {
     // 打印欢迎信息
     print_welcome();
 
-    // 加载程序
-    if (!load_program(program_file)) {
-        return 1;
-    }
+    // // 加载程序
+    // if (!load_program(program_file)) {
+    //     return 1;
+    // }
 
-    // 将程序镜像同时作为 MROM 内容 (NPC 复位后从 0x20000000 取指)
-    if (!mrom_load(program_file)) {
-        return 1;
-    }
+    // // 将程序镜像同时作为 MROM 内容 (NPC 复位后从 0x20000000 取指)
+    // if (!mrom_load(program_file)) {
+    //     return 1;
+    // }
 
     flash_init(program_file);
 
