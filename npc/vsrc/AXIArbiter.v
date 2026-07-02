@@ -151,6 +151,7 @@ module AXIArbiter(
 
   // ========== 请求检测 ==========
   wire ifu_req = ifu_arvalid;
+  wire lsu_req = lsu_arvalid || lsu_awvalid;
   // LSU 请求: 如果是 CLINT 地址，走 CLINT 端口；否则走外部 MEM
   wire lsu_req_clint = lsu_req && lsu_is_clint;
   wire lsu_req_mem   = lsu_req && !lsu_is_clint;
