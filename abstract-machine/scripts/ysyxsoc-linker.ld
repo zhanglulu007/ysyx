@@ -4,55 +4,82 @@ MEMORY {
   psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
-ENTRY(_start)
-PHDRS { text PT_LOAD; data PT_LOAD; }
+/* 内存布局 (B2.md '通过bootloader将程序加载到PSRAM中执行'):
+ *   - 程序主体 (.text/.rodata/.data/.bss) 加载到 PSRAM 执行: VMA=PSRAM, LMA=Flash.
+ *     PSRAM 有 4MB, 足够装下 microbench 等大程序; 取指/数据访问虽慢于 SRAM, 但容量大.
+ *   - 栈分配在 SRAM 末尾, 利用 SRAM 单周期访问提升函数调用/局部变量效率.
+ *   - 堆区紧跟 .bss 之后, 位于 PSRAM 中, 提供大容量可写空间 (bench_alloc 等).
+ *
+ * 三个 PT_LOAD 段:
+ *   boot - Flash 中执行的入口 + bootloader (VMA=LMA=Flash)
+ *   main - VMA=PSRAM / LMA=Flash 的 .text/.rodata (bootloader 复制到 PSRAM 后执行)
+ *   data - VMA=PSRAM / LMA=Flash 的 .data (bootloader 复制)
+ * 关键点: VMA=PSRAM 的节必须放在独立的 PHDR 中, 否则与 VMA=Flash 的 .text.bootloader
+ * 同处一个 PHDR 时, ld 会因两段 VMA 不连续而报 "can't be allocated in segment",
+ * 并把这些节丢弃到空段, 导致 objcopy 生成巨大的稀疏 bin 且 _text_lma 等符号失效. */
+PHDRS { boot PT_LOAD; main PT_LOAD; data PT_LOAD; }
 
 SECTIONS {
+  /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
   . = ORIGIN(flash);
 
-  .text : {
+  .text.bootloader : {
     *(entry)
-    *(.text*)
-  } > flash AT> flash : text
+    *(.text.bootloader*)
+  } > flash AT> flash : boot
 
   etext = .;
   _etext = .;
 
-  .rodata : {
-    *(.rodata*)
-  } > flash AT> flash
+  /* ===== 搬到 PSRAM 中执行（bootloader 负责从 Flash 复制） ===== */
+  . = ORIGIN(psram);
 
-   /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
-    *       否则 bootloader 不会复制它们, 运行时读到的是 PSRAM 中的无效数据 */
+  _text_lma = LOADADDR(.text);
+  .text : {
+    _text_start = .;
+    *(.text*)
+    _text_end = .;
+  } > psram AT> flash : main
+
+  _rodata_lma = LOADADDR(.rodata);
+  .rodata : {
+    _rodata_start = .;
+    *(.rodata*)
+    _rodata_end = .;
+  } > psram AT> flash : main
+
+  /* 已初始化全局变量 (.data, .sdata) 也搬到 PSRAM,
+   * VMA=PSRAM, LMA=Flash, 由 bootloader 复制. */
+  _data_lma = LOADADDR(.data);
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
   } > psram AT> flash : data
-  _data_lma = LOADADDR(.data);
-  _data_size = _data_end - _data_start;
 
   edata = .;
   _data = .;
 
-  .bss : {
+  /* 未初始化全局变量 (.bss, .sbss) 分配在 PSRAM 中, bootloader 负责清零. */
+  .bss (NOLOAD) : {
     _bss_start = .;
     *(.bss*)
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > psram AT> flash : data
+  } > psram
 
-  /* 内存布局 (B2.md "在ysyxSoC上运行microbench"):
-   *   .data/.bss 位于 PSRAM (4MB, 0x8000_0000) 起始;
-   *   堆区紧跟 .bss 结束位置 (_end) 起, 延伸至 PSRAM 末尾 —— 注意堆区必须从
-   *   数据段之后开始, 否则 bench_alloc 会覆盖 benchmarks[] 等全局变量!
-   *   栈区位于 SRAM 末尾 (8KB, 0x0f00_2000), 利用 SRAM 低延迟提升调用效率. */
+  /* 堆区紧跟 .bss 之后, 位于 PSRAM 中 (大容量可写, 供 bench_alloc 等使用). */
   . = ALIGN(8);
-  _heap_start = .;                             /* 堆起始 = .bss 结束处 (8字节对齐) */
-  end = .;                                     /* 程序数据结束 = 堆起始 (传统语义) */
-  _end = .;
-  _heap_end   = ORIGIN(psram) + LENGTH(psram); /* 堆结束 = PSRAM_BASE + PSRAM_SIZE */
-  _stack_pointer = ORIGIN(sram) + LENGTH(sram);/* 栈顶 = SRAM 末尾, sp 向下生长 */
+  _heap_start = .;
+  _heap_end = ORIGIN(psram) + LENGTH(psram);
+
+  /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率.
+   * (SRAM 8KB 全部留给栈, 不放置任何程序数据) */
+  _stack_pointer = ORIGIN(sram) + LENGTH(sram);
+
+  end = .;
 }
+
+ENTRY(_start)
