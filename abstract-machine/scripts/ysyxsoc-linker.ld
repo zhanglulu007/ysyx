@@ -45,13 +45,14 @@ SECTIONS {
   } > psram AT> flash : data
 
   /* 内存布局 (B2.md "在ysyxSoC上运行microbench"):
-   *   .data/.bss/堆区位于 PSRAM (4MB, 0x8000_0000), 提供大容量可写空间;
-   *   栈区仍位于 SRAM 末尾 (8KB, 0x0f00_2000), 利用 SRAM 的低延迟提升
-   *   函数调用与局部变量访问效率. 堆区从 PSRAM 起始处延伸至 PSRAM 末尾. */
-  _heap_start = ORIGIN(psram);                 /* 堆起始 = PSRAM_BASE */
-  _heap_end   = ORIGIN(psram) + LENGTH(psram); /* 堆结束 = PSRAM_BASE + PSRAM_SIZE */
-  . = ORIGIN(sram) + LENGTH(sram);             /* 移到 SRAM 末尾 */
-  _stack_pointer = .;                /* 栈顶 = SRAM_BASE + SRAM_SIZE, sp 向下生长 */
-  end = .;
+   *   .data/.bss 位于 PSRAM (4MB, 0x8000_0000) 起始;
+   *   堆区紧跟 .bss 结束位置 (_end) 起, 延伸至 PSRAM 末尾 —— 注意堆区必须从
+   *   数据段之后开始, 否则 bench_alloc 会覆盖 benchmarks[] 等全局变量!
+   *   栈区位于 SRAM 末尾 (8KB, 0x0f00_2000), 利用 SRAM 低延迟提升调用效率. */
+  . = ALIGN(8);
+  _heap_start = .;                             /* 堆起始 = .bss 结束处 (8字节对齐) */
+  end = .;                                     /* 程序数据结束 = 堆起始 (传统语义) */
   _end = .;
+  _heap_end   = ORIGIN(psram) + LENGTH(psram); /* 堆结束 = PSRAM_BASE + PSRAM_SIZE */
+  _stack_pointer = ORIGIN(sram) + LENGTH(sram);/* 栈顶 = SRAM 末尾, sp 向下生长 */
 }
