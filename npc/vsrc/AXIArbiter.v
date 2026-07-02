@@ -1,9 +1,4 @@
 // AXIArbiter - AXI4 仲裁器
-//
-// 功能: 仲裁 IFU(取指) 和 LSU(访存) 对总线的访问.
-//       添加 CLINT 本地从设备: LSU 访问 0x0200_0000-0x0200_ffff 时路由到 CLINT,
-//       而非外部 Xbar.
-//
 // 状态机:
 //   IDLE: 无 master 获得授权, 检测请求
 //   BUSY: 已授权某个 master, 转发其事务直到完成

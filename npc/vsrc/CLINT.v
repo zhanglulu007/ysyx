@@ -4,10 +4,6 @@
 // 地址空间: 0x0200_0000 ~ 0x0200_ffff
 //   - 0x0200_bff8: mtime 低32位
 //   - 0x0200_bffc: mtime 高32位
-//
-// AXI4 扩展（相对于 AXI4-Lite）：
-//   读通道: arid, arlen, arsize, arburst, rid, rlast
-//   写通道: awid, awlen, awsize, awburst, wid, wlast, bid
 
 module CLINT(
   input         clk,
