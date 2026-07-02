@@ -154,7 +154,7 @@ void cpu_exec(uint64_t n) {
     while (cycles < n || n == (uint64_t)-1) {
         exec_once();
         cycles++;
-        if (cycles % 10000 == 0)
+        if (cycles % 10 == 0)
         {
             printf("Execution-----%lu\n", cycles);
         }
