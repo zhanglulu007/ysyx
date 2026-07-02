@@ -38,6 +38,7 @@ SECTIONS {
   .text : {
     _text_start = .;
     *(.text*)
+    . = ALIGN(8);
     _text_end = .;
   } > psram AT> flash : main
 
@@ -45,6 +46,7 @@ SECTIONS {
   .rodata : {
     _rodata_start = .;
     *(.rodata*)
+    *(.srodata*)
     _rodata_end = .;
   } > psram AT> flash : main
 
