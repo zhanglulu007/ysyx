@@ -154,6 +154,10 @@ void cpu_exec(uint64_t n) {
     while (cycles < n || n == (uint64_t)-1) {
         exec_once();
         cycles++;
+        while (cycles % 10000 == 0)
+        {
+            printf("Execution-----%lu\n", cycles);
+        }
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
