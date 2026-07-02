@@ -1,6 +1,7 @@
 MEMORY {
   flash : ORIGIN = 0x30000000, LENGTH = 16M
   sram  : ORIGIN = 0x0f000000, LENGTH = 8K
+  psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
 ENTRY(_start)
@@ -22,13 +23,13 @@ SECTIONS {
   } > flash AT> flash
 
    /* 注意: RISC-V 把小的已初始化全局变量放入 .sdata 段, 必须一并包含,
-   *       否则 bootloader 不会复制它们, 运行时读到的是 SRAM 中的无效数据 */
+    *       否则 bootloader 不会复制它们, 运行时读到的是 PSRAM 中的无效数据 */
   .data : {
     _data_start = .;
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > sram AT> flash : data
+  } > psram AT> flash : data
   _data_lma = LOADADDR(.data);
   _data_size = _data_end - _data_start;
 
@@ -41,16 +42,17 @@ SECTIONS {
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > sram AT> flash : data
+  } > psram AT> flash : data
 
-  /* 栈区与堆区布局 (按 B2.md 内存访问测试要求):
-   *   栈区位于 SRAM 末尾, 从栈顶 (SRAM_BASE + SRAM_SIZE) 向低地址生长;
-   *   堆区从 SRAM 起始处开始, 其结束地址即栈顶初值.
-   * 这样 mem-test 可以把 [SRAM_BASE, 栈顶) 作为可写测试范围, 并在运行时绕开
-   * 自身栈帧所占据的字节. */
-  . = ORIGIN(sram) + LENGTH(sram);   /* 移到 SRAM 末尾 */
-  _stack_pointer = .;                /* 栈顶 = SRAM_BASE + SRAM_SIZE, sp 向下生长 */
-  end = .;
+  /* 内存布局 (B2.md "在ysyxSoC上运行microbench"):
+   *   .data/.bss 位于 PSRAM (4MB, 0x8000_0000) 起始;
+   *   堆区紧跟 .bss 结束位置 (_end) 起, 延伸至 PSRAM 末尾 —— 注意堆区必须从
+   *   数据段之后开始, 否则 bench_alloc 会覆盖 benchmarks[] 等全局变量!
+   *   栈区位于 SRAM 末尾 (8KB, 0x0f00_2000), 利用 SRAM 低延迟提升调用效率. */
+  . = ALIGN(8);
+  _heap_start = .;                             /* 堆起始 = .bss 结束处 (8字节对齐) */
+  end = .;                                     /* 程序数据结束 = 堆起始 (传统语义) */
   _end = .;
-  _heap_start = ORIGIN(sram);        /* 堆起始 = SRAM_BASE */
+  _heap_end   = ORIGIN(psram) + LENGTH(psram); /* 堆结束 = PSRAM_BASE + PSRAM_SIZE */
+  _stack_pointer = ORIGIN(sram) + LENGTH(sram);/* 栈顶 = SRAM 末尾, sp 向下生长 */
 }
