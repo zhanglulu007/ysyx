@@ -238,8 +238,7 @@ static word_t eval(int p, int q, bool *success) {
     //   }
       
     //   return pmem_read_word(addr);
-    return 0;
-    }
+    // }
     
     int op = find_main_op(p, q);
     if (op == -1) {
