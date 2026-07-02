@@ -30,6 +30,7 @@ paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 #define CONFIG_MROM_SIZE 0x1000   /* 4KB, 与 ysyxSoC 的 MROM 一致 */
 #define CONFIG_SRAM_SIZE 0x2000   /* 8KB, 与 ysyxSoC 的 SRAM 一致 */
 #define CONFIG_FLASH_SIZE 0x1000000  /* 16MB, 与 ysyxSoC 的 flash 颗粒(W25Q128JV)一致 */
+#define CONFIG_PSRAM_SIZE 0x400000  /* 4MB, 与 ysyxSoC 的 PSRAM 颗粒(IS66WVS4M8ALL)一致 */
 
 #define MROM_LEFT  ((paddr_t)0x20000000)
 #define MROM_RIGHT (MROM_LEFT + CONFIG_MROM_SIZE - 1)
@@ -37,17 +38,22 @@ paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 #define SRAM_RIGHT (SRAM_LEFT + CONFIG_SRAM_SIZE - 1)
 #define FLASH_LEFT  ((paddr_t)0x30000000)
 #define FLASH_RIGHT (FLASH_LEFT + CONFIG_FLASH_SIZE - 1)
+#define PSRAM_LEFT  ((paddr_t)0x80000000)
+#define PSRAM_RIGHT (PSRAM_LEFT + CONFIG_PSRAM_SIZE - 1)
 
 static uint8_t mrom[CONFIG_MROM_SIZE] PG_ALIGN = {};  /* MROM 镜像 (只读) */
 static uint8_t sram[CONFIG_SRAM_SIZE] PG_ALIGN = {};  /* SRAM 镜像 (可读写) */
 static uint8_t flash[CONFIG_FLASH_SIZE] PG_ALIGN = {};/* Flash 镜像 (只读) */
+static uint8_t psram[CONFIG_PSRAM_SIZE] PG_ALIGN = {};/* PSRAM 镜像 (可读写) */
 
 bool in_mrom(paddr_t addr) { return addr - MROM_LEFT < CONFIG_MROM_SIZE; }
 bool in_sram(paddr_t addr) { return addr - SRAM_LEFT < CONFIG_SRAM_SIZE; }
 bool in_flash(paddr_t addr) { return addr - FLASH_LEFT < CONFIG_FLASH_SIZE; }
+bool in_psram(paddr_t addr) { return addr - PSRAM_LEFT < CONFIG_PSRAM_SIZE; }
 uint8_t* mrom_to_host(paddr_t paddr) { return mrom + (paddr - MROM_LEFT); }
 uint8_t* sram_to_host(paddr_t paddr) { return sram + (paddr - SRAM_LEFT); }
 uint8_t* flash_to_host(paddr_t paddr) { return flash + (paddr - FLASH_LEFT); }
+uint8_t* psram_to_host(paddr_t paddr) { return psram + (paddr - PSRAM_LEFT); }
 
 #ifdef CONFIG_MTRACE
 static void mtrace_read(paddr_t addr, int len, word_t data) {
@@ -114,6 +120,11 @@ word_t paddr_read(paddr_t addr, int len) {
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
+  if (in_psram(addr)) {
+    word_t ret = host_read(psram_to_host(addr), len);
+    IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
+    return ret;
+  }
   IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
   out_of_bound(addr);
   return 0;
@@ -122,8 +133,9 @@ word_t paddr_read(paddr_t addr, int len) {
 void paddr_write(paddr_t addr, int len, word_t data) {
   IFDEF(CONFIG_MTRACE, mtrace_write(addr, len, data));
   if (likely(in_pmem(addr))) { pmem_write(addr, len, data); return; }
-  /* ysyxSoC: SRAM 可写; MROM/Flash 只读, 静默丢弃写 (与只读介质一致) */
+  /* ysyxSoC: SRAM/PSRAM 可写; MROM/Flash 只读, 静默丢弃写 (与只读介质一致) */
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
+  if (in_psram(addr)) { host_write(psram_to_host(addr), len, data); return; }
   if (in_mrom(addr)) { return; }
   if (in_flash(addr)) { return; }
   IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
