@@ -155,7 +155,17 @@ void cpu_exec(uint64_t n) {
         exec_once();
         cycles++;
         //if (cycles % 10000 == 0) printf("Execution-----%lu\n", cycles);
-        
+
+        // [临时诊断] 死循环排查: 跑到上限强制停止并打印 iringbuf, 防止 RT-Thread 死循环时无限运行
+        if (n == (uint64_t)-1 && cycles >= 30000000UL) {
+            printf("\n=== DIAG: forced stop after %lu inst ===\n", cycles);
+#ifdef ENABLE_TRACE
+            display_iringbuf();
+#endif
+            state->state = NPC_STOP;
+            break;
+        }
+
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
             Log("Execution stopped at inst %lu due to EBREAK", cycles);
