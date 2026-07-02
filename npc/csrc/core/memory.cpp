@@ -232,14 +232,14 @@ extern "C" void flash_read(int32_t addr, int32_t *data) {
     *data = (int32_t)value;
 }
 
-// // 注意: 当 LSU 以 1/2 字节粒度访问 (如 lbu) 时, araddr 不再被总线对齐,
-// // 若不在此处 &~3, 会以非对齐地址为起点拼 4 字节, 导致 LSU 字节选择错位.
-// extern "C" void mrom_read(int32_t addr, int32_t *data) {
-//     uint32_t off = ((uint32_t)addr & ~0x3u) - MROM_BASE;
-//     uint32_t value = 0;
-//     for (int i = 0; i < 4; i++) {
-//         uint32_t boff = off + i;
-//         value |= (boff < MROM_SIZE ? (uint32_t)mrom[boff] : 0u) << (8 * i);
-//     }
-//     *data = (int32_t)value;
-// }
+// 注意: 当 LSU 以 1/2 字节粒度访问 (如 lbu) 时, araddr 不再被总线对齐,
+// 若不在此处 &~3, 会以非对齐地址为起点拼 4 字节, 导致 LSU 字节选择错位.
+extern "C" void mrom_read(int32_t addr, int32_t *data) {
+    // uint32_t off = ((uint32_t)addr & ~0x3u) - MROM_BASE;
+    // uint32_t value = 0;
+    // for (int i = 0; i < 4; i++) {
+    //     uint32_t boff = off + i;
+    //     value |= (boff < MROM_SIZE ? (uint32_t)mrom[boff] : 0u) << (8 * i);
+    // }
+    // *data = (int32_t)value;
+}
