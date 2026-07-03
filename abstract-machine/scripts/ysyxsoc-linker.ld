@@ -4,9 +4,15 @@ MEMORY {
   psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
-/* 内存布局 (B2.md '通过bootloader将程序加载到PSRAM中执行'):
+/* 内存布局 (B2.md '在PSRAM上执行RT-Thread' 的二级加载 FSBL/SSBL):
  *   - 程序主体 (.text/.rodata/.data/.bss) 加载到 PSRAM 执行: VMA=PSRAM, LMA=Flash.
- *     PSRAM 有 4MB, 足够装下 microbench 等大程序; 取指/数据访问虽慢于 SRAM, 但容量大.
+ *     PSRAM 有 4MB, 足够装下 RT-Thread 等大程序.
+ *   - 二级加载 (bootloader 加载大程序时若全程在 flash 取指会非常慢, 因 flash XIP
+ *     取一条指令约需 150 个 CPU 周期):
+ *       FSBL (在 flash 中执行) 将 SSBL 从 flash 复制到 SRAM, 然后跳转到 SRAM;
+ *       SSBL (在 SRAM 中单周期执行, 速度快) 将主程序从 flash 复制到 PSRAM 并清零
+ *       .bss, 然后跳转到 PSRAM 中的 _trm_init.
+ *     SSBL 代码很小, 与栈共用 SRAM: SSBL 位于 SRAM 起始处, 栈从 SRAM 末尾向下生长.
  *   - 栈分配在 SRAM 末尾, 利用 SRAM 单周期访问提升函数调用/局部变量效率.
  *   - 堆区紧跟 .bss 之后, 位于 PSRAM 中, 提供大容量可写空间 (bench_alloc 等).
  *
@@ -19,7 +25,7 @@ MEMORY {
  * 所有节的 LMA 都能正确指向 Flash, objcopy 输出的 bin 仅覆盖 Flash 的 LMA 跨度. */
 
 SECTIONS {
-  /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
+  /* ===== FSBL: 在 Flash 中执行的入口 + 第一级 bootloader (VMA=LMA=Flash) ===== */
   . = ORIGIN(flash);
 
   .text.bootloader : {
@@ -30,8 +36,18 @@ SECTIONS {
   etext = .;
   _etext = .;
 
-  /* ===== 搬到 PSRAM 中执行（bootloader 负责从 Flash 复制） ===== */
-  . = ORIGIN(psram);
+  /* ===== SSBL: 第二级 bootloader, 存放在 Flash (LMA), 由 FSBL 复制到 SRAM (VMA) 执行.
+   * 单独成节 (函数用 section(".text.ssbl") 标注), 以便 FSBL 通过 _ssbl_lma/_ssbl_start/
+   * _ssbl_end 得知其在 flash 中的范围. VMA 必须在 SRAM 中 (单周期访问, 拷贝快).
+   * LMA 紧跟 .text.bootloader 之后 (AT> flash), 故 FSBL 复制完 SSBL 后即可顺序读取主程序. ===== */
+  .text.ssbl ORIGIN(sram) : {
+    _ssbl_start = .;
+    *(.text.ssbl)
+    *(.text.ssbl*)
+    _ssbl_end = .;
+    . = ALIGN(4);
+  } > sram AT> flash
+  _ssbl_lma = LOADADDR(.text.ssbl);
 
   _text_lma = LOADADDR(.text);
   .text : {
