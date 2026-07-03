@@ -13,8 +13,8 @@ void _trm_init(void);
 void ssbl(void);
 void fsbl(void);
 
-/* 堆区: 紧跟 .bss 之后到 PSRAM 末尾, 由链接脚本决定区间
- * (程序主体在 PSRAM 中, 堆使用 PSRAM 剩余空间, 供 bench_alloc 等使用). */
+/* 堆区: 紧跟 .bss 之后到 SDRAM 末尾, 由链接脚本决定区间
+ * (程序主体在 SDRAM 中, 堆使用 SDRAM 剩余空间, 供 bench_alloc 等使用). */
 Area heap = RANGE(&_heap_start, &_heap_end);
 static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER);
 
@@ -45,28 +45,28 @@ void ssbl(void) {
   uint32_t sz;
   uint8_t *dst, *src;
 
-  /* 复制 .text: Flash → PSRAM */
+  /* 复制 .text: Flash → SDRAM */
   sz = (uint32_t)(uintptr_t)&_text_end - (uint32_t)(uintptr_t)&_text_start;
   dst = (uint8_t *)&_text_start;
   src = (uint8_t *)&_text_lma;
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
 
-  /* 复制 .rodata: Flash → PSRAM */
+  /* 复制 .rodata: Flash → SDRAM */
   sz = (uint32_t)(uintptr_t)&_rodata_end - (uint32_t)(uintptr_t)&_rodata_start;
   dst = (uint8_t *)&_rodata_start;
   src = (uint8_t *)&_rodata_lma;
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
 
-  /* 复制 .data: Flash → PSRAM */
+  /* 复制 .data: Flash → SDRAM */
   sz = (uint32_t)(uintptr_t)&_data_end - (uint32_t)(uintptr_t)&_data_start;
   dst = (uint8_t *)&_data_start;
   src = (uint8_t *)&_data_lma;
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
 
-  /* 清零 .bss (PSRAM) */
+  /* 清零 .bss (SDRAM) */
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 
-  /* 跳转到 PSRAM 中的 _trm_init (此时主程序已就位) */
+  /* 跳转到 SDRAM 中的 _trm_init (此时主程序已就位) */
   _trm_init();
   while (1);
 }

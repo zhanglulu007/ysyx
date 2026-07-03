@@ -1,7 +1,7 @@
 MEMORY {
   flash : ORIGIN = 0x30000000, LENGTH = 16M
   sram  : ORIGIN = 0x0f000000, LENGTH = 8K
-  psram : ORIGIN = 0x80000000, LENGTH = 4M
+  sdram : ORIGIN = 0xa0000000, LENGTH = 32M
 }
 
 SECTIONS {
@@ -31,14 +31,14 @@ SECTIONS {
     _text_start = .;
     *(.text*)
     _text_end = .;
-  } > psram AT> flash
+  } > sdram AT> flash
 
   _rodata_lma = LOADADDR(.rodata);
   .rodata : {
     _rodata_start = .;
     *(.rodata*)
     _rodata_end = .;
-  } > psram AT> flash
+  } > sdram AT> flash
 
   _data_lma = LOADADDR(.data);
   .data : {
@@ -79,7 +79,7 @@ SECTIONS {
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > psram AT> flash
+  } > sdram AT> flash
 
   edata = .;
   _data = .;
@@ -100,12 +100,12 @@ SECTIONS {
     *(.sbss*)
     *(.scommon)
     _bss_end = .;
-  } > psram
+  } > sdram
 
-  /* 堆区紧跟 .bss 之后, 位于 PSRAM 中 (大容量可写, 供 bench_alloc 等使用). */
+  /* 堆区紧跟 .bss 之后, 位于 SDRAM 中 (32MB 大容量可写). */
   . = ALIGN(8);
   _heap_start = .;
-  _heap_end = ORIGIN(psram) + LENGTH(psram);
+  _heap_end = ORIGIN(sdram) + LENGTH(sdram);
 
   /* 栈区分配在 SRAM 末尾, 利用 SRAM 的单周期访问提升函数调用/局部变量效率.
    * (SRAM 8KB 全部留给栈, 不放置任何程序数据) */
