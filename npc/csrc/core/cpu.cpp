@@ -81,6 +81,7 @@ void reset_cpu() {
 void exec_once() {
     uint32_t current_pc = npc_get_pc();
 
+    uint64_t stall_cycles = 0;   /* 调试: 统计 PC 停滞的时钟数, 防止 AXI 死锁卡死 */
     while(current_pc == npc_get_pc()) {
          // 下降沿
         g_top->clock = 0;
@@ -99,6 +100,13 @@ void exec_once() {
         npc_inc_cycle();
         device_update();
         if (npc_get_state()->state == NPC_END) break;
+        /* 调试: 如果 PC 停滞超过 5000 个时钟, 说明硬件死锁, 打印现场并退出 */
+        if (++stall_cycles > 5000) {
+            printf("\n[STALL] PC stuck at 0x%08x for %lu clocks! inst=0x%08x\n",
+                   current_pc, stall_cycles, npc_get_inst());
+            npc_get_state()->state = NPC_ABORT;
+            return;
+        }
     }
 
     #ifdef ENABLE_TRACE
@@ -155,10 +163,6 @@ void cpu_exec(uint64_t n) {
         exec_once();
         cycles++;
         if (cycles % 10000 == 0) printf("Execution-----%lu\n", cycles);
-        /* 调试: 卡死后打印 PC, 定位死循环 (293万后不再推进) */
-        if (cycles > 2930000 && cycles <= 2930100) {
-          printf("[DBG] cycle=%lu pc=0x%08x\n", cycles, npc_get_pc());
-        }
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
