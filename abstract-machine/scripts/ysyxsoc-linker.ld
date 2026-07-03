@@ -4,66 +4,98 @@ MEMORY {
   psram : ORIGIN = 0x80000000, LENGTH = 4M
 }
 
-/* 内存布局 (B2.md '通过bootloader将程序加载到PSRAM中执行'):
- *   - 程序主体 (.text/.rodata/.data/.bss) 加载到 PSRAM 执行: VMA=PSRAM, LMA=Flash.
- *     PSRAM 有 4MB, 足够装下 microbench 等大程序; 取指/数据访问虽慢于 SRAM, 但容量大.
- *   - 栈分配在 SRAM 末尾, 利用 SRAM 单周期访问提升函数调用/局部变量效率.
- *   - 堆区紧跟 .bss 之后, 位于 PSRAM 中, 提供大容量可写空间 (bench_alloc 等).
- *
- * 三个 PT_LOAD 段:
- *   boot - Flash 中执行的入口 + bootloader (VMA=LMA=Flash)
- *   main - VMA=PSRAM / LMA=Flash 的 .text/.rodata (bootloader 复制到 PSRAM 后执行)
- *   data - VMA=PSRAM / LMA=Flash 的 .data (bootloader 复制)
- * 关键点: VMA=PSRAM 的节必须放在独立的 PHDR 中, 否则与 VMA=Flash 的 .text.bootloader
- * 同处一个 PHDR 时, ld 会因两段 VMA 不连续而报 "can't be allocated in segment",
- * 并把这些节丢弃到空段, 导致 objcopy 生成巨大的稀疏 bin 且 _text_lma 等符号失效. */
-PHDRS { boot PT_LOAD; main PT_LOAD; data PT_LOAD; }
-
 SECTIONS {
-  /* ===== 必须在 Flash 中运行的代码（入口 + bootloader） ===== */
+  /* ===== FSBL: 在 Flash 中执行的入口 + 第一级 bootloader (VMA=LMA=Flash) ===== */
   . = ORIGIN(flash);
 
   .text.bootloader : {
     *(entry)
     *(.text.bootloader*)
-  } > flash AT> flash : boot
+  } > flash AT> flash
 
   etext = .;
   _etext = .;
 
-  /* ===== 搬到 PSRAM 中执行（bootloader 负责从 Flash 复制） ===== */
-  . = ORIGIN(psram);
+  /* ===== SSBL: 第二级 bootloader, 存放在 Flash (LMA), 由 FSBL 复制到 SRAM (VMA) 执行. */
+  .text.ssbl ORIGIN(sram) : {
+    _ssbl_start = .;
+    *(.text.ssbl)
+    *(.text.ssbl*)
+    _ssbl_end = .;
+    . = ALIGN(4);
+  } > sram AT> flash
+  _ssbl_lma = LOADADDR(.text.ssbl);
 
   _text_lma = LOADADDR(.text);
   .text : {
     _text_start = .;
     *(.text*)
     _text_end = .;
-  } > psram AT> flash : main
+  } > psram AT> flash
 
   _rodata_lma = LOADADDR(.rodata);
   .rodata : {
     _rodata_start = .;
     *(.rodata*)
     _rodata_end = .;
-  } > psram AT> flash : main
+  } > psram AT> flash
 
-  /* 已初始化全局变量 (.data, .sdata) 也搬到 PSRAM,
-   * VMA=PSRAM, LMA=Flash, 由 bootloader 复制. */
   _data_lma = LOADADDR(.data);
   .data : {
     _data_start = .;
+
+    *(.srodata*)
+    . = ALIGN(8);
+
+    /* RT-Thread finsh shell 命令符号表 */
+    __fsymtab_start = .;
+    KEEP(*(FSymTab))
+    __fsymtab_end = .;
+    . = ALIGN(8);
+    __vsymtab_start = .;
+    KEEP(*(VSymTab))
+    __vsymtab_end = .;
+    . = ALIGN(8);
+
+    /* RT-Thread 自动初始化函数表 */
+    __rt_init_start = .;
+    KEEP(*(SORT(.rti_fn*)))
+    __rt_init_end = .;
+    . = ALIGN(8);
+
+    /* RT-Thread utest 测试用例表 */
+    __rt_utest_tc_tab_start = .;
+    KEEP(*(UtestTcTab))
+    __rt_utest_tc_tab_end = .;
+    . = ALIGN(8);
+
+    /* 集成的 AM 应用数据 (由 integrate-am-apps.py --prefix-alloc-sections 生成) */
+    __am_apps_data_start = .;
+    *(__am_apps.data*)
+    *(__am_apps.sdata*)
+    __am_apps_data_end = .;
+    . = ALIGN(8);
+
     *(.data*)
     *(.sdata*)
     _data_end = .;
-  } > psram AT> flash : data
+  } > psram AT> flash
 
   edata = .;
   _data = .;
 
-  /* 未初始化全局变量 (.bss, .sbss) 分配在 PSRAM 中, bootloader 负责清零. */
   .bss (NOLOAD) : {
     _bss_start = .;
+
+    /* 集成的 AM 应用 bss (放在主 bss 之前, 由 bootloader 统一清零) */
+    . = ALIGN(8);
+    __am_apps_bss_start = .;
+    *(__am_apps.bss*)
+    *(__am_apps.sbss*)
+    *(__am_apps.scommon*)
+    __am_apps_bss_end = .;
+    . = ALIGN(8);
+
     *(.bss*)
     *(.sbss*)
     *(.scommon)

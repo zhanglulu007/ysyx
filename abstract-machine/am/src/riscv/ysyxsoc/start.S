@@ -5,9 +5,10 @@
 _start:
   mv s0, zero
   la sp, _stack_pointer
-  /* bootloader 将 .text / .rodata / .data 从 Flash 复制到 PSRAM，并清零 .bss */
-  call bootloader
-  /* 此时代码已在 PSRAM 中，跳转 _trm_init (VMA=PSRAM) */
-  call _trm_init
+  /* FSBL: 调用 fsbl() 将 SSBL 从 Flash 复制到 SRAM,
+   * 然后 fsbl() 跳转到 SRAM 中的 ssbl() 继续执行. */
+  call fsbl
+  /* 不应到达这里: fsbl() 会跳转到 SRAM 中的 ssbl(), 不返回 */
+1: j 1b
 
 .size _start, . - _start
