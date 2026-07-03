@@ -155,6 +155,10 @@ void cpu_exec(uint64_t n) {
         exec_once();
         cycles++;
         if (cycles % 10000 == 0) printf("Execution-----%lu\n", cycles);
+        /* 调试: 卡死后打印 PC, 定位死循环 (294万后不再推进) */
+        if (cycles > 2940000 && cycles <= 2940100) {
+          printf("[DBG] cycle=%lu pc=0x%08x\n", cycles, npc_get_pc());
+        }
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
