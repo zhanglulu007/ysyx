@@ -39,10 +39,7 @@ void halt(int code) {
   while (1);
 }
 
-/* SSBL (Second Stage BootLoader): 在 SRAM 中运行 (单周期访问, 拷贝快).
- * 负责将主程序 (.text/.rodata/.data) 从 Flash (LMA) 搬移到 PSRAM (VMA),
- * 清零 .bss, 然后跳转到 PSRAM 中的 _trm_init.
- * 放入 .text.ssbl 段, 由 FSBL 从 Flash 复制到 SRAM 后执行. */
+// SSBL
 __attribute__((section(".text.ssbl")))
 void ssbl(void) {
   uint32_t sz;
@@ -74,11 +71,6 @@ void ssbl(void) {
   while (1);
 }
 
-/* FSBL (First Stage BootLoader): 在 Flash 中运行 (复位后第一条执行的代码).
- * 仅负责将体积很小的 SSBL 从 Flash 复制到 SRAM, 然后跳转到 SRAM 中的 ssbl().
- * 这样大体积主程序的复制工作由 SSBL 在快速的 SRAM 中完成, 避免在慢速 flash 中
- * 执行冗长的拷贝循环 (flash XIP 取指约需 150 周期/指令).
- * 放入 .text.bootloader 段 (VMA=LMA=Flash, 复位后即可原地执行). */
 __attribute__((section(".text.bootloader")))
 void fsbl(void) {
   uint32_t sz = (uint32_t)(uintptr_t)&_ssbl_end - (uint32_t)(uintptr_t)&_ssbl_start;
