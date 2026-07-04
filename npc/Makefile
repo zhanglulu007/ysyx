@@ -177,7 +177,7 @@ define VERILATE_CMD
 	  -I$(NVBOARD_HOME)/usr/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)" \
+	-LDFLAGS "-lreadline -ldl $(NVBOARD_LDFLAGS) $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
 	$(NVBOARD_CSRCS) \
