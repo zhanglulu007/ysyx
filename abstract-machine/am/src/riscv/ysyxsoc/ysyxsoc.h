@@ -12,6 +12,7 @@
 #define UART_LCR      0x3          // 线路控制寄存器 (LCR)
 #define UART_LSR      0x5          // 线路状态寄存器 (LSR) 偏移
 #define UART_LSR_THRE 0x20         // 发送保持寄存器空 (THRE, bit 5)
+#define UART_LSR_DR   0x01         // 数据就绪 (DR, bit 0)
 #define UART_LCR_DLAB 0x80         // 除数访问位 (LCR bit 7)
 #define UART_LCR_8N1  0x03         // 8 数据位, 无校验, 1 停止位
 #define UART_DIVISOR  0x08         // 波特率除数 (必须非零: dl=0 时 enable 永远为 0, block_cnt 无法递减, THRE 锁死)

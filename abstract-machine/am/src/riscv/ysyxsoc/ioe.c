@@ -1,5 +1,6 @@
 #include <am.h>
 #include <klib-macros.h>
+#include "ysyxsoc.h"
 
 void __am_timer_init();
 void __am_gpu_init();
@@ -15,6 +16,15 @@ static void __am_timer_config(AM_TIMER_CONFIG_T *cfg) { cfg->present = true; cfg
 static void __am_input_config(AM_INPUT_CONFIG_T *cfg) { cfg->present = false;  }
 static void __am_uart_config(AM_UART_CONFIG_T *cfg) { cfg->present = true; }
 
+static void __am_uart_rx(AM_UART_RX_T *rx) {
+    uint8_t lsr = *(volatile uint8_t *)(UART_BASE + UART_LSR);
+    if (lsr & UART_LSR_DR) {
+        rx->data = *(volatile uint8_t *)(UART_BASE + UART_TX);  // RBR
+    } else {
+        rx->data = 0xFF;
+    }
+}
+
 typedef void (*handler_t)(void *buf);
 static void *lut[128] = {
   [AM_TIMER_CONFIG] = __am_timer_config,
@@ -26,6 +36,7 @@ static void *lut[128] = {
   [AM_GPU_FBDRAW  ] = __am_gpu_fbdraw,
   [AM_GPU_STATUS  ] = __am_gpu_status,
   [AM_UART_CONFIG]  = __am_uart_config,
+  [AM_UART_RX]      = __am_uart_rx,
 };
 
 static void fail(void *buf) { panic("access nonexist register"); }
