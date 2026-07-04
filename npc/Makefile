@@ -95,9 +95,12 @@ ifeq ($(NVBOARD), 1)
   $(SRC_AUTO_BIND): $(NVBOARD_NXDC)
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
   NVBOARD_EXTRA_CSRCS = $(SRC_AUTO_BIND)
-  NVBOARD_CXXSRC_FLAGS = $(NVBOARD_ARCHIVE)
-  # NVBoard 依赖 SDL2_image / SDL2_ttf, 在链接时需要加上
-  NVBOARD_LDFLAGS = -lSDL2_image -lSDL2_ttf
+  # 不要把 nvboard.a 当作 verilator 源文件传入 (那样它会被放进 $^,
+  # 排在 -LDFLAGS 之后, 导致 ld 找不到 SDL 符号). 正确做法是把 nvboard.a
+  # 和它依赖的库都通过 -LDFLAGS 传入: verilator 会把它们放入 VM_USER_LDLIBS,
+  # 进而追加到 LDLIBS, 出现在链接行 "$^" 之后, 顺序正确.
+  NVBOARD_CXXSRC_FLAGS =
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE) -lSDL2_image -lSDL2_ttf
 endif
 
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
@@ -169,6 +172,12 @@ show-config:
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
 
+# 链接库列表: 通过单独的 -LDFLAGS <lib> 传入, verilator 会把它们放入
+# VM_USER_LDLIBS -> LDLIBS, 出现在链接行 "$^" 之后, 保证 ld 顺序正确.
+# (readline/dl/SDL2 为 NPC 自身依赖; NVBOARD_LDFLAGS 含 nvboard.a 及其依赖)
+LDLIB_LIST = -lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)
+LDLIB_FLAGS = $(addprefix -LDFLAGS ,$(LDLIB_LIST))
+
 define VERILATE_CMD
 	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
 	$(VERILATOR_TRACE_FLAGS) \
@@ -177,7 +186,7 @@ define VERILATE_CMD
 	  -I$(shell pwd)/../nemu/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)" \
+	$(LDLIB_FLAGS) \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
 	$(NVBOARD_EXTRA_CSRCS) \
