@@ -169,9 +169,16 @@ void device_update() {
     // 每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
     static uint64_t last_update = 0;
     uint64_t now = get_time_us();
-    if (now - last_update < 1000) return;  
+    if (now - last_update < 1000) return;
     last_update = now;
 
+#ifdef ENABLE_NVBOARD
+    // 接入 NVBoard 时, SDL 事件队列由 NVBoard 的 read_event() 统一处理
+    // (在 nvboard_update() 内部). 若此处再调用 SDL_PollEvent(), 会把
+    // SDL_WINDOWEVENT(曝光/重绘) 等事件抢先消费掉, 导致 NVBoard 窗口
+    // 收不到重绘事件而显示残缺. 故启用 NVBoard 时此处不做任何 SDL 操作.
+    return;
+#else
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
         switch (ev.type) {
@@ -191,4 +198,5 @@ void device_update() {
             default: break;
         }
     }
+#endif
 }
