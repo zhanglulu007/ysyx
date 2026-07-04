@@ -23,6 +23,14 @@
 #include "../trace/ftrace.h"
 #endif
 
+#ifdef ENABLE_NVBOARD
+#include <nvboard.h>
+// 由 NVBoard 的 auto_pin_bind.py 根据 constr/top.nxdc 自动生成,
+// 其内提供 void nvboard_bind_all_pins(VysyxSoCFull*).
+void nvboard_bind_all_pins(VysyxSoCFull* top);
+static bool g_nvboard_enabled = false;
+#endif
+
 // 全局变量：顶层模块指针和仿真上下文
 VysyxSoCFull* g_top = NULL;
 static VerilatedContext* g_contextp = NULL;
@@ -57,6 +65,16 @@ bool init_cpu(int argc, char** argv) {
     printf("Trace: OFF\n");
 #endif
 
+#ifdef ENABLE_NVBOARD
+    // 接入 NVBoard: 绑定 ysyxSoCFull 的 GPIO 引脚到 LED/拨码开关并初始化板卡.
+    nvboard_bind_all_pins(g_top);
+    nvboard_init();
+    g_nvboard_enabled = true;
+    printf("NVBoard: ON\n");
+#else
+    printf("NVBoard: OFF\n");
+#endif
+
     return true;
 }
 
@@ -72,6 +90,9 @@ void reset_cpu() {
         g_top->clock = 1;
         g_top->eval();
         g_contextp->timeInc(1);
+#ifdef ENABLE_NVBOARD
+        if (g_nvboard_enabled) nvboard_update();
+#endif
     }
     g_top->reset = 0;
     Log("Reset complete");
@@ -98,6 +119,9 @@ void exec_once() {
         g_contextp->timeInc(1);
         npc_inc_cycle();
         device_update();
+#ifdef ENABLE_NVBOARD
+        if (g_nvboard_enabled) nvboard_update();
+#endif
         if (npc_get_state()->state == NPC_END) break;
     }
 
@@ -199,6 +223,12 @@ void cpu_exec(uint64_t n) {
 // 清理CPU资源
 void cleanup_cpu() {
     g_top->final();
+#ifdef ENABLE_NVBOARD
+    if (g_nvboard_enabled) {
+        nvboard_quit();
+        g_nvboard_enabled = false;
+    }
+#endif
 #ifdef ENABLE_FST
     if (g_tfp) {
         g_tfp->close();

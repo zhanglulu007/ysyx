@@ -77,6 +77,28 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
+NVBOARD ?= 0
+
+ifeq ($(NVBOARD), 1)
+  EXTRA_CFLAGS += -DENABLE_NVBOARD
+
+  NXDC_FILES = constr/top.nxdc
+  SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
+
+  $(SRC_AUTO_BIND): $(NXDC_FILES)
+	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+
+  include $(NVBOARD_HOME)/scripts/nvboard.mk
+
+  NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
+  NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
+else
+  NVBOARD_PREREQ =
+  NVBOARD_CSRCS  =
+  NVBOARD_LDFLAGS =
+endif
+
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
 ifneq ($(DIFFTEST_SO),)
   DIFFTEST_ARG = -d $(DIFFTEST_SO)
@@ -133,7 +155,7 @@ $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "FST=$(FST)  TRACE=$(TRACE)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 	@echo "Usage examples:"
 	@echo "  make build                          # 全关（最快）"
@@ -143,6 +165,7 @@ show-config:
 	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
+	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (自动生成引脚绑定并链接 nvboard.a)"
 
 define VERILATE_CMD
 	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
@@ -150,11 +173,13 @@ define VERILATE_CMD
 	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
 	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
 	  -I$(shell pwd)/../nemu/include \
+	  -I$(NVBOARD_HOME)/usr/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
+	-LDFLAGS "-lreadline -ldl $(NVBOARD_LDFLAGS) $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
+	$(NVBOARD_CSRCS) \
 	$(VERILOG_FILES) \
 	--Mdir $(OBJ_DIR)
 endef
@@ -169,7 +194,7 @@ char-test: test/char-test.c
 	@echo "Built test/char-test.bin"
 
 # 只编译不运行
-build:
+build: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)
@@ -177,7 +202,7 @@ build:
 	@echo "-- BUILD DONE --------------"
 
 # 编译并运行
-run:
+run: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)

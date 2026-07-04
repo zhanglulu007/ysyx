@@ -1,6 +1,7 @@
 *.*
 *
 !*/
+!constr/*
 !Makefile
 !*.mk
 !*.[cSh]
