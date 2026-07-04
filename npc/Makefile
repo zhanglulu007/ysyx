@@ -77,32 +77,27 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
-# NVBoard：接入 NVBoard 可视化板卡.
-# 开启后, 仿真循环将把 ysyxSoCFull 的 GPIO 引脚绑定到 NVBoard 的 LED/拨码开关,
-# 并在每次取指循环中调用 nvboard_update() 刷新板卡显示.
-# 需要设置环境变量 NVBOARD_HOME 指向 nvboard 项目目录.
+# NVBoard support
 NVBOARD ?= 0
+
 ifeq ($(NVBOARD), 1)
-  #NVBOARD_HOME ?= $(YSYX_HOME)/nvboard
-  include $(NVBOARD_HOME)/scripts/nvboard.mk
-  # 注意: nvboard 有两个同名 nvboard.h:
-  #   $(NVBOARD_INC)      = nvboard/include       (内部实现头文件, 含 SDL/component)
-  #   $(NVBOARD_USR_INC)  = nvboard/usr/include   (用户头文件, 声明 nvboard_init/bind/update)
-  # 仿真代码 #include <nvboard.h> 期望解析到用户头文件, 故用户路径必须排在前面.
-  EXTRA_CFLAGS += -DENABLE_NVBOARD -I$(NVBOARD_USR_INC) -I$(NVBOARD_INC)
-  NVBOARD_NXDC ?= $(CURDIR)/constr/top.nxdc
+  EXTRA_CFLAGS += -DENABLE_NVBOARD
+
+  NXDC_FILES = constr/top.nxdc
   SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
-  $(SRC_AUTO_BIND): $(NVBOARD_NXDC)
+
+  $(SRC_AUTO_BIND): $(NXDC_FILES)
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
-  NVBOARD_EXTRA_CSRCS = $(SRC_AUTO_BIND)
-  # 不要把 nvboard.a 当作 verilator 源文件传入 (那样它会被放进 $^,
-  # 排在 -LDFLAGS 之后, 导致 ld 找不到 SDL 符号). 正确做法是把 nvboard.a
-  # 和它依赖的库都通过 -LDFLAGS 传入: verilator 会把它们放入 VM_USER_LDLIBS,
-  # 进而追加到 LDLIBS, 出现在链接行 "$^" 之后, 顺序正确.
-  NVBOARD_CXXSRC_FLAGS =
-  # 链接顺序: nvboard.a 在前, 它依赖的库 (-lSDL2_image/-lSDL2_ttf/-lSDL2)
-  # 必须排在 nvboard.a 之后, ld 才能解析 nvboard.a 中引用的 SDL 符号.
-  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE) -lSDL2_image -lSDL2_ttf -lSDL2
+
+  include $(NVBOARD_HOME)/scripts/nvboard.mk
+
+  NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
+  NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
+else
+  NVBOARD_PREREQ =
+  NVBOARD_CSRCS  =
+  NVBOARD_LDFLAGS =
 endif
 
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
@@ -168,18 +163,10 @@ show-config:
 	@echo "  make build TRACE=1                  # 开 trace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make build FST=1 TRACE=1            # 全开"
-	@echo "  make build NVBOARD=1                # 接入 NVBoard (流水灯/拨码开关)"
-	@echo "  make run NVBOARD=1 PROG=xxx.bin     # 接入 NVBoard 运行"
 	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
-
-# 链接库列表: 通过单独的 -LDFLAGS <lib> 传入, verilator 会把它们放入
-# VM_USER_LDLIBS -> LDLIBS, 出现在链接行 "$^" 之后, 保证 ld 顺序正确.
-# NPC 自身不再使用 SDL (设备已交由 ysyxSoC + NVBoard), 故此处只列 readline/dl;
-# NVBOARD=1 时, NVBOARD_LDFLAGS 会按依赖顺序追加 nvboard.a 及其 SDL 依赖.
-LDLIB_LIST = -lreadline -ldl $(NVBOARD_LDFLAGS)
-LDLIB_FLAGS = $(addprefix -LDFLAGS ,$(LDLIB_LIST))
+	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (自动生成引脚绑定并链接 nvboard.a)"
 
 define VERILATE_CMD
 	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
@@ -187,14 +174,14 @@ define VERILATE_CMD
 	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
 	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
 	  -I$(shell pwd)/../nemu/include \
+	  -I$(NVBOARD_HOME)/usr/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
-	$(LDLIB_FLAGS) \
+	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
-	$(NVBOARD_EXTRA_CSRCS) \
+	$(NVBOARD_CSRCS) \
 	$(VERILOG_FILES) \
-	$(NVBOARD_CXXSRC_FLAGS) \
 	--Mdir $(OBJ_DIR)
 endef
 
@@ -207,25 +194,18 @@ char-test: test/char-test.c
 	  test/char-test.elf test/char-test.bin
 	@echo "Built test/char-test.bin"
 
-# NVBoard=1 时, build/run 需要先准备好 auto_bind.cpp 和 nvboard.a.
-# 通过把 NVBOARD_PREREQS 作为依赖追加到 build/run 上来实现.
-NVBOARD_PREREQS :=
-ifeq ($(NVBOARD), 1)
-NVBOARD_PREREQS := nvboard-prepare
-endif
-
 # 只编译不运行
-build: $(NVBOARD_PREREQS)
+build: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
 
 # 编译并运行
-run: $(NVBOARD_PREREQS)
+run: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
@@ -240,8 +220,4 @@ run: $(NVBOARD_PREREQS)
 	@$(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
-# NVBoard 预备: 生成引脚自动绑定代码 + 编译 nvboard.a
-nvboard-prepare: $(NVBOARD_ARCHIVE) $(SRC_AUTO_BIND)
-	@echo "-- NVBoard prepared --------"
-
-.PHONY: build sim run clean char-test nvboard-prepare
+.PHONY: build sim run clean char-test
