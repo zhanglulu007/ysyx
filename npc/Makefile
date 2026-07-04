@@ -77,6 +77,23 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
+# NVBoard：接入 NVBoard 可视化板卡.
+# 开启后, 仿真循环将把 ysyxSoCFull 的 GPIO 引脚绑定到 NVBoard 的 LED/拨码开关,
+# 并在每次取指循环中调用 nvboard_update() 刷新板卡显示.
+# 需要设置环境变量 NVBOARD_HOME 指向 nvboard 项目目录.
+NVBOARD ?= 0
+ifeq ($(NVBOARD), 1)
+  NVBOARD_HOME ?= $(YSYX_HOME)/nvboard
+  include $(NVBOARD_HOME)/scripts/nvboard.mk
+  EXTRA_CFLAGS += -DENABLE_NVBOARD -I$(NVBOARD_INC)
+  NVBOARD_NXDC ?= $(CURDIR)/constr/top.nxdc
+  SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
+  $(SRC_AUTO_BIND): $(NVBOARD_NXDC)
+	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+  NVBOARD_EXTRA_CSRCS = $(SRC_AUTO_BIND)
+  NVBOARD_CXXSRC_FLAGS = $(NVBOARD_ARCHIVE)
+endif
+
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
 ifneq ($(DIFFTEST_SO),)
   DIFFTEST_ARG = -d $(DIFFTEST_SO)
@@ -133,13 +150,15 @@ $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "FST=$(FST)  TRACE=$(TRACE)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 	@echo "Usage examples:"
 	@echo "  make build                          # 全关（最快）"
 	@echo "  make build TRACE=1                  # 开 trace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make build FST=1 TRACE=1            # 全开"
+	@echo "  make build NVBOARD=1                # 接入 NVBoard (流水灯/拨码开关)"
+	@echo "  make run NVBOARD=1 PROG=xxx.bin     # 接入 NVBoard 运行"
 	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
@@ -155,7 +174,9 @@ define VERILATE_CMD
 	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
+	$(NVBOARD_EXTRA_CSRCS) \
 	$(VERILOG_FILES) \
+	$(NVBOARD_CXXSRC_FLAGS) \
 	--Mdir $(OBJ_DIR)
 endef
 
@@ -171,7 +192,7 @@ char-test: test/char-test.c
 # 只编译不运行
 build:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
@@ -179,10 +200,15 @@ build:
 # 编译并运行
 run:
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
+
+# NVBoard=1 时, build/run 需要先准备好 auto_bind.cpp 和 nvboard.a
+ifeq ($(NVBOARD), 1)
+build run: $(NVBOARD_ARCHIVE) $(SRC_AUTO_BIND)
+endif
 	@if [ ! -f $(OBJ_DIR)/VysyxSoCFull ]; then \
 		echo "Error: VysyxSoCFull not found after build."; exit 1; \
 	fi

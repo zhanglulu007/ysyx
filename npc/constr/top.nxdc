@@ -1,0 +1,10 @@
+top=ysyxSoCFull
+
+# 将 ysyxSoCFull 的 GPIO 输出引脚 (externalPins_gpio_out, 16 位)
+# 绑定到 NVBoard 的 16 个 LED 灯 (LD0~LD15).
+# 软件往 GPIO 偏移 0x0 (地址 0x1000_2000) 写入的 16 位数据,
+# 会通过 gpio_top_apb 的 gpio_out 引脚送到这里驱动 LED.
+externalPins_gpio_out (LD15, LD14, LD13, LD12, LD11, LD10, LD9, LD8, LD7, LD6, LD5, LD4, LD3, LD2, LD1, LD0)
+
+# 拨码开关: 软件可通过 GPIO 偏移 0x4 读出 SW0~SW15 的状态.
+externalPins_gpio_in (SW15, SW14, SW13, SW12, SW11, SW10, SW9, SW8, SW7, SW6, SW5, SW4, SW3, SW2, SW1, SW0)
