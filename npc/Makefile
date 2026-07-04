@@ -77,7 +77,6 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
-# NVBoard support
 NVBOARD ?= 0
 
 ifeq ($(NVBOARD), 1)
