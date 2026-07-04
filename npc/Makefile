@@ -92,6 +92,8 @@ ifeq ($(NVBOARD), 1)
 	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
   NVBOARD_EXTRA_CSRCS = $(SRC_AUTO_BIND)
   NVBOARD_CXXSRC_FLAGS = $(NVBOARD_ARCHIVE)
+  # NVBoard 依赖 SDL2_image / SDL2_ttf, 在链接时需要加上
+  NVBOARD_LDFLAGS = -lSDL2_image -lSDL2_ttf
 endif
 
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
@@ -171,7 +173,7 @@ define VERILATE_CMD
 	  -I$(shell pwd)/../nemu/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
+	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)" \
 	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
 	csrc/utils/*.cpp csrc/trace/*.cpp \
 	$(NVBOARD_EXTRA_CSRCS) \
@@ -189,8 +191,15 @@ char-test: test/char-test.c
 	  test/char-test.elf test/char-test.bin
 	@echo "Built test/char-test.bin"
 
+# NVBoard=1 时, build/run 需要先准备好 auto_bind.cpp 和 nvboard.a.
+# 通过把 NVBOARD_PREREQS 作为依赖追加到 build/run 上来实现.
+NVBOARD_PREREQS :=
+ifeq ($(NVBOARD), 1)
+NVBOARD_PREREQS := nvboard-prepare
+endif
+
 # 只编译不运行
-build:
+build: $(NVBOARD_PREREQS)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
 	@mkdir -p $(WAVE_DIR)
@@ -198,17 +207,12 @@ build:
 	@echo "-- BUILD DONE --------------"
 
 # 编译并运行
-run:
+run: $(NVBOARD_PREREQS)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) NVBOARD=$(NVBOARD)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
-
-# NVBoard=1 时, build/run 需要先准备好 auto_bind.cpp 和 nvboard.a
-ifeq ($(NVBOARD), 1)
-build run: $(NVBOARD_ARCHIVE) $(SRC_AUTO_BIND)
-endif
 	@if [ ! -f $(OBJ_DIR)/VysyxSoCFull ]; then \
 		echo "Error: VysyxSoCFull not found after build."; exit 1; \
 	fi
@@ -220,4 +224,8 @@ endif
 	@$(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
-.PHONY: build sim run clean char-test
+# NVBoard 预备: 生成引脚自动绑定代码 + 编译 nvboard.a
+nvboard-prepare: $(NVBOARD_ARCHIVE) $(SRC_AUTO_BIND)
+	@echo "-- NVBoard prepared --------"
+
+.PHONY: build sim run clean char-test nvboard-prepare
