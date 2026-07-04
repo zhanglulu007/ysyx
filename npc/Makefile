@@ -83,7 +83,7 @@ endif
 # 需要设置环境变量 NVBOARD_HOME 指向 nvboard 项目目录.
 NVBOARD ?= 0
 ifeq ($(NVBOARD), 1)
-  NVBOARD_HOME ?= $(YSYX_HOME)/nvboard
+  #NVBOARD_HOME ?= $(YSYX_HOME)/nvboard
   include $(NVBOARD_HOME)/scripts/nvboard.mk
   # 注意: nvboard 有两个同名 nvboard.h:
   #   $(NVBOARD_INC)      = nvboard/include       (内部实现头文件, 含 SDL/component)
