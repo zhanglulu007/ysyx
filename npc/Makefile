@@ -85,7 +85,11 @@ NVBOARD ?= 0
 ifeq ($(NVBOARD), 1)
   NVBOARD_HOME ?= $(YSYX_HOME)/nvboard
   include $(NVBOARD_HOME)/scripts/nvboard.mk
-  EXTRA_CFLAGS += -DENABLE_NVBOARD -I$(NVBOARD_INC)
+  # 注意: nvboard 有两个同名 nvboard.h:
+  #   $(NVBOARD_INC)      = nvboard/include       (内部实现头文件, 含 SDL/component)
+  #   $(NVBOARD_USR_INC)  = nvboard/usr/include   (用户头文件, 声明 nvboard_init/bind/update)
+  # 仿真代码 #include <nvboard.h> 期望解析到用户头文件, 故用户路径必须排在前面.
+  EXTRA_CFLAGS += -DENABLE_NVBOARD -I$(NVBOARD_USR_INC) -I$(NVBOARD_INC)
   NVBOARD_NXDC ?= $(CURDIR)/constr/top.nxdc
   SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
   $(SRC_AUTO_BIND): $(NVBOARD_NXDC)
