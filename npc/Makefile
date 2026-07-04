@@ -100,7 +100,9 @@ ifeq ($(NVBOARD), 1)
   # 和它依赖的库都通过 -LDFLAGS 传入: verilator 会把它们放入 VM_USER_LDLIBS,
   # 进而追加到 LDLIBS, 出现在链接行 "$^" 之后, 顺序正确.
   NVBOARD_CXXSRC_FLAGS =
-  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE) -lSDL2_image -lSDL2_ttf
+  # 链接顺序: nvboard.a 在前, 它依赖的库 (-lSDL2_image/-lSDL2_ttf/-lSDL2)
+  # 必须排在 nvboard.a 之后, ld 才能解析 nvboard.a 中引用的 SDL 符号.
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE) -lSDL2_image -lSDL2_ttf -lSDL2
 endif
 
 # DiffTest：非空则拼成 -d <path> 传给可执行文件
@@ -174,8 +176,9 @@ show-config:
 
 # 链接库列表: 通过单独的 -LDFLAGS <lib> 传入, verilator 会把它们放入
 # VM_USER_LDLIBS -> LDLIBS, 出现在链接行 "$^" 之后, 保证 ld 顺序正确.
-# (readline/dl/SDL2 为 NPC 自身依赖; NVBOARD_LDFLAGS 含 nvboard.a 及其依赖)
-LDLIB_LIST = -lreadline -ldl $(shell sdl2-config --libs) $(NVBOARD_LDFLAGS)
+# NPC 自身不再使用 SDL (设备已交由 ysyxSoC + NVBoard), 故此处只列 readline/dl;
+# NVBOARD=1 时, NVBOARD_LDFLAGS 会按依赖顺序追加 nvboard.a 及其 SDL 依赖.
+LDLIB_LIST = -lreadline -ldl $(NVBOARD_LDFLAGS)
 LDLIB_FLAGS = $(addprefix -LDFLAGS ,$(LDLIB_LIST))
 
 define VERILATE_CMD
