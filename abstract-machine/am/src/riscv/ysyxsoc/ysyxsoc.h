@@ -19,6 +19,10 @@
 
 #define PS2_BASE      0x10011000   // PS/2 键盘控制器基地址
 
+#define VGA_FB_BASE   0x21000000   // VGA 帧缓冲基地址 (2MB, 每像素 32 位 ARGB)
+#define VGA_WIDTH     640
+#define VGA_HEIGHT    480
+
 #define SRAM_BASE     0x0f000000
 #define SRAM_SIZE     0x2000       // 8KB
 
