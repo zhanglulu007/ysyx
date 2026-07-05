@@ -16,10 +16,6 @@ static void __am_timer_config(AM_TIMER_CONFIG_T *cfg) { cfg->present = true; cfg
 static void __am_input_config(AM_INPUT_CONFIG_T *cfg) { cfg->present = false;  }
 static void __am_uart_config(AM_UART_CONFIG_T *cfg) { cfg->present = true; }
 
-/* UART RX: 从串口读出一个字符, 若无字符则返回 0xff.
- * UART16550 RBR (Receiver Buffer Register) 位于偏移 0x0 (DLAB=0 时读事务),
- * 与 THR (UART_TX) 同地址但通过读/写方向区分.
- * LSR bit 0 (DR) 指示是否有数据就绪. */
 static void __am_uart_rx(AM_UART_RX_T *rx) {
     uint8_t lsr = *(volatile uint8_t *)(UART_BASE + UART_LSR);
     if (lsr & UART_LSR_DR) {

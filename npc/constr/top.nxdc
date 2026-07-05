@@ -13,8 +13,5 @@ externalPins_gpio_seg_5 (SEG5A, SEG5B, SEG5C, SEG5D, SEG5E, SEG5F, SEG5G, DEC5P)
 externalPins_gpio_seg_6 (SEG6A, SEG6B, SEG6C, SEG6D, SEG6E, SEG6F, SEG6G, DEC6P)
 externalPins_gpio_seg_7 (SEG7A, SEG7B, SEG7C, SEG7D, SEG7E, SEG7F, SEG7G, DEC7P)
 
-# UART: 串口 TX / RX 引脚.
-# ysyxSoCFull 的 externalPins_uart_tx 连接到 NVBoard 的 UART_TX 引脚 (输出到串口终端),
-# externalPins_uart_rx 连接到 NVBoard 的 UART_RX 引脚 (从串口终端接收).
 externalPins_uart_tx UART_TX
 externalPins_uart_rx UART_RX
