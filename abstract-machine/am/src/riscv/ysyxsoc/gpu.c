@@ -16,10 +16,10 @@
 #define VGABASE  ((volatile uint32_t *)VGA_FB_BASE)
 
 void __am_gpu_init() {
-  // 帧缓冲上电内容未定义, 清屏避免显示残留噪点
-  for (int i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++) {
-    VGABASE[i] = 0;
-  }
+  // 帧缓冲上电内容未定义. 此处不做全屏清屏: 在 flash 上执行时, 一次全屏
+  // 写入 (640*480 次 APB 写) 开销很大 (每次访问经 AXI->APB Xbar 到 VGA 控制器),
+  // 会让 ioe_init() 卡很久. NVBoard 的 VGA 会持续扫描输出帧缓冲, 软件后续
+  // 通过 AM_GPU_FBDRAW 写入的像素会自动出现在屏幕上, 故无需启动时清屏.
 }
 
 void __am_gpu_config(AM_GPU_CONFIG_T *cfg) {
