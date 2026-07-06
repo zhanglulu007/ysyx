@@ -181,11 +181,10 @@ void cpu_exec(uint64_t n) {
         //if (cycles % 10000 == 0) printf("Execution-----%lu\n", cycles);
         
         // 检查是否遇到ebreak
-        if (npc_should_exit() || state->state != NPC_RUNNING) {
-            Log("Execution stopped at inst %lu due to EBREAK", cycles);
-            Log("Execution stopped at inst %lu due to EBREAK", npc_get_cycle());
+        if (npc_should_exit() || state->state != NPC_RUNNING) 
+            Log("Execution stopped!--inst cnt %lu and cycle cnt %lu --- IPC = %10.4lf", cycles, npc_get_cycle(), (double)cycles / npc_get_cycle());
             break;
-        }
+        
         
         // 检查监视点
         if (check_watchpoints()) {
