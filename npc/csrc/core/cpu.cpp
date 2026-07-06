@@ -182,7 +182,7 @@ void cpu_exec(uint64_t n) {
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
-            Log("Execution stopped!--inst cnt %lu and cycle cnt %lu --- IPC = %10.4lf", cycles, npc_get_cycle(), (double)cycles / npc_get_cycle());
+            Log("Execution stopped!--inst cnt %lu and cycle cnt %lu --- IPC = %.4lf", cycles, npc_get_cycle(), (double)cycles / npc_get_cycle());
             break;
         }
         
