@@ -872,6 +872,11 @@ module ysyx_26020070(
     .is_store_sw           (is_store_sw_i),
     .is_branch_taken       (is_branch_taken_i),
     .is_branch_not_taken   (is_branch_not_taken_i),
+    // Jump/U 指令细分
+    .is_jal_i             (is_jal_i),
+    .is_jalr_i            (is_jalr_i),
+    .is_lui_i             (is_lui_i),
+    .is_auipc_i           (is_auipc_i),
     // EXU
     .exu_calc_done    (exu_calc_done)
   );

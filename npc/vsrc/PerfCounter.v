@@ -280,8 +280,8 @@ module PerfCounter(
         if (is_jump && is_jal_i)   dec_jal     <= dec_jal     + 64'd1;
         if (is_jump && is_jalr_i)  dec_jalr    <= dec_jalr    + 64'd1;
         if (is_u_type)           dec_u_type  <= dec_u_type  + 64'd1;
-        if (is_u_type && is_lui)  dec_lui    <= dec_lui     + 64'd1;
-        if (is_u_type && is_auipc) dec_auipc <= dec_auipc + 64'd1;
+        if (is_u_type && is_lui_i)   dec_lui    <= dec_lui     + 64'd1;
+        if (is_u_type && is_auipc_i) dec_auipc <= dec_auipc + 64'd1;
         if (is_csr)              dec_csr     <= dec_csr     + 64'd1;
         if (is_sys)              dec_sys     <= dec_sys     + 64'd1;
 
