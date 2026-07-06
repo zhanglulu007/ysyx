@@ -79,9 +79,6 @@ ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
-# Perf：性能计数器。通过 Verilator 的 -D 把 ENABLE_PERF 宏传入 RTL,
-#   使 ysyx_26020070.v / PerfCounter.v 中的性能计数代码参与编译;
-#   综合时不传该宏, 性能计数器即不实例化, 不影响电路面积/频率。
 ifeq ($(PERF), 1)
   VERILATOR_FLAGS += -DENABLE_PERF
 endif
