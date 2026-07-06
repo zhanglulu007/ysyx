@@ -276,8 +276,10 @@ module ysyx_26020070(
   assign mem_addr = is_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
   wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
 
-  // ========== 性能计数器观测信号 (ENABLE_PERF 时使用) ==========
-`ifdef ENABLE_PERF
+  // ========== 性能计数器观测信号 ==========
+  // 这些 wire 作为 IFU/LSU 观测端口的目标, 无论是否开启 PERF 都需要声明,
+  // 否则端口连接处(IFU/LSU 实例化)会引用未声明信号, 触发 IMPLICIT/WIDTHEXPAND 告警.
+  // 开启 PERF 时, 它们被 PerfCounter 使用; 关闭 PERF 时仅作为悬空观测端口, 无副作用.
   // IFU 观测信号
   wire        ifu_state;
   wire        ifu_ar_hs;
@@ -293,6 +295,7 @@ module ysyx_26020070(
   wire        lsu_wait_r;
   wire        lsu_wait_aw_w;
   wire        lsu_wait_b;
+`ifdef ENABLE_PERF
   // 指令类别聚合 (供 PerfCounter 统计译码出的指令种类)
   wire is_calc_cls = (is_add||is_sub||is_and||is_or||is_xor||is_sll||is_srl||is_sra||is_slt||is_sltu) ||   // R型
                      (is_addi||is_slti||is_sltiu||is_xori||is_ori||is_andi||is_slli||is_srli||is_srai);    // I型算术逻辑
