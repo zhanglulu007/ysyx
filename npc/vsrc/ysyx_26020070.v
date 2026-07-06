@@ -276,6 +276,34 @@ module ysyx_26020070(
   assign mem_addr = is_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
   wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
 
+  // ========== 性能计数器观测信号 ==========
+  wire        ifu_state;
+  wire        ifu_ar_hs;
+  wire        ifu_r_hs;
+  wire        ifu_lsu_pending;
+  // LSU 观测信号
+  wire [2:0]  lsu_state_o;
+  wire        lsu_load_req;
+  wire        lsu_store_req;
+  wire        lsu_r_hs;
+  wire        lsu_b_hs;
+  wire        lsu_wait_ar;
+  wire        lsu_wait_r;
+  wire        lsu_wait_aw_w;
+  wire        lsu_wait_b;
+`ifdef ENABLE_PERF
+  // 指令类别聚合 (供 PerfCounter 统计译码出的指令种类)
+  wire is_calc_cls = (is_add||is_sub||is_and||is_or||is_xor||is_sll||is_srl||is_sra||is_slt||is_sltu) ||   // R型
+                     (is_addi||is_slti||is_sltiu||is_xori||is_ori||is_andi||is_slli||is_srli||is_srai);    // I型算术逻辑
+  wire is_branch_cls = is_beq||is_bne||is_blt||is_bge||is_bltu||is_bgeu;
+  wire is_jump_cls   = is_jal||is_jalr;
+  wire is_u_cls      = is_lui||is_auipc;
+  wire is_csr_cls    = is_csrrw||is_csrrs;
+  wire is_sys_cls    = is_ebreak||is_ecall||is_mret;
+  // EXU 计算完成: 一条指令执行完毕且为非访存指令 (即 EXU 本周期产出了有效结果)
+  wire exu_calc_done = ifu_valid && !is_load && !is_store;
+`endif
+
   // 写回逻辑
   wire reg_wen_final = (reg_wen && ifu_valid && !is_load) || (load_wb && (load_rd != 5'b0));
   wire [4:0] waddr_final = load_wb ? load_rd : rd;
@@ -316,7 +344,12 @@ module ysyx_26020070(
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
     .load_rd(load_rd),
-    .ifu_access_fault(ifu_access_fault)
+    .ifu_access_fault(ifu_access_fault),
+    // 性能计数器观测端口
+    .ifu_state(ifu_state),
+    .ifu_ar_handshake(ifu_ar_hs),
+    .ifu_r_handshake(ifu_r_hs),
+    .ifu_lsu_pending(ifu_lsu_pending)
   );
 
   // IDU - 译码单元
@@ -502,7 +535,17 @@ module ysyx_26020070(
     .lsu_bid(lsu_bid),
     // 输出
     .rdata(lsu_mem_rdata),
-    .lsu_access_fault(lsu_access_fault)
+    .lsu_access_fault(lsu_access_fault),
+    // 性能计数器观测端口
+    .lsu_state_o(lsu_state_o),
+    .lsu_load_req(lsu_load_req),
+    .lsu_store_req(lsu_store_req),
+    .lsu_r_handshake(lsu_r_hs),
+    .lsu_b_handshake(lsu_b_hs),
+    .lsu_wait_ar(lsu_wait_ar),
+    .lsu_wait_r(lsu_wait_r),
+    .lsu_wait_aw_w(lsu_wait_aw_w),
+    .lsu_wait_b(lsu_wait_b)
   );
 
   // CLINT - 核心局部中断控制器 (完整 AXI4, 本地接入)
@@ -749,5 +792,43 @@ module ysyx_26020070(
       end
     end
   end
+
+  // ========== 性能计数器 (仅仿真用, 综合时不实例化) ==========
+`ifdef ENABLE_PERF
+  PerfCounter u_perf(
+    .clk(clock),
+    .rst(rst),
+    // IFU
+    .ifu_ar_handshake (ifu_ar_hs),
+    .ifu_r_handshake  (ifu_r_hs),
+    .ifu_lsu_pending  (ifu_lsu_pending),
+    .ifu_state        (ifu_state),
+    .ifu_valid        (ifu_valid),
+    // LSU
+    .lsu_load_req     (lsu_load_req),
+    .lsu_store_req    (lsu_store_req),
+    .lsu_r_handshake  (lsu_r_hs),
+    .lsu_b_handshake  (lsu_b_hs),
+    .lsu_wait_ar      (lsu_wait_ar),
+    .lsu_wait_r       (lsu_wait_r),
+    .lsu_wait_aw_w    (lsu_wait_aw_w),
+    .lsu_wait_b       (lsu_wait_b),
+    // IDU 指令类别
+    .ifu_valid_dec    (ifu_valid),
+    .is_calc          (is_calc_cls),
+    .is_load_inst     (is_load),
+    .is_store_inst    (is_store),
+    .is_branch        (is_branch_cls),
+    .is_jump          (is_jump_cls),
+    .is_u_type        (is_u_cls),
+    .is_csr           (is_csr_cls),
+    .is_sys           (is_sys_cls),
+    // EXU 计算完成 & 分支结果 (阶段2)
+    .exu_calc_done    (exu_calc_done),
+    .branch_taken     (branch_taken),
+    // 寄存器写回 (阶段2): reg_wen_final 在指令退休周期(ifu_valid/load_wb)置位
+    .reg_wen          (reg_wen_final)
+  );
+`endif
 
 endmodule

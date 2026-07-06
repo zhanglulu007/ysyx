@@ -39,7 +39,13 @@ module IFU(
   output ifu_valid,            // -> IDU: 指令有效 (译码/执行周期)
   output load_wb,              // -> top: load 写回触发
   output [4:0] load_rd,        // -> load 目的寄存器
-  output ifu_access_fault      // -> top: 取指访问异常 (跳转地址0)
+  output ifu_access_fault,     // -> top: 取指访问异常 (跳转地址0)
+
+  // ===== 性能计数器观测端口 (仅仿真用, 由 ENABLE_PERF 实例化的 PerfCounter 使用) =====
+  output ifu_state,            // IFU 状态机状态 (IDLE=0 / WAIT=1)
+  output ifu_ar_handshake,     // AR 通道握手 (state==IDLE && arready): 发出一次取指请求
+  output ifu_r_handshake,      // R  通道握手 (rvalid && rready && !lsu_pending): 取到指令
+  output ifu_lsu_pending       // WAIT 状态下正在等待 LSU (访存指令未完成)
 );
 
   // DPI-C函数：通知C++侧
@@ -69,6 +75,12 @@ module IFU(
   assign inst = ifu_valid ? ifu_rdata : 32'h00000013;  // nop
   assign load_wb = (state == WAIT) && lsu_pending && lsu_rvalid && is_load_pending;
   assign load_rd = load_rd_saved;
+
+  // ===== 性能计数器观测信号 =====
+  assign ifu_state        = state;
+  assign ifu_ar_handshake = (state == IDLE) && ifu_arvalid && ifu_arready && !rst;
+  assign ifu_r_handshake  = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;
+  assign ifu_lsu_pending  = (state == WAIT) && lsu_pending && !rst;
 
   // 取指访问异常: 在取指握手完成且 rresp[1]=1 时置位, 输出给 top 用于跳转地址0
   assign ifu_access_fault = ifu_fault_reg;

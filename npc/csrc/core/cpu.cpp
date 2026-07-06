@@ -75,6 +75,12 @@ bool init_cpu(int argc, char** argv) {
     printf("NVBoard: OFF\n");
 #endif
 
+#ifdef FAST_FLASH
+    printf("FAST_FLASH: ON\n");
+#else
+    printf("FAST_FLASH: OFF\n");
+#endif
+
     return true;
 }
 
@@ -154,6 +160,7 @@ void set_itrace_print(bool enable) {
 // CPU执行n条指令
 void cpu_exec(uint64_t n) {
     NPCState* state = npc_get_state();
+    uint64_t cycles = 0;
     
     if (state->state == NPC_END || state->state == NPC_ABORT) {
         Log("Program has already exited. Use 'q' to quit.");
@@ -166,7 +173,6 @@ void cpu_exec(uint64_t n) {
     // si命令且n<=10时输出到控制台
     set_itrace_print(n <= 10);
 
-    uint64_t cycles = 0;
     bool hit_watchpoint = false;
 
     Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);
@@ -182,7 +188,7 @@ void cpu_exec(uint64_t n) {
         
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
-            Log("Execution stopped at inst %lu due to EBREAK", cycles);
+            Log("Execution stopped!--inst cnt %lu and cycle cnt %lu --- IPC = %.4lf", cycles, npc_get_cycle(), (double)cycles / npc_get_cycle());
             break;
         }
         
