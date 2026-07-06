@@ -86,7 +86,7 @@ ifeq ($(PERF), 1)
   VERILATOR_FLAGS += -DENABLE_PERF
 endif
 
-ifeq ($(PERF), 1)
+ifeq ($(FFLASH), 1)
   VERILATOR_FLAGS += -DFAST_FLASH
 endif
 
