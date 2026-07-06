@@ -183,6 +183,7 @@ void cpu_exec(uint64_t n) {
         // 检查是否遇到ebreak
         if (npc_should_exit() || state->state != NPC_RUNNING) {
             Log("Execution stopped at inst %lu due to EBREAK", cycles);
+            Log("Execution stopped at inst %lu due to EBREAK", npc_get_cycle());
             break;
         }
         
