@@ -45,7 +45,8 @@ module IFU(
   output ifu_state,            // IFU 状态机状态 (IDLE=0 / WAIT=1)
   output ifu_ar_handshake,     // AR 通道握手 (state==IDLE && arready): 发出一次取指请求
   output ifu_r_handshake,      // R  通道握手 (rvalid && rready && !lsu_pending): 取到指令
-  output ifu_lsu_pending       // WAIT 状态下正在等待 LSU (访存指令未完成)
+  output ifu_lsu_pending,     // WAIT 状态下正在等待 LSU (访存指令未完成)
+  output ifu_retire           // 脉冲: 当前指令在本周期退休 (pc 更新, 可进入下一指令)
 );
 
   // DPI-C函数：通知C++侧
@@ -81,6 +82,17 @@ module IFU(
   assign ifu_ar_handshake = (state == IDLE) && ifu_arvalid && ifu_arready && !rst;
   assign ifu_r_handshake  = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;
   assign ifu_lsu_pending  = (state == WAIT) && lsu_pending && !rst;
+
+  // ifu_retire: 脉冲信号, 当前指令在本周期退休 (IFU 由 WAIT → IDLE).
+  //   退休时机: (1) 非访存指令: R 握手同周期退休;
+  //                (2) load/store: LSU 完成 (lsu_rvalid 或 lsu_bvalid) 同周期退休.
+  //   用 ifu_was_in_wait 锁存上一周期状态, 防止 IFU 长时间处于 IDLE 时被误识别.
+  reg ifu_was_in_wait;
+  always @(posedge clk) begin
+    if (rst) ifu_was_in_wait <= 1'b0;
+    else     ifu_was_in_wait <= (state == WAIT);
+  end
+  assign ifu_retire = ifu_was_in_wait && (state == IDLE) && !rst;
 
   // 取指访问异常: 在取指握手完成且 rresp[1]=1 时置位, 输出给 top 用于跳转地址0
   assign ifu_access_fault = ifu_fault_reg;
