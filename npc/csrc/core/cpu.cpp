@@ -75,10 +75,10 @@ bool init_cpu(int argc, char** argv) {
     printf("NVBoard: OFF\n");
 #endif
 
-#ifdef FAST_FALSH
-    printf("FAST_FALSH: ON\n");
+#ifdef FAST_FLASH
+    printf("FAST_FLASH: ON\n");
 #else
-    printf("FAST_FALSH: OFF\n");
+    printf("FAST_FLASH: OFF\n");
 #endif
 
     return true;
