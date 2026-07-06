@@ -9,7 +9,7 @@
 #include <cstdio>
 
 // DPI-C函数：ebreak处理
-extern "C" void ebreak_handler(int code, uint64_t cycles) {
+extern "C" void ebreak_handler(int code) {
     // code是a0寄存器的值，0表示成功，非0表示失败
 
     // ebreak是特殊指令，需要跳过DiffTest
