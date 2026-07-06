@@ -267,7 +267,7 @@ module PerfCounter(
       if (ifu_valid_dec) begin
         dec_total   <= dec_total   + 64'd1;
         if (is_calc)             dec_calc    <= dec_calc    + 64'd1;
-        if (is_load_inst)        dec_load    <= dec_load    +'d1;
+        if (is_load_inst)        dec_load    <= dec_load    + 64'd1;
         if (is_store_inst)       dec_store   <= dec_store   + 64'd1;
         if (is_branch)           dec_branch  <= dec_branch  + 64'd1;
         if (is_branch_taken)     dec_branch_taken <= dec_branch_taken + 64'd1;

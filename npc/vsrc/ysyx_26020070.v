@@ -303,6 +303,35 @@ module ysyx_26020070(
   wire is_sys_cls    = is_ebreak||is_ecall||is_mret;
   // EXU 计算完成: 一条指令执行完毕且为非访存指令 (即 EXU 本周期产出了有效结果)
   wire exu_calc_done = ifu_valid && !is_load && !is_store;
+
+  // ---- 新增: IFU 取不到指令的细分原因信号 ----
+  // IFU 未取到指令: WAIT 态 && 本周期 ifu_valid=0
+  wire ifu_no_inst_i = ifu_state && !ifu_valid;
+  // IFU 等待 AR 握手: WAIT 态 && 非 lsu_pending && 未 r_handshake (即仍在等 AR 或等 R)
+  //   细分: 在 WAIT 态, 如果本周期 ifu_ar_hs=0 且 lsu_pending=0 且 r_hs=0,
+  //   说明在等 AR 握手 (请求刚发但 AR 未 ready) 或在等 R 握手.
+  //   通过 IFU 状态: WAIT 态且 ifu_arvalid (arvalid 保持) -> 在等 AR
+  wire ifu_wait_ar_i = ifu_state && (ifu_ar_hs == 0) && (ifu_lsu_pending == 0) && (ifu_r_hs == 0) && ifu_arvalid;
+  // IFU 等待 R 握手: WAIT 态 && AR 已完成 (arready=1 即请求已被接受) && 等 R 数据
+  wire ifu_wait_r_i  = ifu_state && (ifu_lsu_pending == 0) && (ifu_r_hs == 0) && (ifu_ar_hs == 0) && !ifu_arvalid;
+  // IFU 因 LSU 停顿
+  wire ifu_stall_lsu_i = ifu_state && ifu_lsu_pending;
+
+  // ---- 新增: 指令细分信号 ----
+  wire is_r_type_i = is_add||is_sub||is_and||is_or||is_xor||is_sll||is_srl||is_sra||is_slt||is_sltu;
+  wire is_i_arith_i = is_addi||is_slti||is_sltiu||is_xori||is_ori||is_andi||is_slli||is_srli||is_srai;
+  wire is_load_lb_lh_lw_i = is_lb||is_lh||is_lw;
+  wire is_load_lbu_lhu_i = is_lbu||is_lhu;
+  wire is_store_sb_sh_i = is_sb||is_sh;
+  wire is_store_sw_i = is_sw;
+  wire is_branch_taken_i = (is_beq||is_bne||is_blt||is_bge||is_bltu||is_bgeu) && branch_taken;
+  wire is_branch_not_taken_i = (is_beq||is_bne||is_blt||is_bge||is_bltu||is_bgeu) && !branch_taken;
+  // jal / jalr 区分
+  wire is_jal_i  = is_jal;
+  wire is_jalr_i = is_jalr;
+  // lui / auipc 区分
+  wire is_lui_i   = is_lui;
+  wire is_auipc_i = is_auipc;
 `endif
 
   // 写回逻辑
@@ -805,6 +834,11 @@ module ysyx_26020070(
     .ifu_lsu_pending  (ifu_lsu_pending),
     .ifu_state        (ifu_state),
     .ifu_valid        (ifu_valid),
+    // IFU 取不到指令原因细分 (新增)
+    .ifu_no_inst      (ifu_no_inst_i),
+    .ifu_wait_ar      (ifu_wait_ar_i),
+    .ifu_wait_r       (ifu_wait_r_i),
+    .ifu_stall_lsu    (ifu_stall_lsu_i),
     // LSU
     .lsu_load_req     (lsu_load_req),
     .lsu_store_req    (lsu_store_req),
@@ -814,6 +848,11 @@ module ysyx_26020070(
     .lsu_wait_r       (lsu_wait_r),
     .lsu_wait_aw_w    (lsu_wait_aw_w),
     .lsu_wait_b       (lsu_wait_b),
+    // LSU 延迟统计 (暂接0: 优化遗留, 未来可通过LSU输出延迟)
+    .lsu_load_latency_pulse  (64'd0),
+    .lsu_store_latency_pulse (64'd0),
+    .lsu_load_latency_valid  (1'b0),
+    .lsu_store_latency_valid (1'b0),
     // IDU 指令类别
     .ifu_valid_dec    (ifu_valid),
     .is_calc          (is_calc_cls),
@@ -824,6 +863,15 @@ module ysyx_26020070(
     .is_u_type        (is_u_cls),
     .is_csr           (is_csr_cls),
     .is_sys           (is_sys_cls),
+    // IDU 指令类别细分 (新增)
+    .is_r_type            (is_r_type_i),
+    .is_i_arith           (is_i_arith_i),
+    .is_load_lb_lh_lw     (is_load_lb_lh_lw_i),
+    .is_load_lbu_lhu      (is_load_lbu_lhu_i),
+    .is_store_sb_sh        (is_store_sb_sh_i),
+    .is_store_sw           (is_store_sw_i),
+    .is_branch_taken       (is_branch_taken_i),
+    .is_branch_not_taken   (is_branch_not_taken_i),
     // EXU
     .exu_calc_done    (exu_calc_done)
   );
