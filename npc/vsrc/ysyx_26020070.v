@@ -499,6 +499,7 @@ module ysyx_26020070(
     .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
+    .cpu_pc(pc),                 // 当前指令 PC, 供 mtrace DPI 记录访存来源
     // AXI4 AR 通道
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),

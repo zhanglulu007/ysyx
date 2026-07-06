@@ -21,6 +21,7 @@ module LSU(
   // 地址和数据
   input [31:0] mem_addr,      // 访存地址
   input [31:0] wdata,         // 写入数据（来自rs2）
+  input [31:0] cpu_pc,        // 当前指令 PC (仅供 mtrace DPI 记录用, ENABLE_TRACE 时使用)
 
   // ===== AXI4 AR 通道 (读地址) =====
   output        lsu_arvalid,
@@ -155,6 +156,12 @@ module LSU(
   assign lsu_wait_r      = (lsu_state == L_WAIT_R)    && !rst;
   assign lsu_wait_aw_w   = (lsu_state == L_WAIT_AW_W) && !rst;
   assign lsu_wait_b      = (lsu_state == L_WAIT_B)    && !rst;
+
+  // ===== mtrace DPI 接口 (仅仿真用, TRACE 开启时记录真实 AXI 访存事务) =====
+`ifdef ENABLE_TRACE
+  import "DPI-C" function void mtrace_read_handler(input int addr, input int data, input int pc);
+  import "DPI-C" function void mtrace_write_handler(input int addr, input int data, input int wstrb, input int pc);
+`endif
 
   // ===================================================================
   // 写数据和写掩码 (组合逻辑)
@@ -295,6 +302,10 @@ module LSU(
             // 握手完成: rvalid && rready
             // 检查读访问异常 (rresp[1]=1 表示设备返回错误)
             if (lsu_rresp[1]) lsu_access_fault <= 1'b1;
+`ifdef ENABLE_TRACE
+            // mtrace: 记录一次 load 访存事务完成 (R 通道握手)
+            mtrace_read_handler(latched_addr, lsu_rdata, cpu_pc);
+`endif
             lsu_state <= L_IDLE;
           end
         end
@@ -330,6 +341,11 @@ module LSU(
             // 握手完成: bvalid && bready
             // 检查写访问异常 (bresp[1]=1 表示设备返回错误)
             if (lsu_bresp[1]) lsu_access_fault <= 1'b1;
+`ifdef ENABLE_TRACE
+            // mtrace: 记录一次 store 访存事务完成 (B 通道握手)
+            // latched_wstrb 为 4 位, 零扩展为 32 位传给 DPI (C 侧用低 4 位算 popcount)
+            mtrace_write_handler(latched_addr, latched_wdata, {28'b0, latched_wstrb}, cpu_pc);
+`endif
             lsu_state <= L_IDLE;
           end
         end

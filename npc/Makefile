@@ -74,9 +74,9 @@ else
   VERILATOR_TRACE_FLAGS =
 endif
 
-# Trace：只需向 C++ 传宏
 ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
+  VERILATOR_FLAGS += -DENABLE_TRACE
 endif
 
 ifeq ($(PERF), 1)
