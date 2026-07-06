@@ -64,6 +64,7 @@ FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
 DIFFTEST_SO ?=
+FFLASH  ?= 1
 
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
@@ -83,6 +84,10 @@ endif
 #   综合时不传该宏, 性能计数器即不实例化, 不影响电路面积/频率。
 ifeq ($(PERF), 1)
   VERILATOR_FLAGS += -DENABLE_PERF
+endif
+
+ifeq ($(PERF), 1)
+  VERILATOR_FLAGS += -DFAST_FLASH
 endif
 
 NVBOARD ?= 0
