@@ -347,10 +347,12 @@ module ysyx_26020070(
     .load_rd(load_rd),
     .ifu_access_fault(ifu_access_fault),
     // 性能计数器观测端口
+  `ifdef ENABLE_PERF
     .ifu_state(ifu_state),
     .ifu_ar_handshake(ifu_ar_hs),
     .ifu_r_handshake(ifu_r_hs),
     .ifu_lsu_pending(ifu_lsu_pending)
+  `endif 
   );
 
   // IDU - 译码单元
@@ -538,6 +540,7 @@ module ysyx_26020070(
     .rdata(lsu_mem_rdata),
     .lsu_access_fault(lsu_access_fault),
     // 性能计数器观测端口
+  `ifdef ENABLE_PERF
     .lsu_state_o(lsu_state_o),
     .lsu_load_req(lsu_load_req),
     .lsu_store_req(lsu_store_req),
@@ -547,6 +550,7 @@ module ysyx_26020070(
     .lsu_wait_r(lsu_wait_r),
     .lsu_wait_aw_w(lsu_wait_aw_w),
     .lsu_wait_b(lsu_wait_b)
+  `endif
   );
 
   // CLINT - 核心局部中断控制器 (完整 AXI4, 本地接入)
