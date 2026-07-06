@@ -45,8 +45,7 @@ module IFU(
   output ifu_state,            // IFU 状态机状态 (IDLE=0 / WAIT=1)
   output ifu_ar_handshake,     // AR 通道握手 (state==IDLE && arready): 发出一次取指请求
   output ifu_r_handshake,      // R  通道握手 (rvalid && rready && !lsu_pending): 取到指令
-  output ifu_lsu_pending,     // WAIT 状态下正在等待 LSU (访存指令未完成)
-  output ifu_retire           // 脉冲: 当前指令在本周期退休 (pc 更新, 可进入下一指令)
+  output ifu_lsu_pending       // WAIT 状态下正在等待 LSU (访存指令未完成)
 );
 
   // DPI-C函数：通知C++侧
