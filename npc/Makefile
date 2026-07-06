@@ -74,9 +74,13 @@ else
   VERILATOR_TRACE_FLAGS =
 endif
 
-# Trace：只需向 C++ 传宏
+# Trace：需要同时向 C++ 与 Verilog 传宏.
+#   C++ 侧 (EXTRA_CFLAGS):  启用 trace 处理函数体 (ftrace_call/mtrace_* 等);
+#   Verilog 侧 (VERILATOR_FLAGS): 启用 LSU.v 中 ifdef ENABLE_TRACE 的 mtrace DPI 调用点
+#   (接入 ysyxSoC 后, mtrace 钩点位于 LSU 的 AXI 访存事务完成处, 受 ENABLE_TRACE 宏守卫).
 ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
+  VERILATOR_FLAGS += -DENABLE_TRACE
 endif
 
 ifeq ($(PERF), 1)
