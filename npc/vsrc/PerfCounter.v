@@ -167,85 +167,85 @@ module PerfCounter(
   final begin
     $display("");
     $display("============================================================");
-    $display("                  Performance Counter Report               ");
+    $display("                 性能计数器报告 (Perf Counter Report)      ");
     $display("============================================================");
 
     // ---- 概览 ----
     $display("");
-    $display("[Overview]");
-    $display("  Total cycles              : %0d", cyc_total);
-    $display("  Retired instructions      : %0d  (= IFU fetched = IDU decoded)", ifu_ret_cnt);
-    $display("  IPC                       : %f", (cyc_total > 0) ? (1.0 * ifu_ret_cnt / cyc_total) : 0.0);
-    $display("  Stall cycles              : %0d  (%.2f%%)", cyc_stall,
+    $display("[概览 Overview]");
+    $display("  总周期数 Total cycles         : %0d", cyc_total);
+    $display("  退休指令数 Retired inst       : %0d  (= IFU取到 = IDU译码)", ifu_ret_cnt);
+    $display("  IPC                           : %f", (cyc_total > 0) ? (1.0 * ifu_ret_cnt / cyc_total) : 0.0);
+    $display("  停顿周期 Stall cycles         : %0d  (%.2f%%)", cyc_stall,
              (cyc_total > 0) ? (100.0 * cyc_stall / cyc_total) : 0.0);
 
     // ---- IFU 指令供给 ----
     $display("");
-    $display("[IFU - Instruction Supply]");
-    $display("  Fetch requests (AR hs)    : %0d", ifu_req_cnt);
-    $display("  Instructions fetched (R hs): %0d", ifu_ret_cnt);
-    $display("  IFU IDLE cycles           : %0d  (%.2f%%)", ifu_idle_cyc,
+    $display("[指令供给 IFU - Instruction Supply]");
+    $display("  取指请求 Fetch req (AR握手)   : %0d", ifu_req_cnt);
+    $display("  取到指令 Inst fetched (R握手) : %0d", ifu_ret_cnt);
+    $display("  IFU空闲周期 IDLE cycles       : %0d  (%.2f%%)", ifu_idle_cyc,
              (cyc_total > 0) ? (100.0 * ifu_idle_cyc / cyc_total) : 0.0);
-    $display("  IFU no-instr cycles       : %0d  (%.2f%%)", ifu_no_inst_cyc,
+    $display("  未取到指令周期 no-instr cyc   : %0d  (%.2f%%)", ifu_no_inst_cyc,
              (cyc_total > 0) ? (100.0 * ifu_no_inst_cyc / cyc_total) : 0.0);
-    $display("  IFU wait-LSU cycles       : %0d  (%.2f%%)", cyc_ifu_wait_lsu,
+    $display("  等待LSU周期 wait-LSU cycles   : %0d  (%.2f%%)", cyc_ifu_wait_lsu,
              (cyc_total > 0) ? (100.0 * cyc_ifu_wait_lsu / cyc_total) : 0.0);
 
     // ---- LSU 数据供给 ----
     $display("");
-    $display("[LSU - Data Supply]");
-    $display("  Load  requests            : %0d", load_cnt);
-    $display("  Store requests            : %0d", store_cnt);
-    $display("  Load  completed (R hs)    : %0d", load_ret_cnt);
-    $display("  Store completed (B hs)    : %0d", store_ret_cnt);
+    $display("[数据供给 LSU - Data Supply]");
+    $display("  Load请求 requests            : %0d", load_cnt);
+    $display("  Store请求 requests           : %0d", store_cnt);
+    $display("  Load完成 completed (R握手)   : %0d", load_ret_cnt);
+    $display("  Store完成 completed (B握手)  : %0d", store_ret_cnt);
     if (load_cnt > 0)
-      $display("  Avg load  latency (cyc)   : %.2f  (wait_R=%0d / load=%0d)",
+      $display("  Load平均延迟 avg latency(cyc): %.2f  (wait_R=%0d / load=%0d)",
                (1.0 * lsu_wait_r_cyc / load_cnt), lsu_wait_r_cyc, load_cnt);
     if (store_cnt > 0)
-      $display("  Avg store latency (cyc)   : %.2f  (wait_B=%0d / store=%0d)",
+      $display("  Store平均延迟 avg latency    : %.2f  (wait_B=%0d / store=%0d)",
                (1.0 * lsu_wait_b_cyc / store_cnt), lsu_wait_b_cyc, store_cnt);
-    $display("  LSU wait-AR cycles        : %0d", lsu_wait_ar_cyc);
-    $display("  LSU wait-R  cycles        : %0d", lsu_wait_r_cyc);
-    $display("  LSU wait-AW/W cycles      : %0d", lsu_wait_aw_w_cyc);
-    $display("  LSU wait-B  cycles        : %0d", lsu_wait_b_cyc);
+    $display("  等待AR握手周期 wait-AR cyc    : %0d", lsu_wait_ar_cyc);
+    $display("  等待R握手周期  wait-R  cyc    : %0d", lsu_wait_r_cyc);
+    $display("  等待AW/W周期   wait-AW/W cyc : %0d", lsu_wait_aw_w_cyc);
+    $display("  等待B握手周期  wait-B  cyc   : %0d", lsu_wait_b_cyc);
 
     // ---- IDU 指令分类 ----
     $display("");
-    $display("[IDU - Instruction Mix]   (count / percent of decoded)");
-    $display("  Calc    (R/I arith-log)  : %0d  (%.2f%%)", dec_calc,
+    $display("[指令分类 IDU - Instruction Mix]  (数量/占比 of decoded)");
+    $display("  计算类 Calc (R/I算术逻辑)    : %0d  (%.2f%%)", dec_calc,
              (dec_total > 0) ? (100.0 * dec_calc / dec_total) : 0.0);
-    $display("  Load                    : %0d  (%.2f%%)", dec_load,
+    $display("  加载类 Load                   : %0d  (%.2f%%)", dec_load,
              (dec_total > 0) ? (100.0 * dec_load / dec_total) : 0.0);
-    $display("  Store                   : %0d  (%.2f%%)", dec_store,
+    $display("  存储类 Store                  : %0d  (%.2f%%)", dec_store,
              (dec_total > 0) ? (100.0 * dec_store / dec_total) : 0.0);
-    $display("  Branch                  : %0d  (%.2f%%)", dec_branch,
+    $display("  分支类 Branch                 : %0d  (%.2f%%)", dec_branch,
              (dec_total > 0) ? (100.0 * dec_branch / dec_total) : 0.0);
-    $display("  Jump (jal/jalr)         : %0d  (%.2f%%)", dec_jump,
+    $display("  跳转类 Jump (jal/jalr)        : %0d  (%.2f%%)", dec_jump,
              (dec_total > 0) ? (100.0 * dec_jump / dec_total) : 0.0);
-    $display("  U-type (lui/auipc)      : %0d  (%.2f%%)", dec_u_type,
+    $display("  U型 U-type (lui/auipc)        : %0d  (%.2f%%)", dec_u_type,
              (dec_total > 0) ? (100.0 * dec_u_type / dec_total) : 0.0);
-    $display("  CSR                     : %0d  (%.2f%%)", dec_csr,
+    $display("  CSR类 CSR                     : %0d  (%.2f%%)", dec_csr,
              (dec_total > 0) ? (100.0 * dec_csr / dec_total) : 0.0);
-    $display("  System (ebreak/ecall/..): %0d  (%.2f%%)", dec_sys,
+    $display("  系统类 System (ebreak/ecall/..): %0d  (%.2f%%)", dec_sys,
              (dec_total > 0) ? (100.0 * dec_sys / dec_total) : 0.0);
-    $display("  Decoded total           : %0d", dec_total);
+    $display("  译码总数 Decoded total        : %0d", dec_total);
 
     // ---- EXU 计算 ----
     $display("");
-    $display("[EXU - Compute]");
-    $display("  EXU calc done            : %0d", exu_calc_cnt);
+    $display("[计算 EXU - Compute]");
+    $display("  EXU完成计算 calc done        : %0d", exu_calc_cnt);
 
     // ---- 一致性检查 ----
     $display("");
-    $display("[Consistency Check]");
-    $display("  IFU fetched == IDU decoded ? %s", (ifu_ret_cnt == dec_total) ? "PASS" : "FAIL");
+    $display("[一致性检查 Consistency Check]");
+    $display("  IFU取到 == IDU译码 ? %s", (ifu_ret_cnt == dec_total) ? "PASS 通过" : "FAIL 失败");
     $display("    ifu_ret_cnt=%0d  dec_total=%0d", ifu_ret_cnt, dec_total);
-    $display("  Load req == load done     ? %s", (load_cnt == load_ret_cnt) ? "PASS" : "FAIL");
+    $display("  Load请求 == Load完成 ? %s", (load_cnt == load_ret_cnt) ? "PASS 通过" : "FAIL 失败");
     $display("    load_cnt=%0d  load_ret_cnt=%0d", load_cnt, load_ret_cnt);
-    $display("  Store req == store done   ? %s", (store_cnt == store_ret_cnt) ? "PASS" : "FAIL");
+    $display("  Store请求 == Store完成 ? %s", (store_cnt == store_ret_cnt) ? "PASS 通过" : "FAIL 失败");
     $display("    store_cnt=%0d  store_ret_cnt=%0d", store_cnt, store_ret_cnt);
-    $display("  sum(dec_*) == dec_total   ? %s",
-             ((dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_u_type+dec_csr+dec_sys) == dec_total) ? "PASS" : "FAIL");
+    $display("  各类指令之和 == 译码总数 ? %s",
+             ((dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_u_type+dec_csr+dec_sys) == dec_total) ? "PASS 通过" : "FAIL 失败");
 
     $display("============================================================");
     $display("");
