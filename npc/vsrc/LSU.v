@@ -343,7 +343,8 @@ module LSU(
             if (lsu_bresp[1]) lsu_access_fault <= 1'b1;
 `ifdef ENABLE_TRACE
             // mtrace: 记录一次 store 访存事务完成 (B 通道握手)
-            mtrace_write_handler(latched_addr, latched_wdata, latched_wstrb, cpu_pc);
+            // latched_wstrb 为 4 位, 零扩展为 32 位传给 DPI (C 侧用低 4 位算 popcount)
+            mtrace_write_handler(latched_addr, latched_wdata, {28'b0, latched_wstrb}, cpu_pc);
 `endif
             lsu_state <= L_IDLE;
           end
