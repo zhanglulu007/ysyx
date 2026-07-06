@@ -159,7 +159,6 @@ void cpu_exec(uint64_t n) {
     if (state->state == NPC_END || state->state == NPC_ABORT) {
         Log("Program has already exited. Use 'q' to quit.");
         printf("Program has already exited. Use 'q' to quit.\n");
-        printf("Execution stopped! instruction count %lu \n", cycles);
         return;
     }
     
