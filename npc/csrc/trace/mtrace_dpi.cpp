@@ -5,6 +5,7 @@
 
 #include "mtrace_dpi.h"
 #include "mtrace.h"
+#include <cstdio>
 
 // 记录一次 load 访存 (R 通道握手完成)
 extern "C" void mtrace_read_handler(int addr, int data, int pc) {
