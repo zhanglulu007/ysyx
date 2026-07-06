@@ -63,7 +63,18 @@ module LSU(
 
   // ===== 输出 =====
   output reg [31:0] rdata,    // 字节/半字选择后的数据
-  output reg lsu_access_fault // 访问异常 (load rresp / store bresp 返回错误)
+  output reg lsu_access_fault, // 访问异常 (load rresp / store bresp 返回错误)
+
+  // ===== 性能计数器观测端口 (仅仿真用, 由 ENABLE_PERF 实例化的 PerfCounter 使用) =====
+  output [2:0] lsu_state_o,   // LSU 状态机状态
+  output lsu_load_req,        // load  请求 (IDLE 时 mem_valid && !mem_wen)
+  output lsu_store_req,       // store 请求 (IDLE 时 mem_valid &&  mem_wen)
+  output lsu_r_handshake,     // load  完成 (WAIT_R 时 rvalid 握手)
+  output lsu_b_handshake,     // store 完成 (WAIT_B 时 bvalid 握手)
+  output lsu_wait_ar,         // 处于等待 AR 握手状态
+  output lsu_wait_r,          // 处于等待 R  握手状态
+  output lsu_wait_aw_w,       // 处于等待 AW/W 握手状态
+  output lsu_wait_b           // 处于等待 B  握手状态
 );
 
   // ========== 状态机定义 ==========
@@ -133,6 +144,17 @@ module LSU(
 
   // B 通道
   assign lsu_bready = (lsu_state == L_WAIT_B);
+
+  // ===== 性能计数器观测信号 =====
+  assign lsu_state_o     = lsu_state;
+  assign lsu_load_req    = (lsu_state == L_IDLE) && mem_valid && !mem_wen && !rst;
+  assign lsu_store_req   = (lsu_state == L_IDLE) && mem_valid &&  mem_wen && !rst;
+  assign lsu_r_handshake = (lsu_state == L_WAIT_R) && lsu_rvalid && !rst;
+  assign lsu_b_handshake = (lsu_state == L_WAIT_B) && lsu_bvalid && !rst;
+  assign lsu_wait_ar     = (lsu_state == L_WAIT_AR)   && !rst;
+  assign lsu_wait_r      = (lsu_state == L_WAIT_R)    && !rst;
+  assign lsu_wait_aw_w   = (lsu_state == L_WAIT_AW_W) && !rst;
+  assign lsu_wait_b      = (lsu_state == L_WAIT_B)    && !rst;
 
   // ===================================================================
   // 写数据和写掩码 (组合逻辑)

@@ -62,6 +62,7 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 
 FST     ?= 0
 TRACE   ?= 0
+PERF    ?= 0
 DIFFTEST_SO ?=
 
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
@@ -75,6 +76,13 @@ endif
 # Trace：只需向 C++ 传宏
 ifeq ($(TRACE), 1)
   EXTRA_CFLAGS += -DENABLE_TRACE
+endif
+
+# Perf：性能计数器。通过 Verilator 的 -D 把 ENABLE_PERF 宏传入 RTL,
+#   使 ysyx_26020070.v / PerfCounter.v 中的性能计数代码参与编译;
+#   综合时不传该宏, 性能计数器即不实例化, 不影响电路面积/频率。
+ifeq ($(PERF), 1)
+  VERILATOR_FLAGS += -DENABLE_PERF
 endif
 
 NVBOARD ?= 0
@@ -155,13 +163,14 @@ $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 	@echo "Usage examples:"
 	@echo "  make build                          # 全关（最快）"
 	@echo "  make build TRACE=1                  # 开 trace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make build FST=1 TRACE=1            # 全开"
+	@echo "  make build PERF=1                   # 开性能计数器 (仿真结束打印报告)"
 	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
 	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
@@ -196,7 +205,7 @@ char-test: test/char-test.c
 # 只编译不运行
 build: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
@@ -204,7 +213,7 @@ build: $(NVBOARD_PREREQ)
 # 编译并运行
 run: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
+	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
