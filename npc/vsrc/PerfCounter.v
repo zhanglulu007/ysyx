@@ -70,6 +70,10 @@ module PerfCounter(
   input is_store_sw,         // 存储: sw (4字节)
   input is_branch_taken,      // 分支实际跳转了 (branch_taken)
   input is_branch_not_taken,  // 分支未跳转
+  input is_jal_i,             // jal 指令
+  input is_jalr_i,            // jalr 指令
+  input is_lui_i,             // lui 指令
+  input is_auipc_i,           // auipc 指令
 
   // ===== EXU 计算完成 =====
   input exu_calc_done         // EXU 完成一次计算 (一条非访存指令执行完成)
@@ -273,8 +277,8 @@ module PerfCounter(
         if (is_branch_taken)     dec_branch_taken <= dec_branch_taken + 64'd1;
         if (is_branch_not_taken) dec_branch_nt    <= dec_branch_nt    + 64'd1;
         if (is_jump)             dec_jump    <= dec_jump    + 64'd1;
-        if (is_jump && is_jal)   dec_jal     <= dec_jal     + 64'd1;
-        if (is_jump && is_jalr)  dec_jalr    <= dec_jalr    + 64'd1;
+        if (is_jump && is_jal_i)   dec_jal     <= dec_jal     + 64'd1;
+        if (is_jump && is_jalr_i)  dec_jalr    <= dec_jalr    + 64'd1;
         if (is_u_type)           dec_u_type  <= dec_u_type  + 64'd1;
         if (is_u_type && is_lui)  dec_lui    <= dec_lui     + 64'd1;
         if (is_u_type && is_auipc) dec_auipc <= dec_auipc + 64'd1;
