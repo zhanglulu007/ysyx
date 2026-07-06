@@ -285,7 +285,7 @@ module PerfCounter(
         if (is_r_type)            dec_r_type  <= dec_r_type  + 64'd1;
         if (is_i_arith)           dec_i_arith <= dec_i_arith + 64'd1;
         if (is_load_lb_lh_lw)    dec_load_lb_lh_lw <= dec_load_lb_lh_lw + 64'd1;
-is_load_lbu_lhu)     dec_load_lbu_lhu  <= dec_load_lbu_lhu  + 64'd1;
+        if (is_load_lbu_lhu)     dec_load_lbu_lhu  <= dec_load_lbu_lhu  + 64'd1;
         if (is_store_sb_sh)      dec_store_sb_sh   <= dec_store_sb_sh   + 64'd1;
         if (is_store_sw)          dec_store_sw      <= dec_store_sw      + 64'd1;
       end
