@@ -277,10 +277,6 @@ module ysyx_26020070(
   wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
 
   // ========== 性能计数器观测信号 ==========
-  // 这些 wire 作为 IFU/LSU 观测端口的目标, 无论是否开启 PERF 都需要声明,
-  // 否则端口连接处(IFU/LSU 实例化)会引用未声明信号, 触发 IMPLICIT/WIDTHEXPAND 告警.
-  // 开启 PERF 时, 它们被 PerfCounter 使用; 关闭 PERF 时仅作为悬空观测端口, 无副作用.
-  // IFU 观测信号
   wire        ifu_state;
   wire        ifu_ar_hs;
   wire        ifu_r_hs;
@@ -503,6 +499,7 @@ module ysyx_26020070(
     .funct3(funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
+    .cpu_pc(pc),                 // 当前指令 PC, 供 mtrace DPI 记录访存来源
     // AXI4 AR 通道
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),

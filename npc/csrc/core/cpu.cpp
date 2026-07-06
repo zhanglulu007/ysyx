@@ -177,10 +177,9 @@ void cpu_exec(uint64_t n) {
 
     Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);
 
-#ifdef ENABLE_TRACE
-    if (n > 10) enable_log_buffer();
-#endif
-    
+    // 注: 日志已改为实时追加写入, 不再需要内存缓冲 (enable_log_buffer/flush_log_buffer
+    //     现为兼容空操作), trace 行在 exec_once() 内每条指令即时落盘.
+
     while (cycles < n || n == (uint64_t)-1) {
         exec_once();
         cycles++;
@@ -210,10 +209,8 @@ void cpu_exec(uint64_t n) {
 #endif
     }
 
-#ifdef ENABLE_TRACE
-    if (n > 10) flush_log_buffer();
-#endif
-    
+    // 日志已实时落盘, 无需 flush_log_buffer (现为空操作).
+
     if (state->state == NPC_RUNNING) {
         state->state = NPC_STOP;
     }
