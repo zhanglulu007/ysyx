@@ -88,6 +88,7 @@ endif
 
 ifeq ($(FFLASH), 1)
   VERILATOR_FLAGS += -DFAST_FLASH
+  EXTRA_CFLAGS += -DFAST_FLASH
 endif
 
 NVBOARD ?= 0
