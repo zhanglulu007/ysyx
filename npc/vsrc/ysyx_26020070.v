@@ -824,8 +824,11 @@ module ysyx_26020070(
     .is_u_type        (is_u_cls),
     .is_csr           (is_csr_cls),
     .is_sys           (is_sys_cls),
-    // EXU
-    .exu_calc_done    (exu_calc_done)
+    // EXU 计算完成 & 分支结果 (阶段2)
+    .exu_calc_done    (exu_calc_done),
+    .branch_taken     (branch_taken),
+    // 寄存器写回 (阶段2): reg_wen_final 在指令退休周期(ifu_valid/load_wb)置位
+    .reg_wen          (reg_wen_final)
   );
 `endif
 
