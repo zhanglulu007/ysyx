@@ -82,17 +82,45 @@ module IFU(
   assign ifu_ar_handshake = (state == IDLE) && ifu_arvalid && ifu_arready && !rst;
   assign ifu_r_handshake  = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;
   assign ifu_lsu_pending  = (state == WAIT) && lsu_pending && !rst;
-
-  // ifu_retire: 脉冲信号, 当前指令在本周期退休 (IFU 由 WAIT → IDLE).
-  //   退休时机: (1) 非访存指令: R 握手同周期退休;
-  //                (2) load/store: LSU 完成 (lsu_rvalid 或 lsu_bvalid) 同周期退休.
-  //   用 ifu_was_in_wait 锁存上一周期状态, 防止 IFU 长时间处于 IDLE 时被误识别.
+  // ifu_retire: 当前指令在本周期退休 (IFU 进入 IDLE, 开始下一条取指)
+  //   脉冲条件: (1) 非访存指令在 R 握手周期退休;
+  //                (2) 访存指令在 LSU 完成 (rvalid/bvalid) 周期退休
   reg ifu_was_in_wait;
   always @(posedge clk) begin
     if (rst) ifu_was_in_wait <= 1'b0;
-    else     ifu_was_in_wait <= (state == WAIT);
+    else    ifu_was_in_wait <= (state == WAIT);
   end
   assign ifu_retire = ifu_was_in_wait && (state == IDLE) && !rst;
+
+  // ifu_retire: 脉冲，当前指令在本周期退休（IFU 进入 IDLE，准备下一指令）
+  //   退休时机: (1) 非访存指令在 R 握手周期立即退休; (2) load 在 lsu_rvalid 周期退休; (3) store 在 lsu_bvalid 周期退休
+  reg ifu_retire_dly;
+  wire ifu_retire_pulse = !rst && (
+         // 非访存: R 握手 & !lsu_pending → 同周期退休
+         ((state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending) ||
+         // load/store: LSU 完成 → 同周期退休
+         ((state == WAIT) && lsu_pending && (lsu_rvalid || lsu_bvalid))
+       ) && !ifu_retire_dly;  // 边沿检测，防同一周期多次触发
+  always @(posedge clk) begin
+    if (rst) ifu_retire_dly <= 1'b0;
+    else    ifu_retire_dly <= ((state == WAIT) && (ifu_rvalid && ifu_rready && !lsu_pending)) ||
+                                  ((state == WAIT) && lsu_pending && (lsu_rvalid || lsu_bvalid));
+  end
+  assign ifu_retire = ifu_retire_pulse;
+  // ifu_retire: 当前指令在本周期退休 (pc 更新, IFU 可进入下一指令)
+  //   退休条件: (1) 非访存指令在 r_handshake 周期完成; (2) load/store 在 LSU 响应周期完成
+  assign ifu_retire = !rst && (ifu_r_handshake || (state == WAIT && lsu_pending && (lsu_rvalid || lsu_bvalid)));
+  // ifu_retire: 当前指令在本周期退休 (pc 更新, IFU 回到 IDLE)
+  //   退休条件: (1) 非访存指令在 R 握手周期即退休; (2) load 在 lsu_rvalid 周期退休; (3) store 在 lsu_bvalid 周期退休
+  reg ifu_retire_reg;
+  always @(posedge clk) begin
+    if (rst) ifu_retire_reg <= 1'b0;
+    else     ifu_retire_reg <= (state == WAIT) && !rst &&
+                     ( (!lsu_pending && ifu_rvalid && ifu_rready) ||  // 非访存: R握手即退休
+                       (lsu_pending && (lsu_rvalid || lsu_bvalid)) // 访存: 等LSU完成
+                     );
+  end
+  assign ifu_retire = ifu_retire_reg;
 
   // 取指访问异常: 在取指握手完成且 rresp[1]=1 时置位, 输出给 top 用于跳转地址0
   assign ifu_access_fault = ifu_fault_reg;
