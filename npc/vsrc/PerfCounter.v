@@ -45,10 +45,10 @@ module PerfCounter(
 
   // ----- LSU 访存延迟细分 -----
   // 每个 load/store 事务从发请求到完成的周期数 (用于计算平均延迟)
-  input lsu_load_latency_pulse,  // 一个 load  事务完成时的周期数 (脉冲, 值为延迟周期)
-  input lsu_store_latency_pulse, // 一个 store 事务完成时的周期数 (脉冲, 值为延迟周期)
-  input lsu_load_latency_valid,  // lsu_load_latency_pulse 有效
-  input lsu_store_latency_valid, // lsu_store_latency_pulse 有效
+  input [63:0] lsu_load_latency_pulse,  // 一个 load  事务完成时的周期数 (脉冲, 值为延迟周期)
+  input [63:0] lsu_store_latency_pulse, // 一个 store 事务完成时的周期数 (脉冲, 值为延迟周期)
+  input        lsu_load_latency_valid,  // lsu_load_latency_pulse 有效
+  input        lsu_store_latency_valid, // lsu_store_latency_pulse 有效
 
   // ===== IDU 译码: 指令类别 (仅在 ifu_valid 时统计) =====
   input ifu_valid_dec,        // = 顶层 ifu_valid (用于门控译码类别计数)
