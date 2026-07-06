@@ -154,10 +154,12 @@ void set_itrace_print(bool enable) {
 // CPU执行n条指令
 void cpu_exec(uint64_t n) {
     NPCState* state = npc_get_state();
+    uint64_t cycles = 0;
     
     if (state->state == NPC_END || state->state == NPC_ABORT) {
         Log("Program has already exited. Use 'q' to quit.");
         printf("Program has already exited. Use 'q' to quit.\n");
+        printf("Execution stopped! instruction count %lu \n", cycles);
         return;
     }
     
@@ -166,7 +168,6 @@ void cpu_exec(uint64_t n) {
     // si命令且n<=10时输出到控制台
     set_itrace_print(n <= 10);
 
-    uint64_t cycles = 0;
     bool hit_watchpoint = false;
 
     Log("Starting execution of %lu instructions", n == (uint64_t)-1 ? 0 : n);

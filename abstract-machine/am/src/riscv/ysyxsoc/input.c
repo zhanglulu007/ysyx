@@ -1,28 +1,6 @@
 #include <am.h>
 #include "ysyxsoc.h"
 
-// ====================================================================
-// PS/2 键盘扫描码 -> AM 键码 翻译
-// --------------------------------------------------------------------
-// 硬件 (ps2_top_apb.v) 负责按 PS/2 协议把串行帧组装成一个字节并压入
-// FIFO; 软件从这里每次读出一个字节 (无按键时读出 0), 并按 PS/2 扫描码
-// 集合翻译成 AM 定义的键码 (见 amdev.h 的 AM_KEYS 列表).
-//
-// PS/2 扫描码集合 (Set 2) 的关键规则:
-//   * 普通键按下(make):  发送 1 字节 scan code
-//   * 普通键释放(break): 发送 0xF0, scan code
-//   * 扩展键按下(make):  发送 0xE0, scan code
-//   * 扩展键释放(break): 发送 0xE0, 0xF0, scan code
-//   * 0xE0 / 0xF0 为前缀, 不代表具体按键, 需要状态机消化
-//   * 0x7E (PrintScreen 的 part) / 0xE1 (Pause) 等长序列在此忽略
-//
-// 因此用一个简单的状态机:
-//   state == 0      : 正常态
-//   state == E0_REC : 收到 0xE0, 期望下一个字节是扩展键的扫描码 (make)
-//   state == E0_F0  : 收到 0xE0, 0xF0, 期望下一个字节是扩展键的扫描码 (break)
-//   state == F0_REC : 收到 0xF0, 期望下一个字节是普通键的扫描码 (break)
-// ====================================================================
-
 #define PS2_DATA_REG (*(volatile uint8_t *)(PS2_BASE + 0x0))
 
 #define PS2_F0 0xF0   // break code 前缀
@@ -31,22 +9,6 @@
 // 状态
 enum { ST_NORMAL = 0, ST_F0, ST_E0, ST_E0_F0 };
 static int kbd_state = ST_NORMAL;
-
-// --------------------------------------------------------------------
-// 扫描码 -> AM 键码 映射表
-// 0 表示无对应键 (忽略).  AM 键码取自 amdev.h 的 AM_KEYS 列表顺序.
-// 这里只列出 am-tests 按键测试以及常用按键, 与 AM_KEYS 完全对齐.
-// --------------------------------------------------------------------
-// AM_KEYS 顺序:
-//   ESCAPE F1..F12 | GRAVE 1..0 MINUS EQUALS BACKSPACE |
-//   TAB Q W E R T Y U I O P LEFTBRACKET RIGHTBRACKET BACKSLASH |
-//   CAPSLOCK A S D F G H J K L SEMICOLON APOSTROPHE RETURN |
-//   LSHIFT Z X C V B N M COMMA PERIOD SLASH RSHIFT |
-//   LCTRL APPLICATION LALT SPACE RALT RCTRL |
-//   UP DOWN LEFT RIGHT INSERT DELETE HOME END PAGEUP PAGEDOWN
-// 对应 AM_KEY_* 枚举值从 1 开始 (AM_KEY_NONE = 0).
-
-// 由于绝对偏移容易写错, 采用 switch 显式映射 helper:
 
 static int map_normal(uint8_t sc) {
   switch (sc) {
