@@ -64,7 +64,7 @@ FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
 DIFFTEST_SO ?=
-FFLASH  ?= 1
+FFLASH  ?= 0
 
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
