@@ -162,6 +162,7 @@ void ftrace_call(uint32_t pc, uint32_t target) {
   return;  // TRACE 未开启时直接返回，避免 ftrace_buffer 无限增长
 #endif
   const char *func_name = find_func_name(target);
+  fprintf(stderr, "[DBG-ftrace-call] pc=0x%x target=0x%x name=%s\n", pc, target, func_name);
   // 用固定宽度缩进，避免 %*s 在 depth 很大时撑爆 buffer
   int indent = func_depth * 2;
   if (indent > 40) indent = 40;  // 最多 20 层缩进
