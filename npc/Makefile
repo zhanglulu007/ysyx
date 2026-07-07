@@ -170,8 +170,6 @@ else
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
   							--timescale "1ns/1ns" \
 		    					--no-timing --autoflush
-  # AXI 互连的地址译码存在 verilator 误报的组合环路 (实际由时钟沿打破), 抑制之
-  VERILATOR_FLAGS += -Wno-UNOPTFLAT
   # Verilog files: core RTL + 独立顶层 (pmem/uart 后端)
   VERILOG_FILES += $(wildcard vsrc/*.v)
   VERILOG_FILES += $(wildcard vsrc/standalone/*.v)
