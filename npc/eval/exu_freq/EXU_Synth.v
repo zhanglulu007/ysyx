@@ -1,13 +1,3 @@
-// EXU_Synth_Wrapper
-// 用于综合评估EXU最大工作频率的测试电路
-// 设计要点:
-//   1. 去掉不必要的输出 (branch_target, jump_target, branch_taken, csr_wdata)
-//      只评估"加法器/ALU关键路径"中加法操作的最大频率, 因为
-//      "位宽和处理器字长相等的加法器延迟"是处理器频率上限 (B4.md L243)
-//   2. 在输入端和输出端都插入触发器, 避免I/O端口影响时序评估 (B4.md L245)
-//   3. 简化为只评估EXU的ALU加法路径 (rs1_data + alu_src2)
-//      加法器延迟是限制频率的关键因素
-
 module EXU_Synth(
   input clk,
   input rst,

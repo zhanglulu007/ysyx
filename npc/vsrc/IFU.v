@@ -48,9 +48,11 @@ module IFU(
   output ifu_lsu_pending       // WAIT 状态下正在等待 LSU (访存指令未完成)
 );
 
-  // DPI-C函数：通知C++侧
+  // DPI-C函数：通知C++侧 (仅仿真, 综合时由 -DSYNTHESIS 屏蔽)
+`ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
+`endif
 
   localparam IDLE = 1'b0 , WAIT = 1'b1;
 
@@ -92,8 +94,18 @@ module IFU(
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
       ifu_fault_reg   <= 1'b0;
-      pc              <= 32'h30000000;  // flash 
+`ifdef SOC_MODE
+      pc              <= 32'h30000000;  // SoC: 从 flash 启动
+`else
+      pc              <= 32'h80000000;  // 独立 NPC: 从内存启动
+`endif
+`ifndef SYNTHESIS
+`ifdef SOC_MODE
       update_pc_value(32'h30000000);
+`else
+      update_pc_value(32'h80000000);
+`endif
+`endif
     end else begin
       case (state)
         IDLE: begin
@@ -110,10 +122,14 @@ module IFU(
                 // load/store 访问异常: 跳转地址0
                 ifu_fault_reg    <= 1'b1;
                 pc               <= 32'h00000000;
+`ifndef SYNTHESIS
                 update_pc_value(32'h00000000);
+`endif
               end else begin
                 pc               <= pc_next;
+`ifndef SYNTHESIS
                 update_pc_value(pc_next);
+`endif
               end
               state            <= IDLE;
               lsu_pending      <= 1'b0;
@@ -125,10 +141,14 @@ module IFU(
             if (ifu_rresp[1]) begin
               ifu_fault_reg <= 1'b1;
               pc            <= 32'h00000000;
+`ifndef SYNTHESIS
               update_pc_value(32'h00000000);
+`endif
               state         <= IDLE;
             end else begin
+`ifndef SYNTHESIS
               update_inst_value(pc, ifu_rdata);
+`endif
               if (mem_valid) begin
                 // Load 或 Store: 需要等待 LSU 完成
                 lsu_pending     <= 1'b1;
@@ -137,7 +157,9 @@ module IFU(
               end else begin
                 // 非访存指令: 本周期完成执行, 写回寄存器 (由 top.v 处理)
                 pc               <= pc_next;
+`ifndef SYNTHESIS
                 update_pc_value(pc_next);
+`endif
                 state            <= IDLE;
               end
             end
