@@ -92,8 +92,11 @@ NVBOARD ?= 0
 
 ifeq ($(NVBOARD), 1)
   EXTRA_CFLAGS += -DENABLE_NVBOARD
-
-  NXDC_FILES = constr/top.nxdc
+  ifeq ($(SOC), 1)	
+  	NXDC_FILES = constr/soc.nxdc
+  else
+  	NXDC_FILES = constr/standalone.nxdc
+  endif
   SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
 
   $(SRC_AUTO_BIND): $(NXDC_FILES)
