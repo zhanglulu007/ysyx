@@ -739,7 +739,7 @@ module ysyx_26020070(
     .pc_next(pc_next)
   );
 
-  // ========== ebreak处理和trace (仅仿真, 综合时由 -DSYNTHESIS 屏蔽) ==========
+  // ========== ebreak处理和trace ==========
 `ifndef SYNTHESIS
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void access_fault_handler(input int pc_val, input int is_store);
@@ -795,7 +795,7 @@ module ysyx_26020070(
   end
 `endif
 
-  // ========== 性能计数器 (仅仿真用, 综合时不实例化) ==========
+  // ========== 性能计数器  ==========
 `ifdef ENABLE_PERF
   PerfCounter u_perf(
     .clk(clock),

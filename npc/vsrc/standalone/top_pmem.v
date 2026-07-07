@@ -1,13 +1,3 @@
-// top - 独立 NPC 仿真顶层 (riscv32e-npc)
-// 把 CPU 核心 ysyx_26020070 的完整 AXI4 master 口直接接到统一的 pmem_axi 后端
-// 不依赖任何 ysyxSoC 外设, 用于快速功能测试
-//
-// 地址空间 (由 C++ 侧 pmem_read/pmem_write 内部分流):
-//   0x80000000+  → 主存 (C++ pmem 数组)
-//   0x10000000 段 → 设备 (串口/RTC/键盘/VGA, C++ SDL 模拟)
-//
-// 注意: ysyx_26020070 内部已含 CLINT (0x0200_BFF8 mtime), 不会被路由到本顶层
-
 module top(
   input         clk,
   input         rst,

@@ -129,7 +129,6 @@ ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 
-# ===== 仿真环境开关: SOC=1 (默认, 接 ysyxSoC) / SOC=0 (独立 NPC, 快速功能测试) =====
 SOC ?= 1
 
 # ysyxSoC paths
@@ -164,7 +163,6 @@ ifeq ($(SOC),1)
   VERILOG_FILES += $(wildcard vsrc/*.v)
   TOP_CLASS := VysyxSoCFull
 else
-  # ===== 独立 NPC 模式 (riscv32e-npc): 顶层 top, csrc_standalone/, 不依赖 SoC =====
   CSRCS_DIR := csrc_standalone
   VERILATOR_FLAGS += --top-module top
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
@@ -247,7 +245,6 @@ run: $(NVBOARD_PREREQ)
 	@$(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
-# 便捷目标: 显式指定仿真环境
 run-soc:
 	$(MAKE) run SOC=1
 

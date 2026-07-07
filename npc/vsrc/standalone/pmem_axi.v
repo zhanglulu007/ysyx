@@ -1,14 +1,3 @@
-// pmem_axi - 完整 AXI4 转 DPI-C pmem 后端 (统一后端)
-// 用于独立 NPC 仿真 (riscv32e-npc): 把 ysyx_26020070 的完整 AXI4 master 口
-// 接到 DPI-C 实现的统一后端 (pmem_read/pmem_write)
-//
-// 设计要点:
-//   - 统一后端: 所有地址 (内存 0x80000000+ / 设备 0x10000000 段) 都走 DPI-C,
-//     由 C++ 侧的 pmem_read/pmem_write 内部分流 (内存数组 vs SDL 设备)
-//   - 固定 1 拍响应 (无 LFSR 随机延迟), 保证仿真效率, 适合快速功能测试
-//   - NPC 发出的都是 len=0 的单拍传输, 故固定 rlast=1, 忽略 arlen/awlen
-//   - 回传 rid=arid, bid=awid, rresp/bresp=OKAY, 保证 AXI4 协议合规
-
 module pmem_axi(
   input clk,
   input rst,

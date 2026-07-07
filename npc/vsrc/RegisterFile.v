@@ -16,7 +16,6 @@ module RegisterFile(
   reg [31:0] rf [0:15];
 
 `ifndef SYNTHESIS
-  // DPI-C导入函数：通知C++侧寄存器更新 (仅仿真, 综合时由 -DSYNTHESIS 屏蔽)
   import "DPI-C" function void update_reg_value(input int idx, input int value);
 `endif
 

@@ -1,17 +1,3 @@
-# NPC 处理器整体综合评估 (直接使用 npc/vsrc 的 RTL)
-# 依据 B4.md "记录性能数据": 评估完整 NPC 处理器 (ysyx_26020070) 的真实主频与面积
-#
-# 关键设计:
-#   - 直接引用 npc/vsrc/*.v, 不做任何拷贝, 保证评估对象与流片目标完全一致
-#   - 通过 DEFINES=SYNTHESIS 屏蔽 vsrc 中仅仿真用的 DPI-C / $display
-#     (IFU.v / RegisterFile.v / ysyx_26020070.v 中的 `ifndef SYNTHESIS 保护块)
-#   - 顶层模块 ysyx_26020070 的时钟端口名为 `clock` (非默认的 clk), 需显式指定
-#
-# 使用方法:
-#   make sta                          # 综合评估 (默认目标频率 1200MHz)
-#   make sta CLK_FREQ_MHZ=1500        # 指定目标频率
-#   make sta DEFINES="SYNTHESIS ENABLE_TRACE"  # 额外启用 mtrace (通常不需要)
-
 PROJ_PATH := $(shell pwd)
 SHELL := /bin/bash
 
