@@ -20,7 +20,7 @@ module RegisterFile(
   
   // 写操作 - 时序逻辑
   always @(posedge clk) begin
-    if (wen && waddr != 5'b0) begin
+    if (wen && waddr != 4'b0) begin
       // x0寄存器恒为0，不可写
       rf[waddr] <= wdata;
       // 通知C++侧更新（扩展到32位）
@@ -30,8 +30,8 @@ module RegisterFile(
   
   // 读操作 - 组合逻辑
   // x0寄存器恒为0
-  assign rdata1 = (raddr1 == 5'b0) ? 32'b0 : rf[raddr1];
-  assign rdata2 = (raddr2 == 5'b0) ? 32'b0 : rf[raddr2];
+  assign rdata1 = (raddr1 == 4'b0) ? 32'b0 : rf[raddr1];
+  assign rdata2 = (raddr2 == 4'b0) ? 32'b0 : rf[raddr2];
   
   // 读取a0寄存器（x10）的值
   assign a0_value = rf[10];
