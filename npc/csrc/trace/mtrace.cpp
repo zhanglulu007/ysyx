@@ -64,9 +64,6 @@ void mtrace_flush(bool print_to_console) {
 // 记录一次 load 访存 (R 通道握手完成)
 extern "C" void mtrace_read_handler(int addr, int data, int pc) {
 #ifdef ENABLE_TRACE
-  // load 默认按字访问 (lsu 已按 funct3 选择传输粒度), 这里以 4 字节记录;
-  // 真正的有效字节由后续字节/半字选择决定, trace 只关心访存事务本身.
-  // 周期数由 C++ 侧读取仿真周期计数器获得, 与仿真时间对齐.
   mtrace_read((uint32_t)addr, 4, (uint32_t)data, (uint32_t)pc, npc_get_cycle());
 #else
   (void)addr; (void)data; (void)pc;  // TRACE 未开启时空操作
