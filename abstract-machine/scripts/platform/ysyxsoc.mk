@@ -26,7 +26,7 @@ image: image-dep
 	@$(OBJCOPY) -S -O binary $(IMAGE).elf $(IMAGE).bin
 
 run: insert-arg
-	@echo "Running on ysyxSoC (NPC)..."
-	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
+	@echo "Running on ysyxSoC (NPC, SOC=1)..."
+	$(MAKE) -C $(NPC_HOME) run SOC=1 PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
 
 .PHONY: insert-arg

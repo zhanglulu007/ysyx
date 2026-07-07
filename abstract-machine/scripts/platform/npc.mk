@@ -27,7 +27,7 @@ image: image-dep
 	@$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(IMAGE).elf $(IMAGE).bin
 
 run: insert-arg
-	@echo "Running on NPC..."
-	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin  ELF=$(abspath $(IMAGE).elf)
+	@echo "Running on NPC (standalone, SOC=0)..."
+	$(MAKE) -C $(NPC_HOME) run SOC=0 PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
 
 .PHONY: insert-arg

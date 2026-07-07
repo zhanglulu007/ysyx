@@ -92,8 +92,11 @@ NVBOARD ?= 0
 
 ifeq ($(NVBOARD), 1)
   EXTRA_CFLAGS += -DENABLE_NVBOARD
-
-  NXDC_FILES = constr/top.nxdc
+  ifeq ($(SOC), 1)	
+  	NXDC_FILES = constr/soc.nxdc
+  else
+  	NXDC_FILES = constr/standalone.nxdc
+  endif
   SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
 
   $(SRC_AUTO_BIND): $(NXDC_FILES)
@@ -129,68 +132,82 @@ ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 
+SOC ?= 1
+
 # ysyxSoC paths
 YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
 YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
 
-VERILATOR_FLAGS += --top-module ysyxSoCFull
-VERILATOR_FLAGS += --x-assign fast --x-initial fast \
-						--timescale "1ns/1ns" \
-    					--no-timing \
-    					-I$(YSYXSOC_PERIP)/uart16550/rtl \
-    					-I$(YSYXSOC_PERIP)/spi/rtl \
-						--autoflush
-#VERILATOR_FLAGS += -Wno-UNOPTTHREADS --threads 2
-#VERILATOR_FLAGS += -DFAST_FLASH
-
-# Verilog files: ysyxSoC top + peripherals
-VERILOG_FILES += \
-    				$(YSYXSOC_BUILD)/ysyxSoCFull.v
-
-# Add ysyxSoC peripheral verilog files (use wildcard to expand)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/vga/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/ps2/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/gpio/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/flash/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v)
-VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
+ifeq ($(SOC),1)
+  # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
+  CSRCS_DIR := csrc
+  VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE
+  VERILATOR_FLAGS += --x-assign fast --x-initial fast \
+  							--timescale "1ns/1ns" \
+		    					--no-timing \
+		    					-I$(YSYXSOC_PERIP)/uart16550/rtl \
+		    					-I$(YSYXSOC_PERIP)/spi/rtl \
+								--autoflush
+  # Verilog files: ysyxSoC top + peripherals + core RTL
+  VERILOG_FILES += $(YSYXSOC_BUILD)/ysyxSoCFull.v
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/vga/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/ps2/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/gpio/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/flash/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v)
+  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
+  VERILOG_FILES += $(wildcard vsrc/*.v)
+  TOP_CLASS := VysyxSoCFull
+else
+  CSRCS_DIR := csrc_standalone
+  VERILATOR_FLAGS += --top-module top
+  VERILATOR_FLAGS += --x-assign fast --x-initial fast \
+  							--timescale "1ns/1ns" \
+		    					--no-timing --autoflush
+  # Verilog files: core RTL + 独立顶层 (pmem/uart 后端)
+  VERILOG_FILES += $(wildcard vsrc/*.v)
+  VERILOG_FILES += $(wildcard vsrc/standalone/*.v)
+  TOP_CLASS := Vtop
+endif
 
 $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
-	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
+	@echo "SOC=$(SOC)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "TOP_CLASS=$(TOP_CLASS)  CSRCS_DIR=$(CSRCS_DIR)"
 	@echo "Usage examples:"
-	@echo "  make build                          # 全关（最快）"
-	@echo "  make build TRACE=1                  # 开 trace"
+	@echo "  === 仿真环境 (SOC 开关) ==="
+	@echo "  make run SOC=1 PROG=...             # SoC 模式 (riscv32-ysyxsoc, 默认)"
+	@echo "  make run SOC=0 PROG=...             # 独立 NPC 模式 (riscv32e-npc, 快速功能测试)"
+	@echo "  make run-soc PROG=...               # 同上, 显式指定 SoC"
+	@echo "  make run-npc PROG=...               # 同上, 显式指定独立 NPC"
+	@echo "  === 功能开关 ==="
+	@echo "  make build                          # 只编译 (全关, 最快)"
+	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
 	@echo "  make build FST=1                    # 开波形"
-	@echo "  make build FST=1 TRACE=1            # 全开"
-	@echo "  make build PERF=1                   # 开性能计数器 (仿真结束打印报告)"
-	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
-	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
-	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (自动生成引脚绑定并链接 nvboard.a)"
+	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (仅 SoC 模式)"
 
 define VERILATE_CMD
 	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
 	$(VERILATOR_TRACE_FLAGS) \
-	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
+	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/$(CSRCS_DIR) \
 	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
 	  -I$(shell pwd)/../nemu/include \
 	  -I$(NVBOARD_HOME)/usr/include \
 	  $(shell sdl2-config --cflags) \
 	  $(EXTRA_CFLAGS)" \
 	-LDFLAGS "-lreadline -ldl $(NVBOARD_LDFLAGS) $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf" \
-	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
-	csrc/utils/*.cpp csrc/trace/*.cpp \
+	$(CSRCS_DIR)/main.cpp $(CSRCS_DIR)/core/*.cpp $(CSRCS_DIR)/sdb/*.cpp \
+	$(CSRCS_DIR)/utils/*.cpp $(CSRCS_DIR)/trace/*.cpp \
 	$(NVBOARD_CSRCS) \
 	$(VERILOG_FILES) \
 	--Mdir $(OBJ_DIR)
@@ -208,27 +225,39 @@ char-test: test/char-test.c
 # 只编译不运行
 build: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
+	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
 
-# 编译并运行
+# 编译并运行 (默认使用当前 SOC 设置)
 run: $(NVBOARD_PREREQ)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
+	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
-	@if [ ! -f $(OBJ_DIR)/VysyxSoCFull ]; then \
-		echo "Error: VysyxSoCFull not found after build."; exit 1; \
+	@if [ ! -f $(OBJ_DIR)/$(TOP_CLASS) ]; then \
+		echo "Error: $(TOP_CLASS) not found after build."; exit 1; \
 	fi
 	@if [ ! -f "$(PROG)" ]; then \
 		echo "Error: Program file '$(PROG)' not found."; exit 1; \
 	fi
-	@echo "-- RUN [DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
-	@echo "Running: $(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
-	@$(OBJ_DIR)/VysyxSoCFull $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
+	@echo "-- RUN [SOC=$(SOC) DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
+	@echo "Running: $(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
+	@$(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
 
-.PHONY: build sim run clean char-test
+run-soc:
+	$(MAKE) run SOC=1
+
+run-npc:
+	$(MAKE) run SOC=0
+
+build-soc:
+	$(MAKE) build SOC=1
+
+build-npc:
+	$(MAKE) build SOC=0
+
+.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test
