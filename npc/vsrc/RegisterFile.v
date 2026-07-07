@@ -4,11 +4,11 @@
 module RegisterFile(
   input clk,
   input [31:0] wdata,         // 写入数据
-  input [4:0] waddr,          // 写入地址
+  input [3:0] waddr,          // 写入地址
   input wen,                  // 写使能
-  input [4:0] raddr1,         // 读端口1地址
+  input [3:0] raddr1,         // 读端口1地址
   output [31:0] rdata1,       // 读端口1数据
-  input [4:0] raddr2,         // 读端口2地址
+  input [3:0] raddr2,         // 读端口2地址
   output [31:0] rdata2,       // 读端口2数据
   output [31:0] a0_value      // a0寄存器的值（x10）
 );
