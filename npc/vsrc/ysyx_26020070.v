@@ -193,7 +193,7 @@ module ysyx_26020070(
 
   // ========== AXI4 总线连接信号 ==========
 
-  // IFU <-> Arbiter (Master 0, 只读)
+  // IFU <-> ICache (icache CPU 侧, 只读)
   wire        ifu_arvalid;
   wire        ifu_arready;
   wire [31:0] ifu_araddr;
@@ -207,6 +207,21 @@ module ysyx_26020070(
   wire [ 1:0] ifu_rresp;
   wire        ifu_rlast;
   wire [ 3:0] ifu_rid;
+
+  // ICache <-> Arbiter (icache 总线侧, 只读; icache 未命中/不可缓存时经此访问下游)
+  wire        icache_arvalid;
+  wire        icache_arready;
+  wire [31:0] icache_araddr;
+  wire [ 3:0] icache_arid;
+  wire [ 7:0] icache_arlen;
+  wire [ 2:0] icache_arsize;
+  wire [ 1:0] icache_arburst;
+  wire        icache_rvalid;
+  wire        icache_rready;
+  wire [31:0] icache_rdata;
+  wire [ 1:0] icache_rresp;
+  wire        icache_rlast;
+  wire [ 3:0] icache_rid;
 
   // LSU <-> Arbiter (Master 1, 读写)
   wire        lsu_arvalid;
@@ -291,6 +306,14 @@ module ysyx_26020070(
   wire        lsu_wait_r;
   wire        lsu_wait_aw_w;
   wire        lsu_wait_b;
+  // ICache 观测信号
+  wire        icache_access;
+  wire        icache_hit;
+  wire        icache_miss;
+  wire        icache_uncache;
+  wire        icache_refill_req;
+  wire        icache_wait_ar;
+  wire        icache_wait_r;
 `ifdef ENABLE_PERF
   // 指令类别聚合 (供 PerfCounter 统计译码出的指令种类)
   wire is_calc_cls = (is_add||is_sub||is_and||is_or||is_xor||is_sll||is_srl||is_sra||is_slt||is_sltu) ||   // R型
@@ -350,6 +373,47 @@ module ysyx_26020070(
     .ifu_ar_handshake(ifu_ar_hs),
     .ifu_r_handshake(ifu_r_hs),
     .ifu_lsu_pending(ifu_lsu_pending)
+  );
+
+  ICache u_icache(
+    .clk(clock),
+    .rst(rst),
+    // CPU 侧 (IFU)
+    .cpu_arvalid (ifu_arvalid),
+    .cpu_arready (ifu_arready),
+    .cpu_araddr  (ifu_araddr),
+    .cpu_arid    (ifu_arid),
+    .cpu_arlen   (ifu_arlen),
+    .cpu_arsize  (ifu_arsize),
+    .cpu_arburst (ifu_arburst),
+    .cpu_rvalid  (ifu_rvalid),
+    .cpu_rready  (ifu_rready),
+    .cpu_rdata   (ifu_rdata),
+    .cpu_rresp   (ifu_rresp),
+    .cpu_rlast   (ifu_rlast),
+    .cpu_rid     (ifu_rid),
+    // 总线侧 (AXIArbiter)
+    .bus_arvalid (icache_arvalid),
+    .bus_arready (icache_arready),
+    .bus_araddr  (icache_araddr),
+    .bus_arid    (icache_arid),
+    .bus_arlen   (icache_arlen),
+    .bus_arsize  (icache_arsize),
+    .bus_arburst (icache_arburst),
+    .bus_rvalid  (icache_rvalid),
+    .bus_rready  (icache_rready),
+    .bus_rdata   (icache_rdata),
+    .bus_rresp   (icache_rresp),
+    .bus_rlast   (icache_rlast),
+    .bus_rid     (icache_rid),
+    // 性能计数器观测端口
+    .icache_access     (icache_access),
+    .icache_hit        (icache_hit),
+    .icache_miss       (icache_miss),
+    .icache_uncache    (icache_uncache),
+    .icache_refill_req (icache_refill_req),
+    .icache_wait_ar    (icache_wait_ar),
+    .icache_wait_r     (icache_wait_r)
   );
 
   // IDU - 译码单元
@@ -589,24 +653,24 @@ module ysyx_26020070(
     .clint_bid(clint_bid)
   );
 
-  // AXIArbiter - AXI4 仲裁器 (IFU + LSU → CLINT / 外部 Xbar)
+  // AXIArbiter - AXI4 仲裁器 (ICache + LSU → CLINT / 外部 Xbar)
   AXIArbiter u_arbiter(
     .clk(clock),
     .rst(rst),
-    // Master 0: IFU
-    .ifu_arvalid(ifu_arvalid),
-    .ifu_arready(ifu_arready),
-    .ifu_araddr(ifu_araddr),
-    .ifu_arid(ifu_arid),
-    .ifu_arlen(ifu_arlen),
-    .ifu_arsize(ifu_arsize),
-    .ifu_arburst(ifu_arburst),
-    .ifu_rvalid(ifu_rvalid),
-    .ifu_rready(ifu_rready),
-    .ifu_rdata(ifu_rdata),
-    .ifu_rresp(ifu_rresp),
-    .ifu_rlast(ifu_rlast),
-    .ifu_rid(ifu_rid),
+    // Master 0: ICache (取代原 IFU 直连, 命中时不访问仲裁器)
+    .ifu_arvalid(icache_arvalid),
+    .ifu_arready(icache_arready),
+    .ifu_araddr(icache_araddr),
+    .ifu_arid(icache_arid),
+    .ifu_arlen(icache_arlen),
+    .ifu_arsize(icache_arsize),
+    .ifu_arburst(icache_arburst),
+    .ifu_rvalid(icache_rvalid),
+    .ifu_rready(icache_rready),
+    .ifu_rdata(icache_rdata),
+    .ifu_rresp(icache_rresp),
+    .ifu_rlast(icache_rlast),
+    .ifu_rid(icache_rid),
     // Master 1: LSU
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
@@ -815,6 +879,14 @@ module ysyx_26020070(
     .lsu_wait_r       (lsu_wait_r),
     .lsu_wait_aw_w    (lsu_wait_aw_w),
     .lsu_wait_b       (lsu_wait_b),
+    // ICache
+    .icache_access     (icache_access),
+    .icache_hit        (icache_hit),
+    .icache_miss       (icache_miss),
+    .icache_uncache    (icache_uncache),
+    .icache_refill_req (icache_refill_req),
+    .icache_wait_ar    (icache_wait_ar),
+    .icache_wait_r     (icache_wait_r),
     // IDU 指令类别
     .ifu_valid_dec    (ifu_valid),
     .is_calc          (is_calc_cls),

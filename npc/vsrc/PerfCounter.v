@@ -22,6 +22,15 @@ module PerfCounter(
   input lsu_wait_aw_w,        // 等待 AW/W 握手
   input lsu_wait_b,           // 等待 B 握手
 
+  // ===== ICache 指令缓存 (命中/缺失/AMAT) =====
+  input icache_access,        // icache 收到一次取指访问 (IC_LOOKUP)
+  input icache_hit,           // 命中 (可缓存且命中)
+  input icache_miss,          // 缺失 (可缓存但未命中, 需回填)
+  input icache_uncache,       // 不可缓存访问 (地址不在缓存范围, 直通总线)
+  input icache_refill_req,    // 向总线发起一次回填/直通读请求 (IC_REFILL_AR)
+  input icache_wait_ar,       // 处于等待总线 AR 握手状态
+  input icache_wait_r,        // 处于等待总线 R  握手状态
+
   // ===== IDU 译码: 指令类别 (仅在 ifu_valid 时统计) =====
   input ifu_valid_dec,        // = 顶层 ifu_valid (用于门控译码类别计数)
   input is_calc,              // 计算类 (R型 + I型算术逻辑)
@@ -67,6 +76,22 @@ module PerfCounter(
   reg [63:0] lsu_wait_r_cyc;      // 等待 R  握手的周期累计 (load 延迟主体)
   reg [63:0] lsu_wait_aw_w_cyc;   // 等待 AW/W 握手的周期累计 (store 请求发出延迟)
   reg [63:0] lsu_wait_b_cyc;      // 等待 B  握手的周期累计 (store 延迟主体)
+
+  // ICache - 指令缓存 (用于命中率与 AMAT 统计)
+  // AMAT = access_time + (1 - p) * miss_penalty, 其中 p 为命中率.
+  //   access_time  = 命中时从收到访存请求到得出命中结果所需的周期数 (命中服务周期)
+  //   miss_penalty = 缺失时访问下游 DRAM 的周期数 (回填等待周期)
+  reg [63:0] icache_access_cnt;   // icache 取指访问次数 (IC_LOOKUP)
+  reg [63:0] icache_hit_cnt;      // 命中次数 (含命中服务周期计入 hit_cyc)
+  reg [63:0] icache_miss_cnt;     // 缺失次数 (可缓存型, 需回填)
+  reg [63:0] icache_uncache_cnt;  // 不可缓存访问次数 (直通总线)
+  reg [63:0] icache_refill_cnt;   // 回填/直通读请求次数 (IC_REFILL_AR 进入)
+  reg [63:0] icache_wait_ar_cyc;  // 等待总线 AR 握手的周期累计 (回填发出延迟)
+  reg [63:0] icache_wait_r_cyc;   // 等待总线 R  握手的周期累计 (回填数据延迟)
+  reg [63:0] icache_hit_cyc;      // 命中服务周期累计 (命中路径 access_time 累加, 含IC_LOOKUP本身)
+  reg [63:0] icache_miss_cyc;     // 缺失服务周期累计 (一次缺失从IC_LOOKUP到回填完成的总周期)
+  reg [63:0] icache_miss_acc;     // 当前缺失服务周期累加器 (miss期间每周期+1, 完成时计入miss_cyc)
+  reg        icache_miss_pend;    // 正在处理一次缺失/不可缓存读 (IC_REFILL_AR/R 期间为1)
 
   // IDU - 译码出的各类指令数 (动态指令分类)
   reg [63:0] dec_total;           // 译码出的指令总数 (应 = ifu_ret_cnt = 动态指令数)
@@ -130,6 +155,17 @@ module PerfCounter(
       lsu_wait_r_cyc    <= 64'b0;
       lsu_wait_aw_w_cyc <= 64'b0;
       lsu_wait_b_cyc    <= 64'b0;
+      icache_access_cnt  <= 64'b0;
+      icache_hit_cnt     <= 64'b0;
+      icache_miss_cnt    <= 64'b0;
+      icache_uncache_cnt <= 64'b0;
+      icache_refill_cnt  <= 64'b0;
+      icache_wait_ar_cyc <= 64'b0;
+      icache_wait_r_cyc  <= 64'b0;
+      icache_hit_cyc     <= 64'b0;
+      icache_miss_cyc    <= 64'b0;
+      icache_miss_acc    <= 64'b0;
+      icache_miss_pend   <= 1'b0;
       dec_total         <= 64'b0;
       dec_calc          <= 64'b0;
       dec_load          <= 64'b0;
@@ -180,6 +216,35 @@ module PerfCounter(
       if (lsu_wait_r)      lsu_wait_r_cyc    <= lsu_wait_r_cyc    + 64'd1;
       if (lsu_wait_aw_w)   lsu_wait_aw_w_cyc <= lsu_wait_aw_w_cyc + 64'd1;
       if (lsu_wait_b)      lsu_wait_b_cyc    <= lsu_wait_b_cyc    + 64'd1;
+
+      // ICache 事件: access/hit/miss/uncache 均在 IC_LOOKUP 单拍触发
+      if (icache_access) icache_access_cnt <= icache_access_cnt + 64'd1;
+      if (icache_hit)    begin
+        icache_hit_cnt <= icache_hit_cnt + 64'd1;
+        icache_hit_cyc <= icache_hit_cyc + 64'd1;   // 命中服务 = 1 周期 (IC_LOOKUP 本身)
+      end
+      if (icache_uncache) begin
+        icache_uncache_cnt <= icache_uncache_cnt + 64'd1;
+        icache_miss_pend   <= 1'b1;                 // 不可缓存读走与缺失相同的总线通路
+        icache_miss_acc    <= 64'd1;                // 计入 IC_LOOKUP 当拍
+      end
+      if (icache_miss)    begin
+        icache_miss_cnt  <= icache_miss_cnt + 64'd1;
+        icache_miss_pend <= 1'b1;                   // 启动缺失服务周期统计
+        icache_miss_acc  <= 64'd1;                  // 计入 IC_LOOKUP 当拍
+      end
+      if (icache_refill_req) icache_refill_cnt <= icache_refill_cnt + 64'd1;
+      // 缺失/不可缓存服务周期累加: miss_pend 期间每周期 +1
+      if (icache_miss_pend && (icache_wait_ar || icache_wait_r))
+        icache_miss_acc <= icache_miss_acc + 64'd1;
+      // 缺失服务完成 (miss_pend 且已回到 IC_IDLE): 把累加器计入 miss_cyc 并清标志
+      if (icache_miss_pend && !icache_wait_ar && !icache_wait_r) begin
+        icache_miss_cyc  <= icache_miss_cyc + icache_miss_acc;
+        icache_miss_acc  <= 64'b0;
+        icache_miss_pend <= 1'b0;
+      end
+      if (icache_wait_ar) icache_wait_ar_cyc <= icache_wait_ar_cyc + 64'd1;
+      if (icache_wait_r)  icache_wait_r_cyc  <= icache_wait_r_cyc  + 64'd1;
 
       // 译码指令分类 + 每类指令累计周期 (仅在 ifu_valid 时统计)
       if (ifu_valid_dec) begin
@@ -283,6 +348,49 @@ module PerfCounter(
       $display("    全部访存占总周期比             : %.2f%%",
                (cyc_total > 0) ? (100.0 * (lsu_wait_ar_cyc + lsu_wait_r_cyc + lsu_wait_aw_w_cyc + lsu_wait_b_cyc) / cyc_total) : 0.0);
 
+    // ---- ICache 指令缓存 (命中率 + AMAT) ----
+    // 讲义 B4: AMAT = access_time + (1 - p) * miss_penalty, p 为命中率.
+    //   access_time  = 命中服务周期 (命中: 1 周期, 即 IC_LOOKUP 本身)
+    //   miss_penalty = 缺失服务周期 (一次缺失从 IC_LOOKUP 到回填完成的周期)
+    $display("");
+    $display("[指令缓存 ICache - Hit Rate & AMAT]");
+    $display("  取指访问 accesses             : %0d", icache_access_cnt);
+    $display("  命中 hits                    : %0d  (%.2f%%)",
+             icache_hit_cnt,
+             (icache_access_cnt > 0) ? (100.0 * icache_hit_cnt / icache_access_cnt) : 0.0);
+    $display("  缺失 misses                   : %0d  (%.2f%%)",
+             icache_miss_cnt,
+             (icache_access_cnt > 0) ? (100.0 * icache_miss_cnt / icache_access_cnt) : 0.0);
+    $display("  不可缓存 uncacheable          : %0d  (%.2f%%)",
+             icache_uncache_cnt,
+             (icache_access_cnt > 0) ? (100.0 * icache_uncache_cnt / icache_access_cnt) : 0.0);
+    $display("  回填/直通读请求 refill req    : %0d  (应 = misses + uncacheable)", icache_refill_cnt);
+    // 命中率 p 仅对可缓存访问计算 (排除不可缓存)
+    if ((icache_hit_cnt + icache_miss_cnt) > 0) begin
+      $display("  [可缓存命中率 p]              : %.4f  (hits / (hits+misses))",
+               1.0 * icache_hit_cnt / (icache_hit_cnt + icache_miss_cnt));
+    end
+    // AMAT (单位: 周期)
+    //   access_time = hit_cyc / hit_cnt
+    //   miss_penalty= miss_cyc / miss_cnt
+    //   AMAT        = access_time + (1-p) * miss_penalty
+    if (icache_hit_cnt > 0)
+      $display("  access_time (hit 周期/次)     : %.2f", 1.0 * icache_hit_cyc / icache_hit_cnt);
+    if (icache_miss_cnt > 0)
+      $display("  miss_penalty (miss 周期/次)   : %.2f  (wait_AR=%0d + wait_R=%0d + lookup)",
+               1.0 * icache_miss_cyc / icache_miss_cnt, icache_wait_ar_cyc, icache_wait_r_cyc);
+    if ((icache_hit_cnt > 0) && (icache_miss_cnt > 0)) begin
+      $display("  AMAT (周期/次访问)           : %.2f",
+               (1.0 * icache_hit_cyc / icache_hit_cnt) +
+               (1.0 - 1.0 * icache_hit_cnt / (icache_hit_cnt + icache_miss_cnt)) *
+               (1.0 * icache_miss_cyc / icache_miss_cnt));
+    end
+    $display("  等待总线AR握手周期 wait-AR cyc: %0d", icache_wait_ar_cyc);
+    $display("  等待总线R握手周期  wait-R  cyc: %0d", icache_wait_r_cyc);
+    if (cyc_total > 0)
+      $display("  icache总线等待占总周期比      : %.2f%%",
+               100.0 * (icache_wait_ar_cyc + icache_wait_r_cyc) / cyc_total);
+
     // ---- IDU 指令分类 (数量 + 占比 + 阶段2 平均CPI) ----
     $display("");
     $display("[指令分类 IDU - Instruction Mix]  (数量 / 占比 / 平均CPI)");
@@ -364,6 +472,9 @@ module PerfCounter(
              ((cyc_ifu_wait_ar + cyc_ifu_wait_r_fetch + cyc_ifu_wait_lsu) == (cyc_stall + ifu_idle_cyc)) ? "PASS 通过" : "FAIL 失败");
     $display("    wait_AR+wait_Rfetch+wait_LSU=%0d  stall+idle=%0d",
              (cyc_ifu_wait_ar + cyc_ifu_wait_r_fetch + cyc_ifu_wait_lsu), (cyc_stall + ifu_idle_cyc));
+    $display("  icache回填数 == 缺失+不可缓存 ? %s",
+             (icache_refill_cnt == (icache_miss_cnt + icache_uncache_cnt)) ? "PASS 通过" : "FAIL 失败");
+    $display("    refill=%0d  miss+uncache=%0d", icache_refill_cnt, (icache_miss_cnt + icache_uncache_cnt));
 
     $display("============================================================");
     $display("");
