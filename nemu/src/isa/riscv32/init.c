@@ -27,21 +27,19 @@ static const uint32_t img [] = {
 };
 
 static void restart() {
-  /* Set the initial program counter. SoC 模式从 Flash(0x30000000) 启动. */
-  cpu.pc = get_reset_vector();
+  /* Set the initial program counter. */
+  cpu.pc = RESET_VECTOR;
 
   /* The zero register is always 0. */
   cpu.gpr[0] = 0;
-
+  
   /* Initialize CSR registers for DiffTest */
   cpu.mstatus = 0x1800;  // Set MPP to Machine mode for riscv32
 }
 
 void init_isa() {
-  /* Load built-in image. (SoC 模式由 load_img() 烧录到 Flash, 跳过内置镜像) */
-  if (!nemu_soc_mode) {
-    memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img));
-  }
+  /* Load built-in image. */
+  memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img));
 
   /* Initialize this virtual computer system. */
   restart();
