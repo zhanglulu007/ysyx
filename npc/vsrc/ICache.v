@@ -1,26 +1,3 @@
-// ICache - 简易指令缓存 (直接映射, 只读)
-// 插入在 IFU 与 AXIArbiter 之间的 AXI4 AR/R 通路之上, 对两侧接口完全透明.
-//
-// 设计参考讲义 B4 "实现icache":
-//   - 块大小 BLOCK_SIZE = 4 字节 (一条指令长度)
-//   - cache 块数 NR_CACHE_BLK = 16 (直接映射)
-//   - 存储阵列用触发器实现 (第一个 cache 练习, 灵活性优先)
-//
-// 地址划分 (BLOCK_SIZE=4, NR_CACHE_BLK=16):
-//   offset = addr[1:0]   (块内偏移, 块大小 2^2=4B)
-//   index  = addr[5:2]   (块索引,    2^4=16块)
-//   tag    = addr[31:6]  (块标签)
-//
-// 可缓存(cacheable)地址空间: 仅存储器类
-//   Flash(0x3) / PSRAM(0x8) / SDRAM(0xa)
-//   其余地址(MROM/设备/CLINT/片内SRAM)旁路直通总线, 不缓存.
-//
-// icache 实质是总线状态机的扩展: 对 IFU 侧维持与原总线一致的握手时序
-//   (IFU 在 IDLE 期 arvalid 等 arready; 在 WAIT 期 rready=1 等 rvalid).
-//   - 命中: 无需访问 Arbiter, 用 cache 数据应答 IFU 的 r 通道.
-//   - 缺失: 通过 Arbiter 向下游发起一次 AXI4 单 beat 读, 取回数据填入 cache 后再应答 IFU.
-//   - 不可缓存: 经同样的总线读通路直通, 但不回填 cache.
-
 module ICache(
   input clk,
   input rst,

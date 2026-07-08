@@ -375,9 +375,6 @@ module ysyx_26020070(
     .ifu_lsu_pending(ifu_lsu_pending)
   );
 
-  // ICache - 简易指令缓存 (插在 IFU 与 AXIArbiter 之间)
-  //   块大小 4B, 16 个直接映射 cache 块; 仅缓存 Flash/PSRAM/SDRAM 地址空间;
-  //   命中时用 cache 数据应答 IFU, 未命中/不可缓存时经 Arbiter 向下游读取.
   ICache u_icache(
     .clk(clock),
     .rst(rst),
