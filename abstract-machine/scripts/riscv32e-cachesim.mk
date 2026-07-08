@@ -48,29 +48,34 @@ CACHESIM_ACCESS_TIME  ?= 1        # 命中访问时间 (周期)
 NEMU_HOME ?= $(abspath $(AM_HOME)/../nemu)
 NPC_HOME  ?= $(abspath $(AM_HOME)/../npc)
 
-NEMU_BIN := $(NEMU_HOME)/build/riscv32-nemu-interpreter
-ITRACE   := $(IMAGE).itrace.txt
+NEMU_BIN  := $(NEMU_HOME)/build/riscv32-nemu-interpreter
+# NEMU 用 -l 指定文本日志文件, 同时派生 .bin 输出二进制 RLE itrace:
+#   -l x.itrace.log  ->  x.itrace.log (文本日志) + x.itrace.bin (二进制 RLE, cachesim 输入)
+NEMU_LOG  := $(IMAGE).itrace.log
+ITRACE    := $(IMAGE).itrace.bin
 
 # ---------------------------------------------------------------------------- #
-# run 目标: NEMU 生成 itrace -> cachesim 评估
+# run 目标: NEMU 生成二进制 RLE itrace -> cachesim 评估
 #
 # 覆盖 ysyxsoc.mk 中的 run 目标 (它原本是跑 NPC). 这里改为:
 #   1. 确保 NEMU 用 riscv32-ysyxsoc 配置编译 (复位PC=0x30000000, 启用 CLINT/UART16550)
-#   2. NEMU 以 batch 模式运行镜像, -l 输出完整 itrace 到 $(ITRACE)
-#   3. npc/cachesim 对 itrace 评估
+#   2. NEMU 以 batch 模式运行镜像, -l 生成二进制 RLE itrace (讲义 "压缩 trace":
+#      定长 record pc+count, 顺序段合并; 文本日志与二进制 trace 分离)
+#   3. npc/cachesim 对二进制 itrace 评估 (cachesim 自动识别 .bin 后缀)
 # ---------------------------------------------------------------------------- #
 run: insert-arg
 	@echo "=================================================================="
-	@echo " [cachesim] 步骤 1/3: 用 ysyxsoc 配置的 NEMU 生成 itrace"
+	@echo " [cachesim] 步骤 1/3: 用 ysyxsoc 配置的 NEMU 生成二进制 RLE itrace"
 	@echo "=================================================================="
 	@echo ">> 配置 NEMU 为 riscv32-ysyxsoc (复位PC=0x30000000, CLINT/UART16550)"
 	@$(MAKE) -s -C $(NEMU_HOME) riscv32-ysyxsoc_defconfig
 	@echo ">> 编译 NEMU"
 	@$(MAKE) -s -C $(NEMU_HOME)
-	@echo ">> NEMU 运行镜像并输出 itrace 到 $(ITRACE)"
-	@echo "   镜像: $(IMAGE).bin"
+	@echo ">> NEMU 运行镜像, 生成二进制 RLE itrace: $(ITRACE)"
+	@echo "   镜像: $(IMAGE).bin  (文本日志: $(NEMU_LOG))"
 	@# 在 NEMU_HOME 下运行: NEMU 用相对路径 dlopen("tools/capstone/repo/libcapstone.so.5")
-	@cd $(NEMU_HOME) && $(NEMU_BIN) -b -l $(ITRACE) $(IMAGE).bin
+	@cd $(NEMU_HOME) && $(NEMU_BIN) -b -l $(NEMU_LOG) $(IMAGE).bin
+	@echo "   二进制 RLE trace 大小:" $$(ls -lh $(ITRACE) | awk '{print $$5}')
 	@echo ""
 	@echo "=================================================================="
 	@echo " [cachesim] 步骤 2/3: cachesim 评估 (配置: ways=$(CACHESIM_WAYS) block=$(CACHESIM_BLOCK)B total=$(CACHESIM_TOTAL) replace=$(CACHESIM_REPLACE))"

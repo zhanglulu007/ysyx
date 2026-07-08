@@ -52,6 +52,7 @@ typedef struct {
     long     miss_penalty; /* 单次缺失代价 (周期) */
     long     access_time;  /* 命中访问时间 (周期) */
     bool     use_bz2;      /* 是否用 bzcat 读取压缩 itrace */
+    bool     use_bin;      /* 是否读取 NEMU 生成的二进制 RLE 格式 itrace */
     const char *itrace_path;
 } cache_config_t;
 
@@ -91,6 +92,7 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
     cfg->miss_penalty = 100;
     cfg->access_time = 1;
     cfg->use_bz2 = false;
+    cfg->use_bin = false;
     cfg->itrace_path = NULL;
 
     /* 解析 --key=value 选项 */
@@ -106,6 +108,8 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
                 "  --miss-penalty=<cyc> miss penalty in cycles (for TMT/AMAT)        default 100\n"
                 "  --access-time=<cyc>  hit access time in cycles                    default 1\n"
                 "  --bz2                itrace is bzip2-compressed, read via bzcat   default off\n"
+                "  --bin                itrace is NEMU binary-RLE format (8-byte records)  default off\n"
+                "                       (auto-detected from .bin extension if not set)\n"
                 "  -h, --help           show this help\n");
             exit(0);
         } else if (strncmp(a, "--ways=", 7) == 0) {
@@ -124,6 +128,8 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
             cfg->access_time = atol(a + 14);
         } else if (strcmp(a, "--bz2") == 0) {
             cfg->use_bz2 = true;
+        } else if (strcmp(a, "--bin") == 0) {
+            cfg->use_bin = true;
         } else if (a[0] == '-' && a[1] == '-') {
             fprintf(stderr, "cachesim: 未知选项 '%s' (用 -h 查看帮助)\n", a);
             exit(1);
@@ -133,6 +139,13 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
         } else {
             /* 位置参数 = itrace 文件 */
             cfg->itrace_path = a;
+            /* 自动识别: .bin 后缀视为二进制 RLE 格式 (除非显式 --bz2) */
+            if (!cfg->use_bin && !cfg->use_bz2) {
+                size_t plen = strlen(a);
+                if (plen >= 4 && strcmp(a + plen - 4, ".bin") == 0) {
+                    cfg->use_bin = true;
+                }
+            }
         }
     }
 
@@ -252,6 +265,39 @@ static bool cache_access(const cache_config_t *cfg, uint32_t addr) {
 }
 
 /* ----------------------------------------------------------------------- */
+/* 二进制 RLE itrace 处理 (讲义 B4.md "压缩 trace" 二进制 + RLE).
+ *
+ * NEMU 生成的二进制 RLE 格式: 一串定长 record, 每个 8 字节:
+ *   uint32_t pc;    // 顺序段起始 PC (小端)
+ *   uint32_t count; // 该段连续顺序指令数, PC = pc, pc+4, ..., pc+4*(count-1)
+ *
+ * 本函数逐 record 读取, 展开段内 PC 序列并对每个 PC 做 cache 访问.
+ * 注意: NEMU 恒为 4 字节定长指令 (RISC-V), 故段内 PC 步进固定为 4.
+ * ----------------------------------------------------------------------- */
+static void run_binary_rle(const cache_config_t *cfg, FILE *fp,
+                           uint64_t *p_access, uint64_t *p_hit, uint64_t *p_miss) {
+    uint64_t total_access = 0, total_hit = 0, total_miss = 0;
+    uint32_t rec[2];  /* rec[0]=pc, rec[1]=count */
+    size_t nr = 0;
+    while (fread(rec, sizeof(uint32_t), 2, fp) == 2) {
+        nr++;
+        uint32_t pc   = rec[0];
+        uint32_t cnt  = rec[1];
+        /* 展开段内 count 条顺序指令 (PC 每次 +4) */
+        for (uint32_t i = 0; i < cnt; i++) {
+            total_access++;
+            if (cache_access(cfg, pc)) total_hit++;
+            else                       total_miss++;
+            pc += 4;  /* RISC-V 定长 4 字节指令 */
+        }
+    }
+    *p_access = total_access;
+    *p_hit    = total_hit;
+    *p_miss   = total_miss;
+    fprintf(stderr, "[cachesim] read %zu binary-RLE records\n", nr);
+}
+
+/* ----------------------------------------------------------------------- */
 /* 主流程                                                                    */
 /* ----------------------------------------------------------------------- */
 int main(int argc, char *argv[]) {
@@ -269,15 +315,22 @@ int main(int argc, char *argv[]) {
     bool used_popen = false;
     FILE *fp = open_itrace(&cfg, &used_popen);
 
-    /* 逐行读取 PC, 模拟 cache 访问 */
-    char line[1024];
     uint64_t total_access = 0, total_hit = 0, total_miss = 0;
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        uint32_t pc;
-        if (!parse_pc_line(line, &pc)) continue;  /* 跳过非 PC 行 (日志头等) */
-        total_access++;
-        if (cache_access(&cfg, pc)) total_hit++;
-        else                        total_miss++;
+
+    if (cfg.use_bin) {
+        /* 二进制 RLE 模式: 读定长 record, 展开顺序 PC 序列 */
+        if (used_popen) { fprintf(stderr, "cachesim: --bin 与 --bz2 不兼容\n"); return 1; }
+        run_binary_rle(&cfg, fp, &total_access, &total_hit, &total_miss);
+    } else {
+        /* 文本模式: 逐行解析首个 0x PC */
+        char line[1024];
+        while (fgets(line, sizeof(line), fp) != NULL) {
+            uint32_t pc;
+            if (!parse_pc_line(line, &pc)) continue;  /* 跳过非 PC 行 (日志头等) */
+            total_access++;
+            if (cache_access(&cfg, pc)) total_hit++;
+            else                        total_miss++;
+        }
     }
     if (used_popen) pclose(fp); else fclose(fp);
 
