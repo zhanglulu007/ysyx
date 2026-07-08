@@ -15,8 +15,6 @@ static void __am_timer_config(AM_TIMER_CONFIG_T *cfg) { cfg->present = true; cfg
 static void __am_input_config(AM_INPUT_CONFIG_T *cfg) { cfg->present = true;  }
 static void __am_uart_config(AM_UART_CONFIG_T *cfg) { cfg->present = true;  }
 
-// npc 无真实 UART 硬件, RX 固定返回 0xFF (无输入)
-// RT-Thread finsh 靠内置命令字符串 (BUILTIN_CMD_STR) 运行, 耗尽后 idle
 static void __am_uart_rx(AM_UART_RX_T *rx) { rx->data = 0xFF; }
 
 typedef void (*handler_t)(void *buf);
