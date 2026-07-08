@@ -48,8 +48,8 @@ module ICache(
   // 可配置参数
   // ===================================================================
   localparam ADDR_WIDTH   = 32;
-  localparam BLOCK_SIZE   = 16;           // 字节 (须为 2 的幂, >=4)
-  localparam NR_CACHE_BLK = 4;          // cache 块总数 (须为 2 的幂)
+  localparam BLOCK_SIZE   = 4;            // 字节 (须为 2 的幂, >=4)
+  localparam NR_CACHE_BLK = 16;           // cache 块总数 (须为 2 的幂)
 
   // ===================================================================
   // 派生参数 (取决于 BLOCK_SIZE, NR_CACHE_BLK, NR_WAYS)
@@ -58,7 +58,8 @@ module ICache(
   localparam INDEX_BITS   = $clog2(NR_CACHE_BLK);        // log2(NR_CACHE_BLK)
   localparam TAG_BITS     = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;
   localparam BLOCK_WORDS  = BLOCK_SIZE / 4;              // 每块 32 位字数
-  localparam BLOCK_WORDS_BITS = $clog2(BLOCK_WORDS);     // log2(BLOCK_WORDS), 用于位宽控制
+  localparam BLOCK_WORDS_BITS = $clog2(BLOCK_WORDS);     // log2(BLOCK_WORDS), 用于索引位宽控制
+  localparam BEAT_CNT_BITS = (BLOCK_WORDS_BITS > 8) ? BLOCK_WORDS_BITS : 8;  // beat_cnt 位宽
 
   // ===================================================================
   // 状态机
@@ -113,7 +114,7 @@ module ICache(
   // 总线侧 AR 通道 (独立读事务, 每事务 1 beat)
   // ===================================================================
   reg [31:0] beat_addr_r;       // 当前事务的读地址 (对齐到字)
-  reg [7:0]  beat_cnt_r;        // 已完成的 beat 计数 (0..BLOCK_WORDS-1)
+  reg [BEAT_CNT_BITS-1:0] beat_cnt_r;        // 已完成的 beat 计数 (0..BLOCK_WORDS-1)
   reg        ar_pending;        // 总线 AR 通道等待中
 
   assign bus_arvalid = ar_pending;
