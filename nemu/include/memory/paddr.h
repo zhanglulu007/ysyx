@@ -22,9 +22,16 @@
 #define PMEM_RIGHT ((paddr_t)CONFIG_MBASE + CONFIG_MSIZE - 1)
 #define RESET_VECTOR (PMEM_LEFT + CONFIG_PC_RESET_OFFSET)
 
+/* ysyxSoC 运行模式开关 (--soc 选项): 决定复位地址与设备地址映射.
+ * 定义在 monitor.c, 由 paddr.c 及 device 目录下各文件读取. */
+extern bool nemu_soc_mode;
+
+/* 复位 PC: SoC 模式从 Flash(0x30000000) 启动; 否则用 RESET_VECTOR(0x80000000). */
+paddr_t get_reset_vector(void);
+
 /* convert the guest physical address in the guest program to host virtual address in NEMU */
 uint8_t* guest_to_host(paddr_t paddr);
-/* convert the host virtual address in NEMU to guest physical address in the guest program */
+/* convert the host virtual address in NEMU to the guest physical address in the guest program */
 paddr_t host_to_guest(uint8_t *haddr);
 
 static inline bool in_pmem(paddr_t addr) {
@@ -35,10 +42,12 @@ bool in_mrom(paddr_t addr);
 bool in_sram(paddr_t addr);
 bool in_flash(paddr_t addr);
 bool in_psram(paddr_t addr);
+bool in_sdram(paddr_t addr);
 uint8_t* mrom_to_host(paddr_t paddr);
 uint8_t* sram_to_host(paddr_t paddr);
 uint8_t* flash_to_host(paddr_t paddr);
 uint8_t* psram_to_host(paddr_t paddr);
+uint8_t* sdram_to_host(paddr_t paddr);
 
 word_t paddr_read(paddr_t addr, int len);
 void paddr_write(paddr_t addr, int len, word_t data);
