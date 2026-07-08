@@ -19,6 +19,9 @@ void init_monitor(int, char *[]);
 void am_init_monitor();
 void engine_start();
 int is_exit_status_bad();
+#ifdef CONFIG_ITRACE
+void finish_itracerle();  /* 程序结束时 flush 二进制 RLE itrace 的最后一个段 */
+#endif
 
 int main(int argc, char *argv[]) {
   /* Initialize the monitor. */
@@ -30,6 +33,10 @@ int main(int argc, char *argv[]) {
 
   /* Start engine. */
   engine_start();
+
+#ifdef CONFIG_ITRACE
+  finish_itracerle();  /* flush 末尾未写出的顺序段 */
+#endif
 
   return is_exit_status_bad();
 }
