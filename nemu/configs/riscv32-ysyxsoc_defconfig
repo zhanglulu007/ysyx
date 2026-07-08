@@ -1,0 +1,11 @@
+# riscv32e-ysyxsoc 镜像运行配置
+# 用法: make riscv32-ysyxsoc_defconfig && make
+# 复位 PC = 0x30000000 (Flash), 启用 CLINT/UART16550, SDRAM 物理内存区
+# 用于生成与 NPC 一致的 itrace (供 cachesim 评估)
+CONFIG_ISA_riscv=y
+CONFIG_TRACE=y
+CONFIG_TRACE_START=0
+CONFIG_TRACE_END=1000000000
+CONFIG_ITRACE=y
+CONFIG_DEVICE=y
+CONFIG_YSYXSOC=y

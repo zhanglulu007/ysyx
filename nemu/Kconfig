@@ -225,6 +225,16 @@ config DIFFTEST_REF_NAME
   default "none"
 endmenu
 
+config YSYXSOC
+  depends on ISA_riscv && MODE_SYSTEM && TARGET_NATIVE_ELF
+  bool "Run riscv32e-ysyxsoc images (Flash-entry memory map + CLINT/UART16550)"
+  default n
+  help
+    Adapt NEMU to execute riscv32e-ysyxsoc AM images:
+    reset PC at 0x30000000 (Flash), adds SDRAM region,
+    minimal CLINT (mtime) and UART16550 device models.
+    Leaves the default riscv32-nemu behavior unchanged when disabled.
+
 if MODE_SYSTEM
 source "src/memory/Kconfig"
 source "src/device/Kconfig"
