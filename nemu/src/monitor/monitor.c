@@ -49,9 +49,11 @@ static FILE *pc_dump_fp = NULL;     // PC 流导出文件指针
 
 // 把一条指令的 PC 追加写入 PC 流文件 (二进制, 每条 4 字节 vaddr_t)
 // 供 cpu-exec.c 的 exec_once() 在每条指令退休时调用; 未开启 --dump-pc 时为空操作.
+// 注: 每条立即 fflush, 保证异常退出(assert/NEMU_ABORT)时已写入的 PC 流不丢失.
 void pc_dump_record(vaddr_t pc) {
   if (pc_dump_fp != NULL) {
     fwrite(&pc, sizeof(vaddr_t), 1, pc_dump_fp);
+    fflush(pc_dump_fp);
   }
 }
 
