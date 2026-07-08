@@ -69,7 +69,8 @@ run: insert-arg
 	@$(MAKE) -s -C $(NEMU_HOME)
 	@echo ">> NEMU 运行镜像并输出 itrace 到 $(ITRACE)"
 	@echo "   镜像: $(IMAGE).bin"
-	@$(NEMU_BIN) -b -l $(ITRACE) $(IMAGE).bin
+	@# 在 NEMU_HOME 下运行: NEMU 用相对路径 dlopen("tools/capstone/repo/libcapstone.so.5")
+	@cd $(NEMU_HOME) && $(NEMU_BIN) -b -l $(ITRACE) $(IMAGE).bin
 	@echo ""
 	@echo "=================================================================="
 	@echo " [cachesim] 步骤 2/3: cachesim 评估 (配置: ways=$(CACHESIM_WAYS) block=$(CACHESIM_BLOCK)B total=$(CACHESIM_TOTAL) replace=$(CACHESIM_REPLACE))"
