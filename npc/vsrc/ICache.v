@@ -58,6 +58,7 @@ module ICache(
   localparam INDEX_BITS   = $clog2(NR_CACHE_BLK);        // log2(NR_CACHE_BLK)
   localparam TAG_BITS     = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;
   localparam BLOCK_WORDS  = BLOCK_SIZE / 4;              // 每块 32 位字数
+  localparam BLOCK_WORDS_BITS = $clog2(BLOCK_WORDS);     // log2(BLOCK_WORDS), 用于位宽控制
 
   // ===================================================================
   // 状态机
