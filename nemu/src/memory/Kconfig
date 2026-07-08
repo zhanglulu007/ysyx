@@ -3,10 +3,12 @@ menu "Memory Configuration"
 config MBASE
   hex "Memory base address"
   default 0x0        if ISA_x86
+  default 0x30000000 if YSYXSOC
   default 0x80000000
 
 config MSIZE
   hex "Memory size"
+  default 0x1000000  if YSYXSOC
   default 0x8000000
 
 config PC_RESET_OFFSET
