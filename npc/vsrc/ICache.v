@@ -55,7 +55,16 @@ module ICache(
   input  [31:0]     bus_rdata,
   input  [ 1:0]     bus_rresp,
   input             bus_rlast,
-  input  [ 3:0]     bus_rid
+  input  [ 3:0]     bus_rid,
+
+  // ===== 性能计数器观测端口 (仅仿真用, 由 ENABLE_PERF 实例化的 PerfCounter 使用) =====
+  output icache_access,      // 一次取指访问 (IC_LOOKUP: 请求已被接受, 即将判定命中/缺失)
+  output icache_hit,         // 命中 (IC_LOOKUP: 可缓存且命中, 当拍组合应答)
+  output icache_miss,        // 缺失 (IC_LOOKUP: 可缓存但未命中, 需回填)
+  output icache_uncache,     // 不可缓存访问 (IC_LOOKUP: 地址不在缓存范围, 直通总线)
+  output icache_refill_req,  // 向总线发起一次回填/直通读请求 (IC_REFILL_AR)
+  output icache_wait_ar,     // 处于等待总线 AR 握手状态 (IC_REFILL_AR)
+  output icache_wait_r       // 处于等待总线 R  握手状态 (IC_REFILL_R)
 );
 
   // ===================================================================
@@ -210,10 +219,15 @@ module ICache(
     end
   end
 
-`ifndef SYNTHESIS
-  // 命中/缺失调试观察 (仅仿真, 综合时被 SYNTHESIS 宏屏蔽)
-  wire hit_event  = (state == IC_LOOKUP) && req_cacheable &&  hit;
-  wire miss_event = (state == IC_LOOKUP) && req_cacheable && !hit;
-`endif
+  // ===================================================================
+  // 性能计数器观测信号 (供 PerfCounter 统计 icache 命中率/AMAT)
+  // ===================================================================
+  assign icache_access     = (state == IC_LOOKUP) && !rst;
+  assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
+  assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !hit && !rst;
+  assign icache_uncache    = (state == IC_LOOKUP) && !req_cacheable    && !rst;
+  assign icache_refill_req = (state == IC_REFILL_AR)                   && !rst;
+  assign icache_wait_ar    = (state == IC_REFILL_AR)                   && !rst;
+  assign icache_wait_r     = (state == IC_REFILL_R)                    && !rst;
 
 endmodule

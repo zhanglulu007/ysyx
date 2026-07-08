@@ -306,6 +306,14 @@ module ysyx_26020070(
   wire        lsu_wait_r;
   wire        lsu_wait_aw_w;
   wire        lsu_wait_b;
+  // ICache 观测信号
+  wire        icache_access;
+  wire        icache_hit;
+  wire        icache_miss;
+  wire        icache_uncache;
+  wire        icache_refill_req;
+  wire        icache_wait_ar;
+  wire        icache_wait_r;
 `ifdef ENABLE_PERF
   // 指令类别聚合 (供 PerfCounter 统计译码出的指令种类)
   wire is_calc_cls = (is_add||is_sub||is_and||is_or||is_xor||is_sll||is_srl||is_sra||is_slt||is_sltu) ||   // R型
@@ -400,7 +408,15 @@ module ysyx_26020070(
     .bus_rdata   (icache_rdata),
     .bus_rresp   (icache_rresp),
     .bus_rlast   (icache_rlast),
-    .bus_rid     (icache_rid)
+    .bus_rid     (icache_rid),
+    // 性能计数器观测端口
+    .icache_access     (icache_access),
+    .icache_hit        (icache_hit),
+    .icache_miss       (icache_miss),
+    .icache_uncache    (icache_uncache),
+    .icache_refill_req (icache_refill_req),
+    .icache_wait_ar    (icache_wait_ar),
+    .icache_wait_r     (icache_wait_r)
   );
 
   // IDU - 译码单元
@@ -866,6 +882,14 @@ module ysyx_26020070(
     .lsu_wait_r       (lsu_wait_r),
     .lsu_wait_aw_w    (lsu_wait_aw_w),
     .lsu_wait_b       (lsu_wait_b),
+    // ICache
+    .icache_access     (icache_access),
+    .icache_hit        (icache_hit),
+    .icache_miss       (icache_miss),
+    .icache_uncache    (icache_uncache),
+    .icache_refill_req (icache_refill_req),
+    .icache_wait_ar    (icache_wait_ar),
+    .icache_wait_r     (icache_wait_r),
     // IDU 指令类别
     .ifu_valid_dec    (ifu_valid),
     .is_calc          (is_calc_cls),
