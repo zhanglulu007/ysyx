@@ -13,6 +13,7 @@ DEFINES ?= SYNTHESIS
 
 DESIGN := ysyx_26020070
 RTL_FILES := $(NPC_VSRC)/ysyx_26020070.v \
+             $(NPC_VSRC)/ICache.v \
              $(NPC_VSRC)/IFU.v \
              $(NPC_VSRC)/IDU.v \
              $(NPC_VSRC)/EXU.v \
