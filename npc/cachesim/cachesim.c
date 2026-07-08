@@ -22,6 +22,12 @@
  *     --total=<T>          cache 块总数(须为 2 的幂)                默认 16
  *     --replace=<alg>      替换算法: lru | random                   默认 lru
  *     --miss-penalty=<cyc> 单次缺失代价(周期), 估算 TMT/AMAT        默认 100
+ *                          若显式指定, 优先级最高, 覆盖下面的估算
+ *     --bus-width=<B>      总线数据位宽(字节, 须 2 的幂)             默认 4
+ *     --bus-tx-cost=<cyc>  单次独立总线传输事务总开销 a+b+c+d (周期) 默认 0(不估算)
+ *                          >0 时按 "独立总线传输方式" 估算缺失代价:
+ *                          n = block/bus_width, miss_cost = n * bus_tx_cost
+ *                          (讲义 B4.md 799-810 行 "支持更大的块大小")
  *     --access-time=<cyc>  命中访问时间(周期)                        默认 1
  *     --bz2                itrace 为 bzip2 压缩, 用 bzcat 读取       默认关
  *     -h, --help
@@ -50,6 +56,9 @@ typedef struct {
     int      num_sets;     /* 组数 = total_blocks / ways */
     enum { REPLACE_LRU, REPLACE_RANDOM } replace;
     long     miss_penalty; /* 单次缺失代价 (周期) */
+    bool     miss_penalty_set; /* 用户是否显式指定过 --miss-penalty */
+    int      bus_width;    /* 总线数据位宽 (字节) */
+    long     bus_tx_cost;  /* 单次独立总线事务总开销 a+b+c+d (周期) */
     long     access_time;  /* 命中访问时间 (周期) */
     bool     use_bz2;      /* 是否用 bzcat 读取压缩 itrace */
     bool     use_bin;      /* 是否读取 NEMU 生成的二进制 RLE 格式 itrace */
@@ -90,6 +99,9 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
     cfg->total_blocks = 16;
     cfg->replace = REPLACE_LRU;
     cfg->miss_penalty = 100;
+    cfg->miss_penalty_set = false;
+    cfg->bus_width = 4;        /* 默认总线位宽 = 4B (AXI4 32位) */
+    cfg->bus_tx_cost = 0;      /* 默认不估算 (0 = 关闭) */
     cfg->access_time = 1;
     cfg->use_bz2 = false;
     cfg->use_bin = false;
@@ -106,6 +118,12 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
                 "  --total=<T>          total number of cache blocks (power of 2)     default 16\n"
                 "  --replace=<alg>      replacement: lru | random                    default lru\n"
                 "  --miss-penalty=<cyc> miss penalty in cycles (for TMT/AMAT)        default 100\n"
+                "                       override the --bus-tx-cost based estimation if set\n"
+                "  --bus-width=<B>      bus data width in bytes (power of 2)         default 4\n"
+                "  --bus-tx-cost=<cyc>  per-independent-AXI-transaction cost a+b+c+d default 0\n"
+                "                       (>0: miss_cost = ceil(block/bus_width) * bus_tx_cost,\n"
+                "                        i.e. 'multiple independent transactions' model,\n"
+                "                        B4.md 799-810; overrides --miss-penalty unless user set it)\n"
                 "  --access-time=<cyc>  hit access time in cycles                    default 1\n"
                 "  --bz2                itrace is bzip2-compressed, read via bzcat   default off\n"
                 "  --bin                itrace is NEMU binary-RLE format (8-byte records)  default off\n"
@@ -124,6 +142,11 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
             else { fprintf(stderr, "cachesim: --replace 仅支持 lru | random\n"); exit(1); }
         } else if (strncmp(a, "--miss-penalty=", 15) == 0) {
             cfg->miss_penalty = atol(a + 15);
+            cfg->miss_penalty_set = true;
+        } else if (strncmp(a, "--bus-width=", 12) == 0) {
+            cfg->bus_width = atoi(a + 12);
+        } else if (strncmp(a, "--bus-tx-cost=", 14) == 0) {
+            cfg->bus_tx_cost = atol(a + 14);
         } else if (strncmp(a, "--access-time=", 14) == 0) {
             cfg->access_time = atol(a + 14);
         } else if (strcmp(a, "--bz2") == 0) {
@@ -165,6 +188,7 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
     /* 派生位数 */
     cfg->offset_bits = log2_exact(cfg->block_size, "block");
     log2_exact(cfg->total_blocks, "total");  /* 仅校验 */
+    log2_exact(cfg->bus_width, "bus-width"); /* 校验 bus_width 为 2 的幂 */
     if (cfg->total_blocks % cfg->ways != 0) {
         fprintf(stderr, "cachesim: --total(%d) 必须是 --ways(%d) 的整数倍\n", cfg->total_blocks, cfg->ways);
         exit(1);
@@ -172,6 +196,21 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
     cfg->num_sets = cfg->total_blocks / cfg->ways;
     cfg->index_bits = log2_exact(cfg->num_sets, "total/ways");
     cfg->tag_bits = 32 - cfg->offset_bits - cfg->index_bits;
+
+    /*
+     * 缺失代价计算策略 (讲义 B4.md 795-810 行):
+     *
+     *   1) 若用户显式指定了 --miss-penalty, 直接使用该值 (最高优先级).
+     *   2) 否则, 若 --bus-tx-cost > 0, 用"独立总线传输事务"方式估算:
+     *        n = ceil(block_size / bus_width)
+     *        miss_penalty = n * bus_tx_cost
+     *      (n 次独立 AXI4 AR+R 事务, 每次 a+b+c+d 个周期)
+     *   3) 否则, 使用默认的 miss_penalty=100.
+     */
+    if (!cfg->miss_penalty_set && cfg->bus_tx_cost > 0) {
+        int n_txns = (cfg->block_size + cfg->bus_width - 1) / cfg->bus_width;
+        cfg->miss_penalty = n_txns * cfg->bus_tx_cost;
+    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -357,12 +396,30 @@ int main(int argc, char *argv[]) {
     }
     const char *rep_str = (cfg.replace == REPLACE_LRU) ? "LRU" : "random";
 
+    /* 缺失代价估算方式描述 */
+    char miss_cost_desc[256];
+    if (cfg.miss_penalty_set) {
+        snprintf(miss_cost_desc, sizeof(miss_cost_desc),
+                 "显式指定 --miss-penalty=%ld (周期)", cfg.miss_penalty);
+    } else if (cfg.bus_tx_cost > 0) {
+        int n_txns = (cfg.block_size + cfg.bus_width - 1) / cfg.bus_width;
+        snprintf(miss_cost_desc, sizeof(miss_cost_desc),
+                 "独立总线事务: n=%d (块%dB / 总线%dB) × bus_tx_cost=%ld = %ld 周期",
+                 n_txns, cfg.block_size, cfg.bus_width, cfg.bus_tx_cost, cfg.miss_penalty);
+    } else {
+        snprintf(miss_cost_desc, sizeof(miss_cost_desc),
+                 "默认 miss_penalty=%ld (周期)", cfg.miss_penalty);
+    }
+
     printf("==================== cachesim 评估报告 ====================\n");
     printf("配置         : %s\n", org_str);
     printf("               块大小=%dB | 块数=%d | 总容量=%dB | 替换=%s\n",
            cfg.block_size, cfg.total_blocks, cfg.block_size * cfg.total_blocks, rep_str);
     printf("               地址划分: tag=%d | index=%d | offset=%d (位)\n",
            cfg.tag_bits, cfg.index_bits, cfg.offset_bits);
+    printf("缺失代价估算 : %s\n", miss_cost_desc);
+    printf("               总线位宽=%d字节 | bus_tx_cost=%ld 周期/事务\n",
+           cfg.bus_width, cfg.bus_tx_cost);
     printf("----------------------------------------------------------\n");
     printf("itrace 文件  : %s%s\n", cfg.itrace_path, cfg.use_bz2 ? " (bzcat 解压)" : "");
     printf("指令访问总数 : %llu\n", (unsigned long long)total_access);
