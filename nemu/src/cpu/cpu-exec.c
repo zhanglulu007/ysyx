@@ -133,6 +133,11 @@ static void exec_once(Decode *s, vaddr_t pc) {
   
   // 将指令写入环形缓冲区
   IFDEF(CONFIG_ITRACE, iringbuf_write(s->pc, s->isa.inst, s->logbuf));
+
+  // 将本条指令 PC 追加写入 PC 流文件 (供 cachesim 离线统计 icache 缺失次数)
+  // pc_dump_record 未开启 --dump-pc 时为空操作, 无额外开销
+  extern void pc_dump_record(vaddr_t pc);
+  pc_dump_record(s->pc);
 }
 
 static void execute(uint64_t n) {
