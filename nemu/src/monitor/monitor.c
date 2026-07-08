@@ -80,7 +80,10 @@ static long load_img() {
   Log("The image is %s, size = %ld", img_file, size);
 
   fseek(fp, 0, SEEK_SET);
-  int ret = fread(guest_to_host(RESET_VECTOR), size, 1, fp);
+  /* ysyxSoC 镜像从 Flash(0x30000000) 启动, 镜像烧录在 Flash 偏移0;
+   * 旧 npc 镜像加载到 pmem(0x80000000). */
+  uint8_t *load_dest = nemu_soc_mode ? flash_to_host(0x30000000) : guest_to_host(RESET_VECTOR);
+  int ret = fread(load_dest, size, 1, fp);
   assert(ret == 1);
 
   fclose(fp);
@@ -95,12 +98,13 @@ static int parse_args(int argc, char *argv[]) {
     {"port"     , required_argument, NULL, 'p'},
     {"elf"      , required_argument, NULL, 'e'},
     {"dump-pc"  , required_argument, NULL, 'P'},
+    {"soc"      , no_argument      , NULL, 'S'},
     {"help"     , no_argument      , NULL, 'h'},
     {0          , 0                , NULL,  0 },
   };
   int o;
-  // "-bhl:d:p:e:P:" 是短选项字符串，'-' 表示也处理非选项参数，':' 表示需要参数
-  while ( (o = getopt_long(argc, argv, "-bhl:d:p:e:P:", table, NULL)) != -1) {
+  // "-bhl:d:p:e:P:S:" 是短选项字符串，'-' 表示也处理非选项参数，':' 表示需要参数
+  while ( (o = getopt_long(argc, argv, "-bhl:d:p:e:P:S", table, NULL)) != -1) {
     switch (o) {
       case 'b': sdb_set_batch_mode(); break;
       case 'p': sscanf(optarg, "%d", &difftest_port); break;
@@ -108,6 +112,7 @@ static int parse_args(int argc, char *argv[]) {
       case 'd': diff_so_file = optarg; break;
       case 'e': elf_file = optarg; break;      // 保存 ELF 文件路径
       case 'P': pc_dump_file = optarg; break;  // 保存 PC 流导出文件路径
+      case 'S': nemu_soc_mode = true; break;   // ysyxSoC 模式: 从 Flash 启动
       case 1: img_file = optarg; return 0;
       default:
         printf("Usage: %s [OPTION...] IMAGE [args]\n\n", argv[0]);
@@ -117,6 +122,7 @@ static int parse_args(int argc, char *argv[]) {
         printf("\t-p,--port=PORT          run DiffTest with port PORT\n");
         printf("\t-e,--elf=ELF_FILE       run ftrace with ELF file\n");
         printf("\t-P,--dump-pc=FILE       dump PC stream (4B/inst) to FILE for cachesim\n");
+        printf("\t-S,--soc                run riscv32e-ysyxsoc image (boot from Flash 0x30000000)\n");
         printf("\n");
         exit(0);
     }
