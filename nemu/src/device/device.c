@@ -16,7 +16,6 @@
 #include <common.h>
 #include <utils.h>
 #include <device/alarm.h>
-#include <memory/paddr.h>   /* nemu_soc_mode */
 #ifndef CONFIG_TARGET_AM
 #include <SDL2/SDL.h>
 #endif
@@ -30,7 +29,6 @@ void init_audio();
 void init_disk();
 void init_sdcard();
 void init_alarm();
-void init_clint();   /* ysyxSoC CLINT mtime (仅 --soc 模式) */
 
 void send_key(uint8_t, bool);
 void vga_update_screen();
@@ -86,11 +84,6 @@ void init_device() {
   IFDEF(CONFIG_HAS_AUDIO, init_audio());
   IFDEF(CONFIG_HAS_DISK, init_disk());
   IFDEF(CONFIG_HAS_SDCARD, init_sdcard());
-
-  /* ysyxSoC 模式: 映射 CLINT mtime 计时器 (供 microbench 等计时) */
-  if (nemu_soc_mode) {
-    init_clint();
-  }
 
   IFNDEF(CONFIG_TARGET_AM, init_alarm());
 }
