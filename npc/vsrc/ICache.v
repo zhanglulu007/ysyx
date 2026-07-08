@@ -96,8 +96,9 @@ module ICache(
   wire [INDEX_BITS-1:0]  req_index  = req_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
   wire [TAG_BITS-1:0]    req_tag    = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
 
-  // 块内字索引: req_offset[OFFSET_BITS-1:2] 即为字序号
+  /* verilator lint_off WIDTHEXPAND */
   wire [31:0] req_word_idx = req_offset >> 2;   // 0 ~ BLOCK_WORDS-1
+  /* verilator lint_on WIDTHEXPAND */
 
   // 可缓存地址判定
   wire req_cacheable = (req_addr[31:28] == 4'h3) ||
@@ -132,7 +133,7 @@ module ICache(
 
   always @(posedge clk) begin
     if (refill_beat) begin
-      cache_data[req_index][beat_cnt_r] <= bus_rdata;
+      cache_data[req_index][beat_cnt_r[BLOCK_WORDS_BITS-1:0]] <= bus_rdata;
       if (beat_cnt_r == BLOCK_WORDS - 1) begin
         cache_tag  [req_index] <= req_tag;
         cache_valid[req_index] <= 1'b1;
