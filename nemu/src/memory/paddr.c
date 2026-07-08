@@ -131,11 +131,15 @@ word_t paddr_read(paddr_t addr, int len) {
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
-  if (in_sdram(addr)) {
-    word_t ret = host_read(sdram_to_host(addr), len);
-    IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
-    return ret;
-  }
+  /* SDRAM 仅 riscv32e-ysyxsoc 使用; nemu 模式下 0xa0000000 段是设备 MMIO,
+   * 必须落到 mmio_read, 故此处用 CONFIG_YSYXSOC 守护, 避免劫持设备访问. */
+  IFDEF(CONFIG_YSYXSOC,
+    if (in_sdram(addr)) {
+      word_t ret = host_read(sdram_to_host(addr), len);
+      IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
+      return ret;
+    }
+  )
   IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
   out_of_bound(addr);
   return 0;
@@ -144,10 +148,13 @@ word_t paddr_read(paddr_t addr, int len) {
 void paddr_write(paddr_t addr, int len, word_t data) {
   IFDEF(CONFIG_MTRACE, mtrace_write(addr, len, data));
   if (likely(in_pmem(addr))) { pmem_write(addr, len, data); return; }
-  /* ysyxSoC: SRAM/PSRAM/SDRAM 可写; MROM/Flash 只读, 静默丢弃写 (与只读介质一致) */
+  /* ysyxSoC: SRAM/PSRAM 可写; MROM/Flash 只读, 静默丢弃写 (与只读介质一致).
+   * SDRAM 仅 ysyxsoc 使用 (见 paddr_read 注释), 用 CONFIG_YSYXSOC 守护. */
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
   if (in_psram(addr)) { host_write(psram_to_host(addr), len, data); return; }
-  if (in_sdram(addr)) { host_write(sdram_to_host(addr), len, data); return; }
+  IFDEF(CONFIG_YSYXSOC,
+    if (in_sdram(addr)) { host_write(sdram_to_host(addr), len, data); return; }
+  )
   if (in_mrom(addr)) { return; }
   if (in_flash(addr)) { return; }
   IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
