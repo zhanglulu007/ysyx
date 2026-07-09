@@ -170,8 +170,9 @@ module ICache #(
   //   非Burst: arlen = 0,          addr = block_aligned_addr + refill_word*4
   //   不可缓存: arlen = 0,          addr = req_addr
   // ===================================================================
+  wire [31:0] refill_word_ext = {{(32-REFILL_CNT_BITS){1'b0}}, refill_word};
   wire [31:0] refill_word_addr;
-  assign refill_word_addr = {28'b0, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
+  assign refill_word_addr = refill_word_ext << 2;  // refill_word * 4, 始终 32 位
   wire [31:0] refill_araddr;
   assign refill_araddr = req_cacheable ?
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
