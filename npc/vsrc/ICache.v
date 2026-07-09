@@ -184,8 +184,10 @@ module ICache #(
 
   // 当前传输是否为最后一个 word:
   //   Burst 模式: bus_rlast 指示
-  //   非 Burst 模式: refill_word == NR_WORDS-1 时即为最后一个 word
-  wire is_last_word = is_burst ? bus_rlast : (refill_word == REFILL_CNT_BITS'(NR_WORDS-1));
+  //   非 Burst 可缓存: refill_word == NR_WORDS-1 时即为最后一个 word
+  //   不可缓存: 单拍即最后一拍
+  wire is_last_word = is_burst ? bus_rlast :
+                      req_cacheable ? (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) : 1'b1;
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
   wire do_refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
@@ -276,9 +278,10 @@ module ICache #(
               end
             end else begin
               // 非 Burst 模式 (单 beat):
-              //   不可缓存: 仅取一个 word, 立即回 IDLE
+              //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IDLE
               //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
               if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
+                // 最后一个 word 完成, 回 IDLE (refill_word 不需要再递增)
                 state <= IC_IDLE;
               end else begin
                 // 还有更多 word 需要取, 递增计数器, 发下一个 AR
