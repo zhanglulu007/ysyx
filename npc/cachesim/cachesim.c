@@ -391,7 +391,6 @@ int main(int argc, char *argv[]) {
     const char *rep_str = (cfg.replace == REPLACE_LRU) ? "LRU" : "random";
 
     /* 缺失代价描述 */
-    long displayed_miss_penalty = cfg.miss_penalty;
     char miss_penalty_desc[128];
     if (cfg.use_bus_txn && cfg.bus_width > 0) {
         int n_txn = cfg.block_size / cfg.bus_width;
