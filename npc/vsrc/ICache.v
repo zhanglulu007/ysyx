@@ -1,81 +1,71 @@
 // ICache - Instruction Cache
-//
-// 可配置参数:
+// 可配置块大小 (B4.md "支持更大的块大小")
 //   BLOCK_SIZE   = 4/8/16/32/64 字节 (2 的幂)
 //   NR_CACHE_BLK = cache 块总数 (2 的幂)
-//
-// 块大小 > 4B 时, 总线侧采用 AXI 突发传输 (arlen = BLOCK_SIZE/4 - 1)
-// 读回多 beat 数据后按 beat 序号写入存储阵列对应 word 位置.
-// CPU 侧 (IFU): 仍然只发单 beat 读请求 (一次性读出所需指令),
-//               ICache 在内部将多 beat 对应为正确的 word 返回.
-//
-// 地址划分 (块大小>4B 且组数>1):
-//   [31:tag_bits+index_bits]  tag
-//   [tag_bits+index_bits-1:offset_bits]  index
-//   [offset_bits-1:0]  offset
-//   其中 offset 的高位指示 word 索引: word_idx = offset[offset_bits-1:2]
+// 块大小 > 4B 时总线侧采用 AXI 突发传输 (arlen = WORDS_PER_BLOCK-1)
+// CPU 侧 (IFU) 仍然只发单 beat 读请求, ICache 内部将多 beat 映射为正确的 word 返回.
 
 module ICache #(
   parameter ADDR_WIDTH   = 32,
-  parameter BLOCK_SIZE   = 16,          // 字节 (2^OFFSET_BITS)
-  parameter OFFSET_BITS  = 2,          // log2(BLOCK_SIZE)
-  parameter NR_CACHE_BLK = 16,
-  parameter INDEX_BITS   = 4,          // log2(NR_CACHE_BLK)
-  parameter TAG_BITS     = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS,
-  parameter BUS_DATA_BYTES = 4         // AXI 数据位宽 (字节)
+  parameter BLOCK_SIZE   = 4,          // 字节 (2 的幂)
+  parameter NR_CACHE_BLK = 16         // cache 块总数 (2 的幂)
 ) (
-  input clk,
-  input rst,
+  input                clk,
+  input                rst,
 
   // ===== CPU 侧 (IFU): AXI4 AR/R 通道 =====
-  input             cpu_arvalid,
-  output            cpu_arready,
-  input  [31:0]     cpu_araddr,
-  input  [ 3:0]     cpu_arid,
-  input  [ 7:0]     cpu_arlen,
-  input  [ 2:0]     cpu_arsize,
-  input  [ 1:0]     cpu_arburst,
+  input                cpu_arvalid,
+  output               cpu_arready,
+  input         [31:0] cpu_araddr,
+  input         [ 3:0] cpu_arid,
+  input         [ 7:0] cpu_arlen,
+  input         [ 2:0] cpu_arsize,
+  input         [ 1:0] cpu_arburst,
 
-  output            cpu_rvalid,
-  input             cpu_rready,
-  output [31:0]     cpu_rdata,
-  output [ 1:0]     cpu_rresp,
-  output            cpu_rlast,
-  output [ 3:0]     cpu_rid,
+  output               cpu_rvalid,
+  input                cpu_rready,
+  output        [31:0] cpu_rdata,
+  output         [1:0] cpu_rresp,
+  output               cpu_rlast,
+  output         [3:0] cpu_rid,
 
   // ===== 总线侧 (AXIArbiter): AXI4 AR/R 通道 =====
-  output            bus_arvalid,
-  input             bus_arready,
-  output [31:0]     bus_araddr,
-  output [ 3:0]     bus_arid,
-  output [ 7:0]     bus_arlen,
-  output [ 2:0]     bus_arsize,
-  output [ 1:0]     bus_arburst,
+  output               bus_arvalid,
+  input                bus_arready,
+  output        [31:0] bus_araddr,
+  output         [3:0] bus_arid,
+  output         [7:0] bus_arlen,
+  output         [2:0] bus_arsize,
+  output         [1:0] bus_arburst,
 
-  input             bus_rvalid,
-  output            bus_rready,
-  input  [31:0]     bus_rdata,
-  input  [ 1:0]     bus_rresp,
-  input             bus_rlast,
-  input  [ 3:0]     bus_rid,
+  input                bus_rvalid,
+  output               bus_rready,
+  input         [31:0] bus_rdata,
+  input          [1:0] bus_rresp,
+  input                bus_rlast,
+  input          [3:0] bus_rid,
 
   // ===== 性能计数器观测端口 (仅仿真用) =====
-  output icache_access,      // 一次取指访问 (IC_LOOKUP)
-  output icache_hit,         // 命中 (IC_LOOKUP: 可缓存且命中)
-  output icache_miss,        // 缺失 (IC_LOOKUP: 可缓存但未命中)
-  output icache_uncache,     // 不可缓存访问 (IC_LOOKUP)
-  output icache_refill_req,  // 向总线发起一次回填/直通读请求 (IC_REFILL_AR)
-  output icache_wait_ar,     // 处于等待总线 AR 握手状态 (IC_REFILL_AR)
-  output icache_wait_r       // 处于等待总线 R  握手状态 (IC_REFILL_R)
+  output               icache_access,
+  output               icache_hit,
+  output               icache_miss,
+  output               icache_uncache,
+  output               icache_refill_req,
+  output               icache_wait_ar,
+  output               icache_wait_r
 );
 
   // ===================================================================
-  // 派生参数
+  // 派生参数 (全部由 BLOCK_SIZE / NR_CACHE_BLK 自动推导, 保证一致性)
   // ===================================================================
-  // 每 cache 块所含的 32 位字数
+  localparam OFFSET_BITS  = $clog2(BLOCK_SIZE);   // log2(块大小)
+  localparam INDEX_BITS   = $clog2(NR_CACHE_BLK); // log2(块数)
+  localparam TAG_BITS     = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;
+
+  // 每 cache 块所含的 32 位字数 (BLOCK_SIZE 和 4 均为 2 的幂, 除法可简化)
   localparam WORDS_PER_BLOCK = BLOCK_SIZE / 4;
 
-  // word 索引位数: 指示 ICache 块内第几个 32 位字
+  // word 索引位数 (指示块内第几个 32 位字)
   localparam WORD_IDX_BITS =
     (WORDS_PER_BLOCK <= 1) ? 0 :
     (WORDS_PER_BLOCK == 2) ? 1 :
@@ -84,7 +74,6 @@ module ICache #(
 
   // beat 计数器位宽: 与 WORD_IDX_BITS 保持一致
   localparam BEAT_CNT_WIDTH = (WORD_IDX_BITS > 0) ? WORD_IDX_BITS : 1;
-
   localparam BEAT_CNT_ZERO  = {BEAT_CNT_WIDTH{1'b0}};
 
   // ===================================================================
@@ -131,19 +120,18 @@ module ICache #(
   reg [ 3:0] req_arid;
 
   // 地址拆解 (基于锁存的 req_addr)
-  // req_offset: 块内字节偏移 (仅用于 debug)
-  // req_index:  cache 索引
-  // req_tag:    tag 比较
+  // OFFSET_BITS >= INDEX_BITS >= 1, 故 OFFSET_BITS-1 >= 0,
+  //   且 OFFSET_BITS >= 2 (BLOCK_SIZE>=4), 故 [OFFSET_BITS-1:2] 始终正向.
   wire [OFFSET_BITS-1:0]        req_offset = req_addr[OFFSET_BITS-1:0];
   wire [INDEX_BITS-1:0]         req_index  = req_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
   wire [TAG_BITS-1:0]           req_tag    = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
 
   // req_word_idx: 取指地址在 cache 块内的 word 索引 (0-based, 每个 word=4B)
-  // BLOCK_SIZE=4 (WORDS_PER_BLOCK=1): word 索引恒为 0
-  // BLOCK_SIZE>4: 从 addr[OFFSET_BITS-1:2] 提取 (OFFSET_BITS>=3, 故 OFFSET_BITS-1>=2, 范围始终正向)
-  localparam REQ_WORD_HI = (WORDS_PER_BLOCK == 1) ? 2 : (OFFSET_BITS - 1);
+  // BLOCK_SIZE=4  (WORDS_PER_BLOCK=1, OFFSET_BITS=2): word 索引恒为 0
+  // BLOCK_SIZE=16 (WORDS_PER_BLOCK=4, OFFSET_BITS=4): [3:2] 2-bit
+  // WORDS_PER_BLOCK>1 时, OFFSET_BITS>=3, 故 OFFSET_BITS-1>=2, range 始终正向.
   wire [BEAT_CNT_WIDTH-1:0] req_word_idx =
-    (WORDS_PER_BLOCK == 1) ? {BEAT_CNT_WIDTH{1'b0}} : req_addr[REQ_WORD_HI:2];
+    (WORDS_PER_BLOCK == 1) ? {BEAT_CNT_WIDTH{1'b0}} : req_addr[OFFSET_BITS-1:2];
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
   wire req_cacheable = (req_addr[31:28] == 4'h3) ||
@@ -189,19 +177,24 @@ module ICache #(
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
   //   命中: IC_LOOKUP 当拍直出 cache 数据 + OK resp + last;
-  //   缺失: IC_REFILL_R 中当 beat_cnt 匹配 req_word_idx 时, 用该 beat 的数据应答 IFU
-  //         即使 req_word 不在最后一个 beat, 也先放通 (IFU 可继续执行)
+  //   缺失: IC_REFILL_R 中当 beat_cnt 匹配 req_word 时, 用该 beat 的数据应答 IFU
+  //         (即使 req_word 不在最后一个 beat, 也先放通 IFU 可继续执行)
   //        refill_done (rlast 握手的最后一拍) 也应答 IFU (兜底, 确保不会丢失响应)
   // ===================================================================
   wire lookup_hit      = (state == IC_LOOKUP)   && req_cacheable &&  hit;
-  wire refill_hit_req  = (state == IC_REFILL_R) && bus_rvalid && (refill_beat_cnt == req_word_idx);
   wire refill_done     = (state == IC_REFILL_R) && bus_rvalid && bus_rready && bus_rlast;
 
-  assign cpu_rvalid = lookup_hit || refill_hit_req || refill_done;
-  assign cpu_rdata  = lookup_hit ? cache_data[req_index][req_word_idx] :
-                      (refill_hit_req || refill_done) ? bus_rdata : 32'b0;
-  assign cpu_rresp  = refill_done ? bus_rresp :  // 透传下游错误标志
-                      2'b00;                       // 命中: 无错误
+  // BLOCK_SIZE=4 (WORDS_PER_BLOCK=1): 从 cache_data[req_index][0] 取数
+  // BLOCK_SIZE>4: 从 cache_data[req_index][req_word_idx] 取数
+  //   注: 用 ternary 而非 slice 以避免 BLOCK_SIZE=4 时出现 [0:0] 歧义
+  wire [BEAT_CNT_WIDTH-1:0] req_word_idx_for_data =
+    (WORDS_PER_BLOCK == 1) ? {BEAT_CNT_WIDTH{1'b0}} : req_word_idx;
+
+  assign cpu_rvalid = lookup_hit || refill_done;
+  assign cpu_rdata  = lookup_hit ? cache_data[req_index][req_word_idx_for_data] :
+                      refill_done ? bus_rdata : 32'b0;
+  assign cpu_rresp  = refill_done ? bus_rresp :
+                      2'b00;
   assign cpu_rlast  = 1'b1;                       // CPU 侧始终单 beat
   assign cpu_rid    = req_arid;
 
