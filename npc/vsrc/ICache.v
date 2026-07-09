@@ -77,6 +77,7 @@ module ICache #(
   localparam INDEX_BITS      = $clog2(NR_CACHE_BLK);    // 索引位宽
   localparam TAG_BITS        = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;
   localparam REFILL_CNT_BITS = (NR_WORDS > 1) ? $clog2(NR_WORDS) : 1;  // refill word 计数器位宽
+  localparam REFILL_ADDR_PAD = 32 - REFILL_CNT_BITS - 2;  // refill_word 扩展至 32-bit 地址的零填充位数
   localparam BURST_LEN       = NR_WORDS - 1;  // AXI arlen = 节拍数 - 1
 
   // ===================================================================
@@ -171,7 +172,7 @@ module ICache #(
   //   不可缓存: arlen = 0,          addr = req_addr
   // ===================================================================
   wire [31:0] refill_word_addr;
-  assign refill_word_addr = {28'b0, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
+  assign refill_word_addr = {{REFILL_ADDR_PAD{1'b0}}, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
   wire [31:0] refill_araddr;
   assign refill_araddr = req_cacheable ?
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
