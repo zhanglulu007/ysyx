@@ -1,25 +1,3 @@
-######################################################################################
-# ARCH=riscv32e-cachesim
-#
-# 构建与 riscv32e-ysyxsoc 完全相同的镜像 (同样的链接脚本/源码/-march), 但 run 目标
-# 不跑 NPC, 而是:
-#   1. 用 riscv32-ysyxsoc 配置的 NEMU 跑该镜像, 生成完整 itrace (PC 序列)
-#   2. 调用 npc/cachesim 对该 itrace 评估 icache 缺失次数 / AMAT / TMT
-#
-# 设计依据: B4.md "实现 cachesim" (讲义 768-793 行):
-#   - 给定 PC 序列, cache 的缺失次数与访存内容无关, 只需维护元数据即可统计.
-#   - NEMU 生成 PC 序列的速度远高于 ysyxSoC 仿真, 适合设计空间探索.
-#
-# 可配置参数 (覆盖默认值即可, 便于批量评估):
-#   CACHESIM_WAYS, CACHESIM_BLOCK, CACHESIM_TOTAL, CACHESIM_REPLACE,
-#   CACHESIM_MISS_PENALTY, CACHESIM_ACCESS_TIME
-#
-# 用法:
-#   make ARCH=riscv32e-cachesim run mainargs=test
-#   make ARCH=riscv32e-cachesim run mainargs=test \
-#       CACHESIM_WAYS=2 CACHESIM_BLOCK=16 CACHESIM_TOTAL=64
-######################################################################################
-
 include $(AM_HOME)/scripts/isa/riscv.mk
 include $(AM_HOME)/scripts/platform/ysyxsoc.mk
 
@@ -49,20 +27,9 @@ NEMU_HOME ?= $(abspath $(AM_HOME)/../nemu)
 NPC_HOME  ?= $(abspath $(AM_HOME)/../npc)
 
 NEMU_BIN  := $(NEMU_HOME)/build/riscv32-nemu-interpreter
-# NEMU 用 -l 指定文本日志文件, 同时派生 .bin 输出二进制 RLE itrace:
-#   -l x.itrace.log  ->  x.itrace.log (文本日志) + x.itrace.bin (二进制 RLE, cachesim 输入)
 NEMU_LOG  := $(IMAGE).itrace.log
 ITRACE    := $(IMAGE).itrace.bin
 
-# ---------------------------------------------------------------------------- #
-# run 目标: NEMU 生成二进制 RLE itrace -> cachesim 评估
-#
-# 覆盖 ysyxsoc.mk 中的 run 目标 (它原本是跑 NPC). 这里改为:
-#   1. 确保 NEMU 用 riscv32-ysyxsoc 配置编译 (复位PC=0x30000000, 启用 CLINT/UART16550)
-#   2. NEMU 以 batch 模式运行镜像, -l 生成二进制 RLE itrace (讲义 "压缩 trace":
-#      定长 record pc+count, 顺序段合并; 文本日志与二进制 trace 分离)
-#   3. npc/cachesim 对二进制 itrace 评估 (cachesim 自动识别 .bin 后缀)
-# ---------------------------------------------------------------------------- #
 run: insert-arg
 	@echo "=================================================================="
 	@echo " [cachesim] 步骤 1/3: 用 ysyxsoc 配置的 NEMU 生成二进制 RLE itrace"

@@ -1,19 +1,3 @@
-/***************************************************************************************
-* UART16550 设备模型 —— 供 riscv32e-ysyxsoc 镜像在 NEMU 上运行
-*
-* 背景: ysyxSoC 的 AM 程序通过 UART16550 (基地址 0x10000000) 输出字符:
-*   trm.c putch():  while ((*(UART_BASE + LSR) & THRE) == 0);  // 轮询 THRE
-*                   *(UART_BASE + TX) = ch;                     // 写入发送寄存器
-*   trm.c uart_init(): 写 LCR/IER 配置除数 (否则 THRE 被永久屏蔽, putch 死锁)
-* 若 NEMU 不提供 UART, putch 会因读到 0 而 THRE 永不置位, 陷入死循环.
-*
-* 实现策略 (功能级最小模型, 不仿真 SoC 细节):
-*   - 读 LSR (offset 0x5) 恒返回 THRE|TEMT 置位 (0x60), 使 putch 立即返回不阻塞.
-*   - 写 TX (offset 0x0) 输出字符到 stderr (与 NEMU serial.c 一致).
-*   - 其余寄存器 (LCR/IER/FCR 等) 的读返回 0, 写静默接收 (配合 uart_init 配置流程).
-*   - DR 位 (offset 0x5, bit0) 不置位, 表示无输入数据 (ioe.c 的 UART_RX 读到 0xFF).
-***************************************************************************************/
-
 #include <device/map.h>
 #include <utils.h>
 

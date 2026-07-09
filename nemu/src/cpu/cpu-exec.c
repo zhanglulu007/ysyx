@@ -86,23 +86,7 @@ void display_iringbuf() {
   printf("\n");
 }
 #endif
-/* ===================================================================== *
- * 二进制 RLE itrace 输出 (讲义 B4.md "压缩 trace" 782-788 行)
- *
- * 格式: 一串定长 record, 每个 record 8 字节:
- *   uint32_t pc;    // 该顺序段的起始 PC
- *   uint32_t count; // 该段连续顺序执行的指令数 (PC = pc, pc+4, ..., pc+4*(count-1))
- *
- * 编码规则: 一个 record 表示一段 PC 连续递增的顺序执行. 当发生跳转
- * (当前指令的动态下一条 PC != 静态下一条 PC, 即 dnpc != snpc) 时,
- * 当前 record 结束, 新 record 从新 PC 开始. 因此 record 之间隐含一次跳转,
- * 解析时每个 record 的 pc 即该段绝对起始, 无需 delta 计算.
- *
- * 与原文本 trace (每条指令一行 "0xPC: bytes disasm") 相比:
- *   - 二进制: 每条顺序指令从 ~37 字节文本 -> 平均 <1 字节 (8字节/record 平摊)
- *   - RLE:    顺序段合并, record 数远小于指令数
- * 对顺序执行占比高的程序, 文件体积可压缩数十倍.
- * ===================================================================== */
+
 #ifdef CONFIG_ITRACE
 static FILE *itrace_fp = NULL;       /* RLE 输出文件 (复用 -l 指定的 log_fp) */
 static bool  itrace_active = false;  /* 是否启用 RLE 输出 */
@@ -120,10 +104,6 @@ static void itracerle_flush_seg() {
   rle_have_seg = false;
 }
 
-/* 每条指令执行后调用:
- *   pc   = 本条指令 PC
- *   snpc = 本条指令的静态下一条 PC (pc + 指令长度)
- *   dnpc = 本条指令的动态下一条 PC (实际跳转目标) */
 static void itracerle_step(vaddr_t pc, vaddr_t snpc, vaddr_t dnpc) {
   if (!itrace_active) return;
   /* 顺序连续判定: 本条 pc == 上一条的静态下一条 snpc (即上一条未跳转, 顺序流到本条) */
