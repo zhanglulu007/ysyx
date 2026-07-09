@@ -113,9 +113,6 @@ module ICache(
   wire [TAG_BITS-1:0]    req_tag    = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
   wire [BEAT_BITS-1:0]   req_word   = req_offset[OFFSET_BITS-1:2];  // 块内第几个字
 
-  // 块对齐基地址 (低 OFFSET_BITS 位清零)
-  wire [31:0] block_base = {req_addr[31:OFFSET_BITS], {OFFSET_BITS{1'b0}}};
-
   // 可缓存地址判定: Flash(0x3...), PSRAM(0x8...), SDRAM(0xa...) (B4.md 436 行)
   wire req_cacheable = (req_addr[31:28] == 4'h3) ||
                        (req_addr[31:28] == 4'h8) ||
@@ -141,17 +138,19 @@ module ICache(
     end else if (state == IC_IDLE) begin
       beat_cnt <= 0;
     end else if (state == IC_REFILL_R && bus_rvalid && bus_rready) begin
-      beat_cnt <= beat_cnt + 1'b1;
+      beat_cnt <= beat_cnt + 2'd1;
     end
   end
 
   // ===================================================================
   // 总线侧 AR 通道 (独立传输事务: 每次 arlen=0, 单 beat)
   //
-  //   可缓存缺失: 发送 BEATS 次独立 AR, 地址为 block_base + beat_cnt*BUS_WIDTH
+  //   可缓存缺失: 发送 BEATS 次独立 AR, 地址为 req_addr 块基址 + beat_cnt*BUS_WIDTH
   //   不可缓存:   发送 1 次 AR, 地址为原始 req_addr
   // ===================================================================
-  // beat_addr = block_base + beat_cnt * BUS_WIDTH (=4)\n// 用拼接实现: 块基址低 OFFSET_BITS 位为 0, beat 偏移填入其中\nwire [31:0] beat_addr = {block_base[31:OFFSET_BITS],\n                         block_base[OFFSET_BITS-1:BEAT_BITS+2],\n                         beat_cnt, 2'b0};
+  wire [31:0] beat_offset = {28'b0, beat_cnt, 2'b0};  // beat_cnt * BUS_WIDTH(=4)
+  wire [31:0] block_base  = {req_addr[31:OFFSET_BITS], {OFFSET_BITS{1'b0}}};
+  wire [31:0] beat_addr   = block_base + beat_offset;
 
   assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
   assign bus_araddr  = req_cacheable ? beat_addr : req_addr;
@@ -167,7 +166,7 @@ module ICache(
 
   wire refill_beat_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready;
   // BEATS 为 2 的幂, BEATS-1 = {BEAT_BITS{1'b1}} (全 1), 故直接用全 1 比较
-wire is_last_beat     = (beat_cnt == {BEAT_BITS{1'b1}});
+  wire is_last_beat     = refill_beat_done && (beat_cnt == BEATS[BEAT_BITS-1:0]-2'd1);
 
   // 回填: 仅在可缓存 + 无总线错误时, 将 bus_rdata 写入对应 word slot
   wire do_refill = refill_beat_done && req_cacheable && !bus_rresp[1];
@@ -214,8 +213,12 @@ wire is_last_beat     = (beat_cnt == {BEAT_BITS{1'b1}});
 
   // refill_done 时若请求字恰为当前 beat, 直接取 bus_rdata (组合逻辑路径);
   // 否则取已写入 cache_data 的值 (来自先前 beat)
+  // 注意: do_finalize 与本拍 R 握手同时发生, refill_done=1 时 tag/valid 尚未更新
+  //       但 cache_data[refill_idx] 已在当拍被 do_refill 写入, 所以 refill_done 时
+  //       如果 req_word == beat_cnt, 取 bus_rdata 也可以直接取 cache_data[{req_index, req_word}]
+  //       这里统一从 cache_data 读取, 因为 do_refill 当拍写入的 cache_data 在 next cycle 才可见
   assign cpu_rdata  = lookup_hit  ? cache_data[hit_idx] :
-                      refill_done ? ((req_word == beat_cnt) ? bus_rdata : cache_data[{req_index, req_word}]) :
+                      refill_done ? bus_rdata :  // 本拍回填的值直接给 IFU
                       uncache_done? bus_rdata :
                       32'b0;
 
@@ -268,8 +271,8 @@ wire is_last_beat     = (beat_cnt == {BEAT_BITS{1'b1}});
             if (!req_cacheable) begin
               // 不可缓存: 单 beat 直通, 应答后回 IDLE
               state <= IC_IDLE;
-            end else if (beat_cnt == {BEAT_BITS{1'b1}}) begin
-              // 可缓存缺失, 最后一个 beat: tag/valid 本拍已更新, 应答 IFU, 回 IDLE
+            end else if (beat_cnt == BEATS[BEAT_BITS-1:0]-2'd1) begin
+              // 可缓存缺失, 最后一个 beat (BEATS-1): tag/valid 本拍更新, 应答 IFU, 回 IDLE
               state <= IC_IDLE;
             end else begin
               // 可缓存缺失, 非末 beat: 继续发下一个独立 AR
