@@ -50,8 +50,8 @@ module ICache(
   localparam ADDR_WIDTH   = 32;
   localparam BLOCK_SIZE   = 16;          // 字节 (2^OFFSET_BITS)
   localparam OFFSET_BITS  = 4;          // log2(BLOCK_SIZE)
-  localparam NR_CACHE_BLK = 16;         // 2^INDEX_BITS
-  localparam INDEX_BITS   = 4;          // log2(NR_CACHE_BLK)
+  localparam NR_CACHE_BLK = 4;         // 2^INDEX_BITS
+  localparam INDEX_BITS   = 2;          // log2(NR_CACHE_BLK)
   localparam TAG_BITS     = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;  // = 26
 
   // ===================================================================
