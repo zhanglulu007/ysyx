@@ -264,31 +264,39 @@ module ICache #(
 
         IC_LOOKUP: begin
           if (req_cacheable && hit) begin
+            // 命中: 本拍已组合逻辑应答 IFU, 次拍回 IDLE
             state <= IC_IDLE;
           end else begin
+            // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
             state       <= IC_REFILL_AR;
           end
         end
 
         IC_REFILL_AR: begin
+          // 等待总线侧 AR 握手
           if (bus_arready) state <= IC_REFILL_R;
         end
 
         IC_REFILL_R: begin
           if (bus_rvalid && bus_rready) begin
             if (is_burst) begin
+              // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
               if (bus_rlast) begin
                 state <= IC_IDLE;
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
             end else if (!req_cacheable) begin
+              // 不可缓存: 单 beat 透传完成, 直接回 IDLE
               state <= IC_IDLE;
             end else begin
+              // 可缓存非 Burst 模式 (单 beat 逐 word 填充)
               if (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
+                // 最后一个 word 完成, 回 IDLE
                 state <= IC_IDLE;
               end else begin
+                // 还有更多 word 需要取, 递增计数器, 发下一个 AR
                 refill_word <= refill_word + 1'b1;
                 state       <= IC_REFILL_AR;
               end
