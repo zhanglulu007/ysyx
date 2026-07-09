@@ -139,16 +139,13 @@ module ICache #(
   wire [TAG_BITS-1:0]           req_tag    = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
 
   // req_word_idx: 取指地址在 cache 块内的 word 索引 (0-based, 每个 word=4B)
-  // 当 BLOCK_SIZE=4 (WORDS_PER_BLOCK=1) 时, word 索引恒为 0
-  // 当 BLOCK_SIZE>4 时, 从 addr[OFFSET_BITS-1:2] 提取
-  //   例如 BLOCK_SIZE=8 (OFFSET_BITS=3): [2:2] 1-bit, BLOCK_SIZE=16: [3:2] 2-bit
+  // 单-word 块 (BLOCK_SIZE=4) 恒为 0; 多-word 块从 addr[OFFSET_BITS-1:2] 提取
+  wire [BEAT_CNT_WIDTH-1:0] req_word_idx;
   generate
     if (WORDS_PER_BLOCK == 1) begin : gen_word_idx_1
-      // 单 word 块: word 索引恒为 0
       assign req_word_idx = {BEAT_CNT_WIDTH{1'b0}};
     end else begin : gen_word_idx_n
-      // 多 word 块: 从 offset 高位提取 word 索引
-      // OFFSET_BITS-1 >= 2, 故 range[OFFSET_BITS-1:2] 始终正向
+      // 多 word 块: OFFSET_BITS-1 >= 2, range[OFFSET_BITS-1:2] 始终正向
       assign req_word_idx = req_addr[OFFSET_BITS-1:2];
     end
   endgenerate
