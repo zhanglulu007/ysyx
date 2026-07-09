@@ -129,9 +129,16 @@ module ICache #(
   // req_word_idx: 取指地址在 cache 块内的 word 索引 (0-based, 每个 word=4B)
   // BLOCK_SIZE=4  (WORDS_PER_BLOCK=1, OFFSET_BITS=2): word 索引恒为 0
   // BLOCK_SIZE=16 (WORDS_PER_BLOCK=4, OFFSET_BITS=4): [3:2] 2-bit
-  // WORDS_PER_BLOCK>1 时, OFFSET_BITS>=3, 故 OFFSET_BITS-1>=2, range 始终正向.
-  wire [BEAT_CNT_WIDTH-1:0] req_word_idx =
-    (WORDS_PER_BLOCK == 1) ? {BEAT_CNT_WIDTH{1'b0}} : req_addr[OFFSET_BITS-1:2];
+  // 用 generate 块分离两种情形, 避免 WORDS_PER_BLOCK==1 时出现 [1:2] 反向 slice.
+  localparam REQ_WORD_W = (WORD_IDX_BITS > 0) ? WORD_IDX_BITS : 1;
+  wire [REQ_WORD_W-1:0] req_word_idx;
+  generate
+    if (WORDS_PER_BLOCK == 1) begin : gen_req_word_1
+      assign req_word_idx = {REQ_WORD_W{1'b0}};
+    end else begin : gen_req_word_n
+      assign req_word_idx = req_addr[OFFSET_BITS-1:2];
+    end
+  endgenerate
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
   wire req_cacheable = (req_addr[31:28] == 4'h3) ||
