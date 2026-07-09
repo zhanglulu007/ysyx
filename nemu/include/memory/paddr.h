@@ -35,10 +35,12 @@ bool in_mrom(paddr_t addr);
 bool in_sram(paddr_t addr);
 bool in_flash(paddr_t addr);
 bool in_psram(paddr_t addr);
+bool in_sdram(paddr_t addr);
 uint8_t* mrom_to_host(paddr_t paddr);
 uint8_t* sram_to_host(paddr_t paddr);
 uint8_t* flash_to_host(paddr_t paddr);
 uint8_t* psram_to_host(paddr_t paddr);
+uint8_t* sdram_to_host(paddr_t paddr);
 
 word_t paddr_read(paddr_t addr, int len);
 void paddr_write(paddr_t addr, int len, word_t data);

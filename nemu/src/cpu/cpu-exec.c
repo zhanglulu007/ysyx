@@ -17,7 +17,9 @@
 #include <cpu/decode.h>
 #include <cpu/difftest.h>
 #include <locale.h>
-#include "../monitor/sdb/sdb.h" 
+#include <string.h>
+#include <stdio.h>
+#include "../monitor/sdb/sdb.h"
 
 /* The assembly code of instructions executed is only output to the screen
  * when the number of instructions executed is less than this value.
@@ -84,10 +86,88 @@ void display_iringbuf() {
   printf("\n");
 }
 #endif
+
+#ifdef CONFIG_ITRACE
+static FILE *itrace_fp = NULL;       /* RLE 输出文件 (复用 -l 指定的 log_fp) */
+static bool  itrace_active = false;  /* 是否启用 RLE 输出 */
+static vaddr_t rle_seg_pc = 0;       /* 当前顺序段的起始 PC */
+static uint32_t rle_seg_cnt = 0;     /* 当前顺序段已累计的指令数 */
+static bool rle_have_seg = false;    /* 当前是否有未 flush 的段 */
+static vaddr_t rle_prev_snpc = 0;    /* 上一条指令的静态下一条 PC (用于判断顺序连续) */
+
+/* flush 当前顺序段为一个 record 写入文件 */
+static void itracerle_flush_seg() {
+  if (!itrace_active || !rle_have_seg) return;
+  /* 定长 record: pc(4) + count(4) */
+  fwrite(&rle_seg_pc,   sizeof(rle_seg_pc),   1, itrace_fp);
+  fwrite(&rle_seg_cnt,  sizeof(rle_seg_cnt),  1, itrace_fp);
+  rle_have_seg = false;
+}
+
+static void itracerle_step(vaddr_t pc, vaddr_t snpc, vaddr_t dnpc) {
+  if (!itrace_active) return;
+  /* 顺序连续判定: 本条 pc == 上一条的静态下一条 snpc (即上一条未跳转, 顺序流到本条) */
+  if (rle_have_seg && pc == rle_prev_snpc) {
+    rle_seg_cnt++;
+  } else {
+    /* 段首 或 上一条发生跳转(其 dnpc != snpc, 故本条 pc != rle_prev_snpc): 开新段 */
+    itracerle_flush_seg();
+    rle_seg_pc = pc;
+    rle_seg_cnt = 1;
+    rle_have_seg = true;
+  }
+  rle_prev_snpc = snpc;  /* 记录本条 snpc 供下一条判定 */
+  (void)dnpc;            /* dnpc 由下一条的 pc 与 rle_prev_snpc 的比较间接体现 */
+}
+
+/* 初始化: 传入 -l 指定的 log 文件路径, 派生 .bin 路径并独立 fopen.
+ * 例: log_path="run.log" -> itrace 写到 "run.bin"; "/tmp/x.txt" -> "/tmp/x.bin".
+ * log_path 为 NULL 时不启用 RLE 输出. */
+void init_itracerle(const char *log_path) {
+  itrace_fp = NULL;
+  itrace_active = false;
+  rle_seg_pc = 0;
+  rle_seg_cnt = 0;
+  rle_have_seg = false;
+  rle_prev_snpc = 0;
+  if (log_path == NULL) return;
+
+  /* 派生 .bin 路径: 去掉原后缀(若有), 加 .bin */
+  char bin_path[4096];
+  size_t n = strlen(log_path);
+  if (n >= sizeof(bin_path)) n = sizeof(bin_path) - 5;
+  memcpy(bin_path, log_path, n);
+  bin_path[n] = '\0';
+  /* 去掉最后一个 '.' 之后的扩展名 (仅当 '.' 在最后一个路径分隔符之后) */
+  char *dot = strrchr(bin_path, '.');
+  const char *slash = strrchr(bin_path, '/');
+  if (dot && (!slash || dot > slash)) *dot = '\0';
+  if (strlen(bin_path) + 4 >= sizeof(bin_path)) return;
+  strcat(bin_path, ".bin");
+
+  itrace_fp = fopen(bin_path, "wb");
+  if (itrace_fp == NULL) {
+    fprintf(stderr, "[itracerle] cannot open %s for writing, RLE itrace disabled\n", bin_path);
+    return;
+  }
+  itrace_active = true;
+  Log("binary RLE itrace -> %s", bin_path);
+}
+
+/* 程序结束/退出时调用: flush 最后一个未写出的段 */
+void finish_itracerle() {
+  if (!itrace_active) return;
+  itracerle_flush_seg();
+  if (itrace_fp) { fflush(itrace_fp); fclose(itrace_fp); }
+  itrace_active = false;
+}
+#endif /* CONFIG_ITRACE */
+
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 
-#ifdef CONFIG_ITRACE_COND
-  if (ITRACE_COND) { log_write("%s\n", _this->logbuf); }
+#ifdef CONFIG_ITRACE
+  /* 二进制 RLE itrace: 用本条 pc/snpc/dnpc 推进 RLE 状态机 */
+  itracerle_step(_this->pc, _this->snpc, _this->dnpc);
 #endif
 
   if (g_print_step) { IFDEF(CONFIG_ITRACE, puts(_this->logbuf)); }
