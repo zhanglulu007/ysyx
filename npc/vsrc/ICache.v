@@ -17,7 +17,7 @@
 
 module ICache #(
   parameter ADDR_WIDTH   = 32,
-  parameter BLOCK_SIZE   = 4,          // 字节 (2^OFFSET_BITS)
+  parameter BLOCK_SIZE   = 16,          // 字节 (2^OFFSET_BITS)
   parameter OFFSET_BITS  = 2,          // log2(BLOCK_SIZE)
   parameter NR_CACHE_BLK = 16,
   parameter INDEX_BITS   = 4,          // log2(NR_CACHE_BLK)
