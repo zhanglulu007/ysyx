@@ -215,8 +215,17 @@ module ICache #(
   wire [31:0] hit_word;
   assign hit_word = cache_data[req_index][(req_word_idx * 32) +: 32];
 
+  // refill_done 时, 最后一个 word 可能不是 CPU 请求的 word (当 BLOCK_SIZE>4).
+  // 若最后一个 word 恰好是请求 word, 直接用 bus_rdata; 否则从已写入的 cache 中读取.
+  // 不可缓存 (req_cacheable=0) 时 refill 仅取一个 word, 直通 bus_rdata.
+  wire [31:0] refill_word_data;
+  assign refill_word_data = req_cacheable ?
+      ((refill_word == req_word_idx) ? bus_rdata
+                                     : cache_data[req_index][(req_word_idx * 32) +: 32]) :
+      bus_rdata;
+
   assign cpu_rvalid = lookup_hit || refill_done;
-  assign cpu_rdata  = lookup_hit ? hit_word : bus_rdata;
+  assign cpu_rdata  = lookup_hit ? hit_word : refill_word_data;
   assign cpu_rresp  = refill_done ? bus_rresp : 2'b00;
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
   assign cpu_rid    = req_arid;
@@ -266,9 +275,10 @@ module ICache #(
                 refill_word <= refill_word + 1'b1;
               end
             end else begin
-              // 非 Burst 模式 (单 beat): rlast 恒为 1
-              if (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                // 最后一个 word 完成, 回 IDLE
+              // 非 Burst 模式 (单 beat):
+              //   不可缓存: 仅取一个 word, 立即回 IDLE
+              //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
+              if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
                 state <= IC_IDLE;
               end else begin
                 // 还有更多 word 需要取, 递增计数器, 发下一个 AR
