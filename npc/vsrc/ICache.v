@@ -7,7 +7,7 @@
 
 module ICache #(
   parameter ADDR_WIDTH   = 32,
-  parameter BLOCK_SIZE   = 4,          // 字节 (2 的幂)
+  parameter BLOCK_SIZE   = 16,          // 字节 (2 的幂)
   parameter NR_CACHE_BLK = 16         // cache 块总数 (2 的幂)
 ) (
   input                clk,
