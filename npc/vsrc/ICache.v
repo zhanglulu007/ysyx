@@ -206,7 +206,7 @@ module ICache #(
   //   非Burst可缓存: refill_word == NR_WORDS-1 时即为最后一个 word
   //   不可缓存:     单 beat, rlast 恒为 1, 直接视为最后一个
   wire is_last_word = is_burst ? bus_rlast :
-                      (!req_cacheable) ? bus_rlast :
+                      (!req_cacheable) ? 1'b1 :    // 不可缓存: 单 beat 透传, 总是最后一个
                       (refill_word == REFILL_CNT_BITS'(NR_WORDS-1));
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
