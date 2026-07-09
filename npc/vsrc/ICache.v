@@ -133,10 +133,10 @@ module ICache #(
   endgenerate
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
-  wire req_flash  = (req_addr[31:28] == 4'h3);
+  //wire req_flash  = (req_addr[31:28] == 4'h3);
   wire req_psram  = (req_addr[31:28] == 4'h8);
   wire req_sdram  = (req_addr[31:28] == 4'ha);
-  wire req_cacheable = req_flash || req_psram || req_sdram;
+  wire req_cacheable = req_psram || req_sdram;
 
   // 命中判定 (IC_LOOKUP 阶段对锁存地址计算)
   wire hit = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
