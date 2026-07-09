@@ -166,7 +166,7 @@ module ICache(
   assign bus_rready = (state == IC_REFILL_R);
 
   wire refill_beat_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready;
-  wire is_last_beat     = (beat_cnt == BEATS-1'd1);  // 对不可缓存 beat_cnt=0 不匹配
+  wire is_last_beat     = (beat_cnt == BEATS[BEAT_BITS-1:0]-1'd1);  // 对不可缓存 beat_cnt=0 不匹配
 
   // 回填: 仅在可缓存 + 无总线错误时, 将 bus_rdata 写入对应 word slot
   wire do_refill = refill_beat_done && req_cacheable && !bus_rresp[1];
