@@ -199,7 +199,7 @@ module ICache #(
   //        refill_done (rlast 握手的最后一拍) 也应答 IFU (兜底, 确保不会丢失响应)
   // ===================================================================
   wire lookup_hit      = (state == IC_LOOKUP)   && req_cacheable &&  hit;
-  wire refill_hit_req  = (state == IC_REFILL_R) && (refill_beat_cnt == req_word_idx);
+  wire refill_hit_req  = (state == IC_REFILL_R) && bus_rvalid && (refill_beat_cnt == req_word_idx);
   wire refill_done     = (state == IC_REFILL_R) && bus_rvalid && bus_rready && bus_rlast;
 
   assign cpu_rvalid = lookup_hit || refill_hit_req || refill_done;
