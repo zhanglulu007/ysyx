@@ -256,7 +256,6 @@ module ICache #(
       case (state)
         IC_IDLE: begin
           if (cpu_arvalid && cpu_arready) begin
-            $display("[ICache] IDLE -> LOOKUP, addr=0x%08x", cpu_araddr);
             req_addr <= cpu_araddr;
             req_arid <= cpu_arid;
             state    <= IC_LOOKUP;
@@ -265,41 +264,31 @@ module ICache #(
 
         IC_LOOKUP: begin
           if (req_cacheable && hit) begin
-            $display("[ICache] LOOKUP -> HIT -> IDLE");
             state <= IC_IDLE;
           end else begin
-            $display("[ICache] LOOKUP -> REFILL_AR, cacheable=%0d", req_cacheable);
             refill_word <= {REFILL_CNT_BITS{1'b0}};
             state       <= IC_REFILL_AR;
           end
         end
 
         IC_REFILL_AR: begin
-          if (bus_arready) begin
-            $display("[ICache] REFILL_AR -> REFILL_R");
-            state <= IC_REFILL_R;
-          end
+          if (bus_arready) state <= IC_REFILL_R;
         end
 
         IC_REFILL_R: begin
           if (bus_rvalid && bus_rready) begin
             if (is_burst) begin
               if (bus_rlast) begin
-                $display("[ICache] REFILL_R (BURST last) -> IDLE");
                 state <= IC_IDLE;
               end else begin
-                $display("[ICache] REFILL_R (BURST beat)");
                 refill_word <= refill_word + 1'b1;
               end
             end else if (!req_cacheable) begin
-              $display("[ICache] REFILL_R (UNCACHE) -> IDLE");
               state <= IC_IDLE;
             end else begin
               if (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                $display("[ICache] REFILL_R (CACHE last w=%0d) -> IDLE", refill_word);
                 state <= IC_IDLE;
               end else begin
-                $display("[ICache] REFILL_R (CACHE w=%0d) -> REFILL_AR", refill_word);
                 refill_word <= refill_word + 1'b1;
                 state       <= IC_REFILL_AR;
               end
