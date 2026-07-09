@@ -14,7 +14,7 @@ AM_SRCS += riscv/npc/libgcc/div.S \
 # cachesim 评估参数 (可由命令行覆盖, 便于设计空间探索批量评估)
 # ---------------------------------------------------------------------------- #
 CACHESIM_WAYS         ?= 1        # 组相联路数 (1=直接映射)
-CACHESIM_BLOCK        ?= 4        # 块大小 (字节)
+CACHESIM_BLOCK        ?= 16        # 块大小 (字节)
 CACHESIM_TOTAL        ?= 16       # cache 块总数
 CACHESIM_REPLACE      ?= lru      # 替换算法: lru | random
 CACHESIM_MISS_PENALTY ?= 100      # 单次缺失代价 (周期)
