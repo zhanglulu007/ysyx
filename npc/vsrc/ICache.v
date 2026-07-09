@@ -166,7 +166,8 @@ module ICache(
   assign bus_rready = (state == IC_REFILL_R);
 
   wire refill_beat_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready;
-  wire is_last_beat     = (beat_cnt == BEATS[BEAT_BITS-1:0]-1'd1);  // 对不可缓存 beat_cnt=0 不匹配
+  // BEATS 为 2 的幂, BEATS-1 = {BEAT_BITS{1'b1}} (全 1), 故直接用全 1 比较
+wire is_last_beat     = (beat_cnt == {BEAT_BITS{1'b1}});
 
   // 回填: 仅在可缓存 + 无总线错误时, 将 bus_rdata 写入对应 word slot
   wire do_refill = refill_beat_done && req_cacheable && !bus_rresp[1];
@@ -267,7 +268,7 @@ module ICache(
             if (!req_cacheable) begin
               // 不可缓存: 单 beat 直通, 应答后回 IDLE
               state <= IC_IDLE;
-            end else if (beat_cnt == BEATS-1'd1) begin
+            end else if (beat_cnt == {BEAT_BITS{1'b1}}) begin
               // 可缓存缺失, 最后一个 beat: tag/valid 本拍已更新, 应答 IFU, 回 IDLE
               state <= IC_IDLE;
             end else begin
