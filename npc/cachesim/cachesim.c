@@ -15,13 +15,22 @@
  *   |        tag          | index|  offset  |      block_size = 2^m
  *   +---------------------+------+----------+      index 位数 n = log2(total/ways)
  *
+ * 缺失代价模型 (讲义 B4.md 796-826 行 "块大小和缺失代价"):
+ *   SDRAM 单次独立总线传输事务开销 = a + b + c + d (4 阶段),
+ *   其中 a=AR 握手, b=状态转移, c=SDRAM 读数据, d=R 握手.
+ *   总线数据位宽 = bus_width 字节, cache 块大小 = block_size 字节,
+ *   独立传输方式下需要 beats = block_size / bus_width 次独立总线事务,
+ *   总缺失代价 = beats × miss_penalty_per_beat.
+ *   本版本默认块大小为总线数据位宽的 4 倍 (16B / 4B 总线 = 4 beats).
+ *
  * 用法:
  *   ./cachesim [选项] <itrace文件>
  *     --ways=<n>           组相联路数 (1=直接映射; 等于块数=全相联)  默认 1
- *     --block=<B>          块大小(字节, 须为 2 的幂)                默认 4
+ *     --block=<B>          块大小(字节, 须为 2 的幂)                默认 16
+ *     --bus-width=<W>      总线数据位宽(字节, 须为 2 的幂)          默认 4
  *     --total=<T>          cache 块总数(须为 2 的幂)                默认 16
  *     --replace=<alg>      替换算法: lru | random                   默认 lru
- *     --miss-penalty=<cyc> 单次缺失代价(周期), 估算 TMT/AMAT        默认 100
+ *     --miss-penalty=<cyc> 单次总线传输缺失代价(周期/beat)         默认 100
  *     --access-time=<cyc>  命中访问时间(周期)                        默认 1
  *     --bz2                itrace 为 bzip2 压缩, 用 bzcat 读取       默认关
  *     -h, --help
@@ -43,13 +52,15 @@
 typedef struct {
     int      ways;         /* 组相联路数 */
     int      block_size;   /* 块大小 (字节) */
+    int      bus_width;    /* 总线数据位宽 (字节), 默认 4 */
+    int      num_beats;    /* block_size / bus_width, 一次缺失所需总线传输次数 */
     int      total_blocks; /* cache 块总数 */
     int      offset_bits;  /* log2(block_size) */
     int      index_bits;   /* log2(total_blocks / ways) */
     int      tag_bits;     /* 32 - offset_bits - index_bits */
     int      num_sets;     /* 组数 = total_blocks / ways */
     enum { REPLACE_LRU, REPLACE_RANDOM } replace;
-    long     miss_penalty; /* 单次缺失代价 (周期) */
+    long     miss_penalty; /* 单次总线传输缺失代价 (周期/beat), 即讲义中的 a+b+c+d */
     long     access_time;  /* 命中访问时间 (周期) */
     bool     use_bz2;      /* 是否用 bzcat 读取压缩 itrace */
     bool     use_bin;      /* 是否读取 NEMU 生成的二进制 RLE 格式 itrace */
@@ -84,12 +95,14 @@ static int log2_exact(int v, const char *name) {
 /* 解析命令行参数                                                            */
 /* ----------------------------------------------------------------------- */
 static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
-    /* 默认值: 直接映射, 4B 块, 16 块, LRU, miss_penalty=100 */
+    /* 默认值: 直接映射, 块=16B (总线宽度4B×4), 16块, LRU, miss_penalty=100/beat */
+    /* 块大小为总线数据位宽的4倍 (讲义 B4.md 808-809 行) */
     cfg->ways = 1;
-    cfg->block_size = 4;
+    cfg->block_size = 16;    /* 4 × bus_width(4) */
+    cfg->bus_width   = 4;    /* AXI 数据位宽 32bit = 4B */
     cfg->total_blocks = 16;
     cfg->replace = REPLACE_LRU;
-    cfg->miss_penalty = 100;
+    cfg->miss_penalty = 100; /* 单次总线传输事务 (一个 beat) 的缺失代价 */
     cfg->access_time = 1;
     cfg->use_bz2 = false;
     cfg->use_bin = false;
@@ -102,10 +115,13 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
             printf(
                 "Usage: cachesim [options] <itrace-file>\n"
                 "  --ways=<n>           associativity (1=direct, =total=fully-assoc)  default 1\n"
-                "  --block=<B>          block size in bytes (power of 2)             default 4\n"
+                "  --block=<B>          block size in bytes (power of 2)             default 16\n"
+                "  --bus-width=<W>      bus data width in bytes (power of 2)        default 4\n"
                 "  --total=<T>          total number of cache blocks (power of 2)     default 16\n"
                 "  --replace=<alg>      replacement: lru | random                    default lru\n"
-                "  --miss-penalty=<cyc> miss penalty in cycles (for TMT/AMAT)        default 100\n"
+                "  --miss-penalty=<cyc> miss penalty per beat in cycles (a+b+c+d)    default 100\n"
+                "                       total_miss_penalty = beats * miss_penalty\n"
+                "                       where beats = block / bus_width\n"
                 "  --access-time=<cyc>  hit access time in cycles                    default 1\n"
                 "  --bz2                itrace is bzip2-compressed, read via bzcat   default off\n"
                 "  --bin                itrace is NEMU binary-RLE format (8-byte records)  default off\n"
@@ -116,6 +132,8 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
             cfg->ways = atoi(a + 7);
         } else if (strncmp(a, "--block=", 8) == 0) {
             cfg->block_size = atoi(a + 8);
+        } else if (strncmp(a, "--bus-width=", 12) == 0) {
+            cfg->bus_width = atoi(a + 12);
         } else if (strncmp(a, "--total=", 8) == 0) {
             cfg->total_blocks = atoi(a + 8);
         } else if (strncmp(a, "--replace=", 10) == 0) {
@@ -161,9 +179,23 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
         fprintf(stderr, "cachesim: --ways(%d) 不能大于 --total(%d)\n", cfg->ways, cfg->total_blocks);
         exit(1);
     }
+    if (cfg->bus_width < 1) {
+        fprintf(stderr, "cachesim: --bus-width 必须 >= 1\n");
+        exit(1);
+    }
+    if ((cfg->bus_width & (cfg->bus_width - 1)) != 0) {
+        fprintf(stderr, "cachesim: --bus-width=%d 必须是 2 的幂\n", cfg->bus_width);
+        exit(1);
+    }
+    if (cfg->block_size % cfg->bus_width != 0) {
+        fprintf(stderr, "cachesim: --block(%d) 必须是 --bus-width(%d) 的整数倍\n",
+                cfg->block_size, cfg->bus_width);
+        exit(1);
+    }
 
-    /* 派生位数 */
+    /* 派生字段 */
     cfg->offset_bits = log2_exact(cfg->block_size, "block");
+    cfg->num_beats   = cfg->block_size / cfg->bus_width;
     log2_exact(cfg->total_blocks, "total");  /* 仅校验 */
     if (cfg->total_blocks % cfg->ways != 0) {
         fprintf(stderr, "cachesim: --total(%d) 必须是 --ways(%d) 的整数倍\n", cfg->total_blocks, cfg->ways);
@@ -335,14 +367,16 @@ int main(int argc, char *argv[]) {
     if (used_popen) pclose(fp); else fclose(fp);
 
     /* ------------------------------------------------------------------ */
-    /* 评估报告 (讲义 652-661 行 AMAT 公式; 762-764 行 TMT)                */
+    /* 评估报告 (讲义 652-661 行 AMAT 公式; 762-764 行 TMT; 796-826 行 缺失代价) */
     /* ------------------------------------------------------------------ */
     double hit_rate  = total_access ? (double)total_hit  / (double)total_access : 0.0;
     double miss_rate = total_access ? (double)total_miss / (double)total_access : 0.0;
-    /* AMAT = access_time + (1 - p) * miss_penalty  (p 为命中率) */
-    double amat = (double)cfg.access_time + miss_rate * (double)cfg.miss_penalty;
-    /* TMT = 缺失次数 * 缺失代价 */
-    double tmt  = (double)total_miss * (double)cfg.miss_penalty;
+    /* 总缺失代价 = beats × miss_penalty_per_beat (独立总线传输事务方式) */
+    long total_miss_penalty = cfg.num_beats * cfg.miss_penalty;
+    /* AMAT = access_time + (1 - p) * total_miss_penalty  (p 为命中率) */
+    double amat = (double)cfg.access_time + miss_rate * (double)total_miss_penalty;
+    /* TMT = 缺失次数 × 总缺失代价 */
+    double tmt  = (double)total_miss * (double)total_miss_penalty;
 
     /* 配置描述 */
     const char *org_str;
@@ -359,8 +393,9 @@ int main(int argc, char *argv[]) {
 
     printf("==================== cachesim 评估报告 ====================\n");
     printf("配置         : %s\n", org_str);
-    printf("               块大小=%dB | 块数=%d | 总容量=%dB | 替换=%s\n",
-           cfg.block_size, cfg.total_blocks, cfg.block_size * cfg.total_blocks, rep_str);
+    printf("               块大小=%dB | 总线位宽=%dB | 块数=%d | 总容量=%dB | 替换=%s\n",
+           cfg.block_size, cfg.bus_width, cfg.total_blocks,
+           cfg.block_size * cfg.total_blocks, rep_str);
     printf("               地址划分: tag=%d | index=%d | offset=%d (位)\n",
            cfg.tag_bits, cfg.index_bits, cfg.offset_bits);
     printf("----------------------------------------------------------\n");
@@ -370,12 +405,19 @@ int main(int argc, char *argv[]) {
            (unsigned long long)total_hit, (unsigned long long)total_miss);
     printf("命中率 / 缺失率 : %.4f%% / %.4f%%\n", hit_rate * 100.0, miss_rate * 100.0);
     printf("----------------------------------------------------------\n");
-    printf("AMAT         : %.4f 周期/访问  (access_time=%ld + 缺失率%.4f * miss_penalty=%ld)\n",
-           amat, cfg.access_time, miss_rate, cfg.miss_penalty);
-    printf("TMT(总缺失时间): %.0f 周期  (缺失%llu * miss_penalty=%ld)\n",
-           tmt, (unsigned long long)total_miss, cfg.miss_penalty);
+    printf("传输方式     : %d 次独立总线传输事务 (beats=block/BW=%d/%d=%d)\n",
+           cfg.num_beats, cfg.block_size, cfg.bus_width, cfg.num_beats);
+    printf("每 beat 代价 : %ld 周期 (a+b+c+d, 讲义 799 行)\n", cfg.miss_penalty);
+    printf("总缺失代价   : %ld 周期/缺失 (beats%d * miss_penalty_per_beat%ld)\n",
+           total_miss_penalty, cfg.num_beats, cfg.miss_penalty);
+    printf("AMAT         : %.4f 周期/访问  (access_time=%ld + 缺失率%.4f * 总缺失代价%ld)\n",
+           amat, cfg.access_time, miss_rate, total_miss_penalty);
+    printf("TMT(总缺失时间): %.0f 周期  (缺失%llu * 总缺失代价%ld)\n",
+           tmt, (unsigned long long)total_miss, total_miss_penalty);
     printf("----------------------------------------------------------\n");
     printf("说明:\n");
+    printf("  - 块大小为总线数据位宽的 4 倍 (B4.md 808-809 行: 支持更大的块大小)\n");
+    printf("  - 通过独立总线传输事务方式估算缺失代价 (B4.md 796-809 行)\n");
     printf("  - AMAT 越小代表 cache 性能越好; TMT 越小代表 IPC 趋势越大 (讲义 762-764 行)\n");
     printf("  - 此缺失数为性能测试 DiffTest 的 REF, 应与 NPC PerfCounter 的 icache_miss 一致\n");
     printf("==========================================================\n");
