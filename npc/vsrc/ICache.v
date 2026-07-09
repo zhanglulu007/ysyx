@@ -1,4 +1,4 @@
-// ICache — 最小直通版本, 用于隔离问题
+// ICache — 最简状态机直通, 用于隔离问题
 module ICache #(
   parameter BLOCK_SIZE   = 16,
   parameter NR_CACHE_BLK = 16
@@ -11,27 +11,42 @@ module ICache #(
   output icache_access, output icache_hit, output icache_miss, output icache_uncache,
   output icache_refill_req, output icache_wait_ar, output icache_wait_r
 );
-  // 完全直通: AR 和 R 都原样转发
-  assign cpu_arready = bus_arready;
-  assign bus_arvalid = cpu_arvalid;
-  assign bus_araddr  = cpu_araddr;
-  assign bus_arid    = cpu_arid;
-  assign bus_arlen   = cpu_arlen;
-  assign bus_arsize  = cpu_arsize;
-  assign bus_arburst = cpu_arburst;
+  localparam IC_IDLE = 2'b00, IC_WAIT_AR = 2'b01, IC_WAIT_R = 2'b10;
+  reg [1:0] state;
+  reg [31:0] req_addr;
+  reg [3:0] req_arid;
 
-  assign cpu_rvalid = bus_rvalid;
-  assign bus_rready = cpu_rready;
-  assign cpu_rdata  = bus_rdata;
-  assign cpu_rresp  = bus_rresp;
-  assign cpu_rlast  = bus_rlast;
-  assign cpu_rid    = bus_rid;
+  assign cpu_arready = (state == IC_IDLE);
+  assign bus_arvalid = (state == IC_WAIT_AR);
+  assign bus_araddr  = req_addr;
+  assign bus_arid    = req_arid;
+  assign bus_arlen   = 8'b0;
+  assign bus_arsize  = 3'b010;
+  assign bus_arburst = 2'b01;
+
+  assign bus_rready  = (state == IC_WAIT_R);
+  assign cpu_rvalid  = (state == IC_WAIT_R) && bus_rvalid;
+  assign cpu_rdata   = bus_rdata;
+  assign cpu_rresp   = bus_rresp;
+  assign cpu_rlast   = 1'b1;
+  assign cpu_rid     = req_arid;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      state <= IC_IDLE; req_addr <= 0; req_arid <= 0;
+    end else begin
+      case (state)
+        IC_IDLE: if (cpu_arvalid && cpu_arready) begin
+          req_addr <= cpu_araddr; req_arid <= cpu_arid; state <= IC_WAIT_AR;
+        end
+        IC_WAIT_AR: if (bus_arready) state <= IC_WAIT_R;
+        IC_WAIT_R: if (bus_rvalid && bus_rready) state <= IC_IDLE;
+        default: state <= IC_IDLE;
+      endcase
+    end
+  end
 
   assign icache_access = 1'b0;
-  assign icache_hit = 1'b0;
-  assign icache_miss = 1'b0;
-  assign icache_uncache = 1'b0;
-  assign icache_refill_req = 1'b0;
-  assign icache_wait_ar = 1'b0;
-  assign icache_wait_r = 1'b0;
+  assign icache_hit = 1'b0; assign icache_miss = 1'b0; assign icache_uncache = 1'b0;
+  assign icache_refill_req = 1'b0; assign icache_wait_ar = 1'b0; assign icache_wait_r = 1'b0;
 endmodule
