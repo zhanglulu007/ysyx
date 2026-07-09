@@ -2,18 +2,23 @@
 //
 // 参考: 讲义 B4.md "支持更大的块大小(2)" (813-814行) 及 "让icache支持突发传输" (839-840行)
 //
-// 可配置参数 (通过 localparam, 便于后续设计空间探索):
+// 可配置参数 (通过 parameter, 便于后续设计空间探索):
 //   BLOCK_SIZE:   缓存块大小 (字节), 须为 4 的整数倍且是 2 的幂 (≥4)
 //   NR_CACHE_BLK: 缓存块总数, 须为 2 的幂
 //
-// 地址划分 (组相联, 默认 ways=1 → 直接映射):
+// 地址划分 (直接映射):
 //   [31 : OFFSET_BITS+INDEX_BITS] = tag
 //   [OFFSET_BITS+INDEX_BITS-1 : OFFSET_BITS] = index
-//   [OFFSET_BITS-1 : 0] = offset (字节偏移, 低2位恒为0)
+//   [OFFSET_BITS-1 : 0] = offset (字节偏移)
 //     offset 的高位 [OFFSET_BITS-1:2] 选择块内 word
+//
+// 传输模式:
+//   - SDRAM (0xa):     使用 AXI Burst 一次读取整块
+//   - Flash/PSRAM:     使用多次单 beat AR 逐 word 填充 (Flash 不支持 Burst)
+//   - 不可缓存地址:    单 beat 透传, 不写 cache
 
 module ICache #(
-  parameter BLOCK_SIZE   = 4,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
+  parameter BLOCK_SIZE   = 16,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
   parameter NR_CACHE_BLK = 16    // 缓存块数, 默认 16
 )(
   input clk,
@@ -71,15 +76,16 @@ module ICache #(
   localparam WORD_IDX_BITS   = (OFFSET_BITS > 2) ? (OFFSET_BITS - 2) : 1;  // 块内 word 索引位宽
   localparam INDEX_BITS      = $clog2(NR_CACHE_BLK);    // 索引位宽
   localparam TAG_BITS        = ADDR_WIDTH - OFFSET_BITS - INDEX_BITS;
-  localparam BEAT_CNT_BITS   = (NR_WORDS > 1) ? $clog2(NR_WORDS) : 1;  // beat 计数器位宽
+  localparam REFILL_CNT_BITS = (NR_WORDS > 1) ? $clog2(NR_WORDS) : 1;  // refill word 计数器位宽
   localparam BURST_LEN       = NR_WORDS - 1;  // AXI arlen = 节拍数 - 1
 
   // ===================================================================
   // 状态机
   //   IC_IDLE:      等待 IFU 取指请求 (AR 阶段), 与 IFU 的 arready 握手
-  //   IC_LOOKUP:    IFU 已进入 WAIT, 本周期查命中/缺失, 决定应答方式
-  //   IC_REFILL_AR: 缺失/不可缓存 -> 向 Arbiter 发 AR, 等握手
-  //   IC_REFILL_R:  等 Arbiter R 握手; 缺失则逐 beat 回填 cache; 完成后应答 IFU
+  //   IC_LOOKUP:    本周期查命中/缺失, 决定应答方式
+  //   IC_REFILL_AR: 向 Arbiter 发 AR, 等握手
+  //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
+  //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
   // ===================================================================
   localparam IC_IDLE      = 2'b00;
   localparam IC_LOOKUP    = 2'b01;
@@ -115,31 +121,62 @@ module ICache #(
   wire [OFFSET_BITS-1:0]    req_offset    = req_addr[OFFSET_BITS-1:0];
   wire [INDEX_BITS-1:0]     req_index     = req_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
   wire [TAG_BITS-1:0]       req_tag       = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
-  wire [WORD_IDX_BITS-1:0]  req_word_idx  = (OFFSET_BITS > 2) ? req_addr[OFFSET_BITS-1:2] : {WORD_IDX_BITS{1'b0}};
+
+  // 块内 word 索引 (通过 generate 避免 OFFSET_BITS≤2 时产生非法降序切片)
+  wire [WORD_IDX_BITS-1:0]  req_word_idx;
+  generate
+    if (OFFSET_BITS > 2) begin : gen_word_idx
+      assign req_word_idx = req_addr[OFFSET_BITS-1:2];
+    end else begin : gen_word_idx
+      assign req_word_idx = {WORD_IDX_BITS{1'b0}};
+    end
+  endgenerate
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
-  wire req_cacheable = (req_addr[31:28] == 4'h3) ||
-                       (req_addr[31:28] == 4'h8) ||
-                       (req_addr[31:28] == 4'ha);
+  wire req_flash  = (req_addr[31:28] == 4'h3);
+  wire req_psram  = (req_addr[31:28] == 4'h8);
+  wire req_sdram  = (req_addr[31:28] == 4'ha);
+  wire req_cacheable = req_flash || req_psram || req_sdram;
 
   // 命中判定 (IC_LOOKUP 阶段对锁存地址计算)
   wire hit = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
 
   // ===================================================================
-  // 块对齐地址 (用于突发传输: 将地址低 OFFSET_BITS 位清零)
+  // Burst 传输判定: 仅 SDRAM 支持 AXI Burst (讲义 B4.md 839行:
+  //   "使icache支持突发传输...访问SDRAM中的数据块")
+  // Flash/PSRAM 不支持 Burst, 需多次单 beat AR 逐 word 填充
+  // ===================================================================
+  wire is_burst = req_cacheable && req_sdram && (NR_WORDS > 1);
+
+  // ===================================================================
+  // 块对齐地址 (将地址低 OFFSET_BITS 位清零)
   // ===================================================================
   wire [31:0] block_aligned_addr;
   assign block_aligned_addr = {req_addr[31:OFFSET_BITS], {OFFSET_BITS{1'b0}}};
 
   // ===================================================================
-  // 总线侧 AR 通道
-  //   - 缓存型缺失: 突发传输, arlen = BURST_LEN, 地址 = 块对齐地址
-  //   - 不可缓存:   单 beat,   arlen = 0,         地址 = 原始请求地址
+  // Refill word 计数器
+  //   Burst 模式: 每次 R 握手递增, 用于确定写入位置
+  //   非 Burst 模式: 每次完成一个 word 后在状态机中递增, 用于计算下个 AR 地址
   // ===================================================================
-  wire is_burst = req_cacheable && (NR_WORDS > 1);
+  reg [REFILL_CNT_BITS-1:0] refill_word;
+
+  // 进入 refill 时复位计数器
+  wire enter_refill = (state == IC_LOOKUP) && !(req_cacheable && hit);
+
+  // ===================================================================
+  // 总线侧 AR 通道
+  //   Burst:   arlen = BURST_LEN,  addr = block_aligned_addr (所有 word 一次返回)
+  //   非Burst: arlen = 0,          addr = block_aligned_addr + refill_word*4
+  //   不可缓存: arlen = 0,          addr = req_addr
+  // ===================================================================
+  wire [31:0] refill_araddr;
+  assign refill_araddr = req_cacheable ?
+    (is_burst ? block_aligned_addr : (block_aligned_addr + (refill_word << 2))) :
+    req_addr;
 
   assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
-  assign bus_araddr  = is_burst ? block_aligned_addr : req_addr;
+  assign bus_araddr  = refill_araddr;
   assign bus_arid    = req_arid;
   assign bus_arlen   = is_burst ? (BURST_LEN) : 8'b0;
   assign bus_arsize  = 3'b010;       // 4 字节/beat
@@ -147,34 +184,28 @@ module ICache #(
 
   // ===================================================================
   // 总线侧 R 通道 (接收 Arbiter 返回数据)
-  //   - 缓存型: 逐 beat 回填, 在最后一个 beat 完成时统一写 tag/valid
-  //   - 不可缓存: 单 beat 透传, 不写 cache
   // ===================================================================
   assign bus_rready = (state == IC_REFILL_R);
 
-  // beat 计数器 (仅缓存型 + 多 beat 时使用)
-  reg [BEAT_CNT_BITS-1:0] beat_cnt;
-
-  // 逐 beat 写入数据: 在 IC_REFILL_R 每个 R 握手时, 将 bus_rdata 写入对应 word 位置
-  wire do_refill_beat = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
-                        req_cacheable && !bus_rresp[1];
+  // 逐 word 写入数据: 在 IC_REFILL_R 每个 R 握手时, 将 bus_rdata 写入对应 word 位置
+  // (Burst 模式: refill_word 由本块递增; 非 Burst 模式: refill_word 由状态机控制)
+  wire do_store_beat = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
+                       req_cacheable && !bus_rresp[1];
 
   always @(posedge clk) begin
-    if (rst) begin
-      beat_cnt <= {BEAT_CNT_BITS{1'b0}};
-    end else if (state == IC_REFILL_AR && bus_arready) begin
-      // 进入 REFILL_R 前清零 beat 计数器
-      beat_cnt <= {BEAT_CNT_BITS{1'b0}};
-    end else if (do_refill_beat) begin
-      // 每个 beat 写入对应 word, 递增计数器
-      cache_data[req_index][(beat_cnt * 32) +: 32] <= bus_rdata;
-      beat_cnt <= beat_cnt + 1'b1;
+    if (do_store_beat) begin
+      cache_data[req_index][(refill_word * 32) +: 32] <= bus_rdata;
     end
   end
 
-  // 回填完成: 缓存型请求在最后一个 R beat 握手时, 写 tag 和 valid
+  // 当前传输是否为最后一个 word:
+  //   Burst 模式: bus_rlast 指示
+  //   非 Burst 模式: refill_word == NR_WORDS-1 时即为最后一个 word
+  wire is_last_word = is_burst ? bus_rlast : (refill_word == (NR_WORDS-1));
+
+  // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
   wire do_refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
-                        req_cacheable && !bus_rresp[1] && bus_rlast;
+                        req_cacheable && !bus_rresp[1] && is_last_word;
 
   always @(posedge clk) begin
     if (do_refill_done) begin
@@ -190,12 +221,11 @@ module ICache #(
 
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
-  //   命中:      IC_LOOKUP 当拍直出 cache 数据 + OK resp + last;
-  //   缺失/不可缓存: IC_REFILL_R 最后一个 beat 握手当拍应答.
+  //   命中:  IC_LOOKUP 当拍直出 cache 数据 + OK resp + last
+  //   缺失:  IC_REFILL_R 最后一个 word 的 R 握手当拍应答
   // ===================================================================
   wire lookup_hit  = (state == IC_LOOKUP)   && req_cacheable &&  hit;
-  // refill_done: 不可缓存时单 beat 即完成; 缓存型缺失时最后一个 beat 完成
-  wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && bus_rlast;
+  wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && is_last_word;
 
   // 命中时从 cache_data 中选取对应 word
   wire [31:0] hit_word;
@@ -212,9 +242,10 @@ module ICache #(
   // ===================================================================
   always @(posedge clk) begin
     if (rst) begin
-      state    <= IC_IDLE;
-      req_addr <= 32'b0;
-      req_arid <= 4'b0;
+      state       <= IC_IDLE;
+      req_addr    <= 32'b0;
+      req_arid    <= 4'b0;
+      refill_word <= {REFILL_CNT_BITS{1'b0}};
     end else begin
       case (state)
         IC_IDLE: begin
@@ -230,8 +261,9 @@ module ICache #(
             // 命中: 本拍已组合逻辑应答 IFU, 次拍回 IDLE
             state <= IC_IDLE;
           end else begin
-            // 缺失 或 不可缓存: 通过总线读取
-            state <= IC_REFILL_AR;
+            // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
+            refill_word <= {REFILL_CNT_BITS{1'b0}};
+            state       <= IC_REFILL_AR;
           end
         end
 
@@ -241,8 +273,26 @@ module ICache #(
         end
 
         IC_REFILL_R: begin
-          // 等待总线侧最后一个 R beat 握手: 当拍回填/透传 + 应答 IFU, 次拍回 IDLE
-          if (bus_rvalid && bus_rready && bus_rlast) state <= IC_IDLE;
+          if (bus_rvalid && bus_rready) begin
+            if (is_burst) begin
+              // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
+              if (bus_rlast) begin
+                state <= IC_IDLE;
+              end else begin
+                refill_word <= refill_word + 1'b1;
+              end
+            end else begin
+              // 非 Burst 模式 (单 beat): rlast 恒为 1
+              if (refill_word == (NR_WORDS-1)) begin
+                // 最后一个 word 完成, 回 IDLE
+                state <= IC_IDLE;
+              end else begin
+                // 还有更多 word 需要取, 递增计数器, 发下一个 AR
+                refill_word <= refill_word + 1'b1;
+                state       <= IC_REFILL_AR;
+              end
+            end
+          end
         end
 
         default: state <= IC_IDLE;
