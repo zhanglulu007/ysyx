@@ -151,7 +151,7 @@ module ICache(
   //   可缓存缺失: 发送 BEATS 次独立 AR, 地址为 block_base + beat_cnt*BUS_WIDTH
   //   不可缓存:   发送 1 次 AR, 地址为原始 req_addr
   // ===================================================================
-  wire [31:0] beat_addr = block_base + (beat_cnt << 2);  // + beat_cnt * 4
+  wire [31:0] beat_addr = block_base + {30'b0, beat_cnt, 2'b0};  // + beat_cnt * 4
 
   assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
   assign bus_araddr  = req_cacheable ? beat_addr : req_addr;
@@ -166,7 +166,7 @@ module ICache(
   assign bus_rready = (state == IC_REFILL_R);
 
   wire refill_beat_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready;
-  wire is_last_beat     = (beat_cnt == BEATS-1);  // 对不可缓存 beat_cnt=0==3? No, 0!=3
+  wire is_last_beat     = (beat_cnt == BEATS-1'd1);  // 对不可缓存 beat_cnt=0 不匹配
 
   // 回填: 仅在可缓存 + 无总线错误时, 将 bus_rdata 写入对应 word slot
   wire do_refill = refill_beat_done && req_cacheable && !bus_rresp[1];
@@ -267,7 +267,7 @@ module ICache(
             if (!req_cacheable) begin
               // 不可缓存: 单 beat 直通, 应答后回 IDLE
               state <= IC_IDLE;
-            end else if (beat_cnt == BEATS-1) begin
+            end else if (beat_cnt == BEATS-1'd1) begin
               // 可缓存缺失, 最后一个 beat: tag/valid 本拍已更新, 应答 IFU, 回 IDLE
               state <= IC_IDLE;
             end else begin
