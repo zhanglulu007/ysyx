@@ -151,7 +151,7 @@ module ICache(
   //   可缓存缺失: 发送 BEATS 次独立 AR, 地址为 block_base + beat_cnt*BUS_WIDTH
   //   不可缓存:   发送 1 次 AR, 地址为原始 req_addr
   // ===================================================================
-  wire [31:0] beat_addr = block_base + {30'b0, beat_cnt, 2'b0};  // + beat_cnt * 4
+  // beat_addr = block_base + beat_cnt * BUS_WIDTH (=4)\n// 用拼接实现: 块基址低 OFFSET_BITS 位为 0, beat 偏移填入其中\nwire [31:0] beat_addr = {block_base[31:OFFSET_BITS],\n                         block_base[OFFSET_BITS-1:BEAT_BITS+2],\n                         beat_cnt, 2'b0};
 
   assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
   assign bus_araddr  = req_cacheable ? beat_addr : req_addr;
