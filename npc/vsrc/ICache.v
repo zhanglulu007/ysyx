@@ -18,7 +18,7 @@
 //   - 不可缓存地址:    单 beat 透传, 不写 cache
 
 module ICache #(
-  parameter BLOCK_SIZE   = 16,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
+  parameter BLOCK_SIZE   = 4,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
   parameter NR_CACHE_BLK = 16    // 缓存块数, 默认 16
 )(
   input clk,
@@ -133,10 +133,10 @@ module ICache #(
   endgenerate
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
-  //wire req_flash  = (req_addr[31:28] == 4'h3);
+  wire req_flash  = (req_addr[31:28] == 4'h3);
   wire req_psram  = (req_addr[31:28] == 4'h8);
   wire req_sdram  = (req_addr[31:28] == 4'ha);
-  wire req_cacheable = req_psram || req_sdram;
+  wire req_cacheable = req_flash || req_psram || req_sdram;
 
   // 命中判定 (IC_LOOKUP 阶段对锁存地址计算)
   wire hit = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
@@ -170,9 +170,8 @@ module ICache #(
   //   非Burst: arlen = 0,          addr = block_aligned_addr + refill_word*4
   //   不可缓存: arlen = 0,          addr = req_addr
   // ===================================================================
-  wire [31:0] refill_word_ext = {{(32-REFILL_CNT_BITS){1'b0}}, refill_word};
   wire [31:0] refill_word_addr;
-  assign refill_word_addr = refill_word_ext << 2;  // refill_word * 4, 始终 32 位
+  assign refill_word_addr = {28'b0, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
   wire [31:0] refill_araddr;
   assign refill_araddr = req_cacheable ?
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
@@ -202,12 +201,9 @@ module ICache #(
   end
 
   // 当前传输是否为最后一个 word:
-  //   Burst 模式:  bus_rlast 指示
-  //   非Burst可缓存: refill_word == NR_WORDS-1 时即为最后一个 word
-  //   不可缓存:     单 beat, rlast 恒为 1, 直接视为最后一个
-  wire is_last_word = is_burst ? bus_rlast :
-                      (!req_cacheable) ? 1'b1 :    // 不可缓存: 单 beat 透传, 总是最后一个
-                      (refill_word == REFILL_CNT_BITS'(NR_WORDS-1));
+  //   Burst 模式: bus_rlast 指示
+  //   非 Burst 模式: refill_word == NR_WORDS-1 时即为最后一个 word
+  wire is_last_word = is_burst ? bus_rlast : (refill_word == REFILL_CNT_BITS'(NR_WORDS-1));
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
   wire do_refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
@@ -287,11 +283,8 @@ module ICache #(
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
-            end else if (!req_cacheable) begin
-              // 不可缓存: 单 beat 透传完成, 直接回 IDLE
-              state <= IC_IDLE;
             end else begin
-              // 可缓存非 Burst 模式 (单 beat 逐 word 填充)
+              // 非 Burst 模式 (单 beat): rlast 恒为 1
               if (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
                 // 最后一个 word 完成, 回 IDLE
                 state <= IC_IDLE;
