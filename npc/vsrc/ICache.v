@@ -138,11 +138,20 @@ module ICache #(
   wire [INDEX_BITS-1:0]         req_index  = req_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
   wire [TAG_BITS-1:0]           req_tag    = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
 
-  // req_word_idx: 取指地址在 cache 块内的 word 索引
-  // 当 WORD_IDX_BITS>0 时从 addr[WORD_IDX_BITS+1:2] 提取
-  // 当 WORD_IDX_BITS=0 时恒为 0 (因为 BEAT_CNT_WIDTH=1, 这是 reg[0:0])
-  wire [BEAT_CNT_WIDTH-1:0]     req_word_idx =
-    (WORD_IDX_BITS > 0) ? req_addr[WORD_IDX_BITS+1:2] : {BEAT_CNT_WIDTH{1'b0}};
+  // req_word_idx: 取指地址在 cache 块内的 word 索引 (0-based, 每个 word=4B)
+  // 当 BLOCK_SIZE=4 (WORDS_PER_BLOCK=1) 时, word 索引恒为 0
+  // 当 BLOCK_SIZE>4 时, 从 addr[OFFSET_BITS-1:2] 提取
+  //   例如 BLOCK_SIZE=8 (OFFSET_BITS=3): [2:2] 1-bit, BLOCK_SIZE=16: [3:2] 2-bit
+  generate
+    if (WORDS_PER_BLOCK == 1) begin : gen_word_idx_1
+      // 单 word 块: word 索引恒为 0
+      assign req_word_idx = {BEAT_CNT_WIDTH{1'b0}};
+    end else begin : gen_word_idx_n
+      // 多 word 块: 从 offset 高位提取 word 索引
+      // OFFSET_BITS-1 >= 2, 故 range[OFFSET_BITS-1:2] 始终正向
+      assign req_word_idx = req_addr[OFFSET_BITS-1:2];
+    end
+  endgenerate
 
   // 可缓存地址判定 (高 4 位): Flash=0x3, PSRAM=0x8, SDRAM=0xa
   wire req_cacheable = (req_addr[31:28] == 4'h3) ||
