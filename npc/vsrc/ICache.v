@@ -1,24 +1,5 @@
-// ICache — 指令缓存 (支持可配置块大小 + 突发传输)
-//
-// 参考: 讲义 B4.md "支持更大的块大小(2)" (813-814行) 及 "让icache支持突发传输" (839-840行)
-//
-// 可配置参数 (通过 parameter, 便于后续设计空间探索):
-//   BLOCK_SIZE:   缓存块大小 (字节), 须为 4 的整数倍且是 2 的幂 (≥4)
-//   NR_CACHE_BLK: 缓存块总数, 须为 2 的幂
-//
-// 地址划分 (直接映射):
-//   [31 : OFFSET_BITS+INDEX_BITS] = tag
-//   [OFFSET_BITS+INDEX_BITS-1 : OFFSET_BITS] = index
-//   [OFFSET_BITS-1 : 0] = offset (字节偏移)
-//     offset 的高位 [OFFSET_BITS-1:2] 选择块内 word
-//
-// 传输模式:
-//   - SDRAM (0xa):     使用 AXI Burst 一次读取整块
-//   - Flash/PSRAM:     使用多次单 beat AR 逐 word 填充 (Flash 不支持 Burst)
-//   - 不可缓存地址:    单 beat 透传, 不写 cache
-
 module ICache #(
-  parameter BLOCK_SIZE   = 4,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
+  parameter BLOCK_SIZE   = 16,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
   parameter NR_CACHE_BLK = 16    // 缓存块数, 默认 16
 )(
   input clk,
