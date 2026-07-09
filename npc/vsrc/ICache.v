@@ -170,9 +170,11 @@ module ICache #(
   //   非Burst: arlen = 0,          addr = block_aligned_addr + refill_word*4
   //   不可缓存: arlen = 0,          addr = req_addr
   // ===================================================================
+  wire [31:0] refill_word_addr;
+  assign refill_word_addr = {28'b0, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
   wire [31:0] refill_araddr;
   assign refill_araddr = req_cacheable ?
-    (is_burst ? block_aligned_addr : (block_aligned_addr + (refill_word << 2))) :
+    (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
     req_addr;
 
   assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
@@ -201,7 +203,7 @@ module ICache #(
   // 当前传输是否为最后一个 word:
   //   Burst 模式: bus_rlast 指示
   //   非 Burst 模式: refill_word == NR_WORDS-1 时即为最后一个 word
-  wire is_last_word = is_burst ? bus_rlast : (refill_word == (NR_WORDS-1));
+  wire is_last_word = is_burst ? bus_rlast : (refill_word == REFILL_CNT_BITS'(NR_WORDS-1));
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
   wire do_refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
@@ -283,7 +285,7 @@ module ICache #(
               end
             end else begin
               // 非 Burst 模式 (单 beat): rlast 恒为 1
-              if (refill_word == (NR_WORDS-1)) begin
+              if (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
                 // 最后一个 word 完成, 回 IDLE
                 state <= IC_IDLE;
               end else begin
