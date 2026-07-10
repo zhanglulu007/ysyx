@@ -84,15 +84,22 @@ module ysyx_26020070(
     end else begin
       if (wb_done) begin
         // WB happened last cycle — signal PC advance NOW (RF write completed)
-        update_pc_value(ex_pc_d + 32'd4);
+        // For taken branches/jumps: use target PC; otherwise: pc+4
+        update_pc_value(wb_taken ? wb_target : (ex_pc_d + 32'd4));
       end
       wb_done <= wb_wen;
       if (flush_pipe) update_pc_value(redirect_pc);
     end
   end
-  // Save ex_pc for delayed PC update
+  // Save ex_pc, branch/jump info for delayed PC update
   reg [31:0] ex_pc_d;
-  always @(posedge clock) if (wb_wen) ex_pc_d <= ex_pc;
+  reg        wb_taken;
+  reg [31:0] wb_target;
+  always @(posedge clock) if (wb_wen) begin
+    ex_pc_d   <= ex_pc;
+    wb_taken  <= ex_taken;
+    wb_target <= ex_target;
+  end
 `endif
 
   // ===== IF/ID Pipeline Register =====
