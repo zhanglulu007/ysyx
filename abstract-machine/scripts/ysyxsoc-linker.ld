@@ -26,11 +26,15 @@ SECTIONS {
   } > sram AT> flash
   _ssbl_lma = LOADADDR(.text.ssbl);
 
+  /* === 程序代码填充 (B4.md "优化程序的内存布局") ===
+   * 独立 .pad 段, 避免破坏 _text_lma/_text_start 的复制逻辑.
+   * PADDING_SIZE 通过 LDFLAGS 传入, 默认为 0. */
+  .pad : {
+    . = . + PADDING_SIZE;
+  } > sdram AT> flash
+
   _text_lma = LOADADDR(.text);
   .text : {
-    /* === 程序代码填充 (B4.md "优化程序的内存布局") ===
-     * PADDING_SIZE 通过 LDFLAGS 传入, 默认为 0. */
-    . = . + PADDING_SIZE;
     _text_start = .;
     *(.text*)
     _text_end = .;
