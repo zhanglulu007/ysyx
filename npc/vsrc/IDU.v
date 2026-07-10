@@ -75,6 +75,10 @@ module IDU(
   output is_ebreak,
   output is_ecall,
   output is_mret,
+  output is_fencei,         // fence.i 指令 (Zifencei)
+  
+  // fence.i 控制
+  output icache_flush,       // 冲刷 ICache (fence.i 执行时触发)
   
   // CSR指令
   output is_csrrw,
@@ -157,6 +161,7 @@ module IDU(
   assign is_ebreak = (inst == 32'h00100073);  // ebreak
   assign is_ecall  = (inst == 32'h00000073);  // ecall
   assign is_mret   = (inst == 32'h30200073);  // mret
+  assign is_fencei = (opcode == 7'b0001111) && (funct3 == 3'b001);  // fence.i
   
   // ========== CSR指令 ==========
   assign is_csrrw = (opcode == 7'b1110011) && (funct3 == 3'b001);  // csrrw
@@ -182,5 +187,8 @@ module IDU(
   
   // CSR写使能：csrrw总是写，csrrs当rs1!=0时写
   assign csr_wen = ifu_valid && (is_csrrw || (is_csrrs && (rs1 != 5'b0)));
+
+  // fence.i: 执行时冲刷 ICache
+  assign icache_flush = ifu_valid && is_fencei;
 
 endmodule
