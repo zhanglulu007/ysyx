@@ -45,27 +45,7 @@ void ssbl(void) {
   uint32_t sz;
   uint8_t *dst, *src;
 
-  /* ===== B4.md "在bootloader中复现加载器导致的缓存一致性问题" =====
-   * 1. 在目标 SDRAM 位置放置 NOP 序列 + RET (充当"程序A")
-   * 2. 函数调用跳转到 NOP 序列 → ICache 缓存了这些 NOP
-   * 3. 复制真实程序到 SDRAM 覆盖 NOP (充当"程序B")
-   * 4. 无 fence.i: ICache 仍有旧 NOP → 程序执行出错
-   *    (后续讲义会添加 fence.i 修复) */
-
-  /* 填充 NOP 序列: 16 条 NOP + 1 条 RET, 覆盖 ICache 全部 4 个块 */
-  uintptr_t base = (uintptr_t)&_text_start;
-  
-  for (int i = 0; i < 16; i++) {
-    *(volatile uint32_t *)(base + i * 4) = 0x00000013;
-  }
-  *(volatile uint32_t *)(base + 16 * 4) = 0x00008067;
-
-  /* 通过函数调用执行 NOP 序列 (在 SDRAM 中, ICache 会缓存它们) */
-  ((void (*)())(uintptr_t)base)();
-
-  /* --- 以下为原有 bootloader 逻辑 --- */
-
-  /* 复制 .text: Flash → SDRAM (覆盖上面的 NOP 序列!) */
+  /* 复制 .text: Flash → SDRAM */
   sz = (uint32_t)(uintptr_t)&_text_end - (uint32_t)(uintptr_t)&_text_start;
   dst = (uint8_t *)&_text_start;
   src = (uint8_t *)&_text_lma;
@@ -86,9 +66,8 @@ void ssbl(void) {
   /* 清零 .bss (SDRAM) */
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 
-  /* 跳转到 SDRAM 中的 _trm_init (此时主程序已就位)
-   * fence.i 冲刷 ICache, 确保后续取指看到被覆盖的真实程序,
-   * 而非之前缓存的 NOP 序列 (B4.md "在bootloader中添加fence.i指令") */
+  /* fence.i 冲刷 ICache, 确保后续取指不受缓存残留影响
+   * (B4.md "在bootloader中添加fence.i指令") */
   asm volatile("fence.i");
   _trm_init();
   while (1);
