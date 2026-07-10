@@ -4,6 +4,7 @@
 ifeq ($(SHARE),1)
 SO = -so
 CFLAGS  += -fPIC -fvisibility=hidden
+LDFLAGS += -shared -fPIC
 endif
 
 WORK_DIR  = $(shell pwd)
@@ -50,7 +51,7 @@ app: $(BINARY)
 
 $(BINARY):: $(OBJS) $(ARCHIVES)
 	@echo + LD $@
-	@$(LD) -o $@ $(OBJS) $(LDFLAGS) $(ARCHIVES) $(LIBS) -shared -fPIC -Wl,-z,notext
+	@$(LD) -o $@ $(OBJS) $(LDFLAGS) $(ARCHIVES) $(LIBS)
 
 clean:
 	-rm -rf $(BUILD_DIR)
