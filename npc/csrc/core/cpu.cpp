@@ -142,7 +142,10 @@ void exec_once() {
         uint32_t csr_addr = inst >> 20;   // [31:20]
         uint8_t  opcode  = inst & 0x7f;   // [6:0]
         uint8_t  funct3  = (inst >> 12) & 0x7;  // [14:12]
-        if (opcode == 0x73 && funct3 == 0x2 &&
+        // 跳过 mvendorid(0xF11) / marchid(0xF12) CSR 读 (各指令变体)
+        if (opcode == 0x73 &&
+            (funct3 == 0x1 || funct3 == 0x2 || funct3 == 0x3 ||
+             funct3 == 0x5 || funct3 == 0x6 || funct3 == 0x7) &&
             (csr_addr == 0xF11 || csr_addr == 0xF12)) {
             difftest_skip_ref();
         }

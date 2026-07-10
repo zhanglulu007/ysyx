@@ -834,9 +834,18 @@ module ysyx_26020070(
   end
 
   // ========== DiffTest skip 检测 ==========
-  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
+  // DiffTest: 跳过所有外设/MMIO 访问的比较 (NEMU REF 不模拟这些外设)
+  // 内存区域: SRAM(0x0f00_0000), MROM(0x2000_0000), Flash(0x3000_0000),
+  //            PSRAM(0x8000_0000), SDRAM(0xa000_0000)
+  // 其他地址 (UART/SPI/GPIO/PS2/CLINT/VGA 等) 均为外设, 需跳过
+  wire is_mem_region = (mem_addr >= 32'h0f000000 && mem_addr < 32'h0f002000)  // SRAM 8KB
+                    || (mem_addr >= 32'h20000000 && mem_addr < 32'h20001000)  // MROM 4KB
+                    || (mem_addr >= 32'h30000000 && mem_addr < 32'h31000000)  // Flash 16MB
+                    || (mem_addr >= 32'h80000000 && mem_addr < 32'h80400000)  // PSRAM 4MB
+                    || (mem_addr >= 32'ha0000000 && mem_addr < 32'ha2000000); // SDRAM 32MB
+  wire is_peripheral_access = mem_valid && !is_mem_region;
   always @(posedge clock) begin
-    if (!rst && ifu_valid && is_uart_access) begin
+    if (!rst && ifu_valid && is_peripheral_access) begin
       difftest_skip_ref();
     end
   end

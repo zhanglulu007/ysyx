@@ -141,6 +141,9 @@ word_t paddr_read(paddr_t addr, int len) {
     }
   )
   IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
+  /* ysyxSoC difftest REF: 静默返回 0 而不是 crash，
+   * 因为 NPC 端通过 difftest_skip_ref 跳过外设访问的比较。 */
+  IFDEF(CONFIG_YSYXSOC, return 0);
   out_of_bound(addr);
   return 0;
 }
@@ -158,5 +161,7 @@ void paddr_write(paddr_t addr, int len, word_t data) {
   if (in_mrom(addr)) { return; }
   if (in_flash(addr)) { return; }
   IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
+  /* ysyxSoC difftest REF: 静默丢弃写而不是 crash */
+  IFDEF(CONFIG_YSYXSOC, return);
   out_of_bound(addr);
 }
