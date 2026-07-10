@@ -51,7 +51,7 @@ app: $(BINARY)
 
 $(BINARY):: $(OBJS) $(ARCHIVES)
 	@echo + LD $@
-	@$(LD) -shared -fPIC -o $@ $(OBJS) $(LDFLAGS) $(ARCHIVES) $(LIBS)
+	$(LD) -shared -fPIC -o $@ $(OBJS) $(LDFLAGS) $(ARCHIVES) $(LIBS)
 
 clean:
 	-rm -rf $(BUILD_DIR)
