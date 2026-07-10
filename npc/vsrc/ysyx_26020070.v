@@ -233,12 +233,20 @@ module ysyx_26020070(
 
   // ===== WB Stage =====
   wire wb_is_load = ex_is_lb||ex_is_lh||ex_is_lw||ex_is_lbu||ex_is_lhu;
+  wire wb_is_store= ex_is_sb||ex_is_sh||ex_is_sw;
   wire wb_is_jump = ex_is_jal||ex_is_jalr;
   wire wb_is_csr  = ex_is_csrrw||ex_is_csrrs;
   wire [31:0] wb_wdata = wb_is_csr ? csr_rdata : wb_is_jump ? (ex_pc+32'd4) : ex_is_lui ? ex_imm_u :
                           ex_is_auipc ? (ex_pc+ex_imm_u) : wb_is_load ? lsu_mrdata : ex_alu;
   wire [4:0] wb_waddr = ex_rd;
-  wire wb_wen = ex_valid && ex_reg_wen && !ex_is_ebreak && !ex_is_ecall && !ex_is_mret;
+  // wb_wen: only fire when instruction is truly complete
+  // For loads: wait for LSU response (lsu_rvalid); for stores: wait for LSU write response (lsu_bvalid)
+  // For other instructions: can fire immediately
+  wire mem_done = !ex_mem_valid ||  // not a memory op
+                  (wb_is_load && lsu_rvalid && lsu_rready) ||  // load: R channel handshake
+                  (wb_is_store && lsu_bvalid && lsu_bready);    // store: B channel handshake
+  wire wb_wen = ex_valid && ex_reg_wen && mem_done &&
+                !ex_is_ebreak && !ex_is_ecall && !ex_is_mret;
 
   // ===== Pipeline Control =====
   wire stall_pipe = raw_stall;
