@@ -834,14 +834,9 @@ module ysyx_26020070(
   end
 
   // ========== DiffTest skip 检测 ==========
-  wire is_mem_region = (mem_addr >= 32'h0f000000 && mem_addr < 32'h0f002000)
-                    || (mem_addr >= 32'h20000000 && mem_addr < 32'h20001000)
-                    || (mem_addr >= 32'h30000000 && mem_addr < 32'h31000000)
-                    || (mem_addr >= 32'h80000000 && mem_addr < 32'h80400000)
-                    || (mem_addr >= 32'ha0000000 && mem_addr < 32'ha2000000);
-  wire is_peripheral = mem_valid && !is_mem_region;
+  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
   always @(posedge clock) begin
-    if (!rst && ifu_valid && is_peripheral) begin
+    if (!rst && ifu_valid && is_uart_access) begin
       difftest_skip_ref();
     end
   end
