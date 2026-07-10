@@ -125,7 +125,7 @@ module ysyx_26020070(
   wire if_valid = (if_state == F_WAIT) && ifu_rvalid && ifu_rready && !rst;
   wire [31:0] if_inst = if_valid ? ifu_rdata : 32'h00000013;
 
-  wire if_pc_next_default = if_pc + 32'd4;
+  wire [31:0] if_pc_next_default = if_pc + 32'd4;
 
   always @(posedge clock) begin
     if (rst) begin
