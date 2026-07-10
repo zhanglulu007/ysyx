@@ -318,7 +318,7 @@ module ysyx_26020070(
   always @(posedge clock) if (!rst && ex_valid) begin
     if (ex_is_jalr) begin
       if (ex_rd==5'd1) ftrace_call_handler(ex_pc,32'd0);
-      else if (ex_rd==5'd0 && ex_rs1==ex_rd) ftrace_ret_handler(ex_pc,32'd0);
+      else if (ex_rd==5'd0) ftrace_ret_handler(ex_pc, 32'd0);
     end
     if (ex_is_jal && ex_rd==5'd1) ftrace_call_handler(ex_pc,32'd0);
   end
