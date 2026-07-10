@@ -142,14 +142,18 @@ module ysyx_26020070(
   reg ex_reg_wen,ex_mem_valid,ex_mem_wen,ex_csr_wen;
 
   // RAW hazard: stall if ID reads a register that EX will write
+  // Only stall when EX result hasn't been written to RF yet
+  // wb_wen indicates the writeback happens THIS cycle
   wire raw_stall = id_valid && ex_valid && ex_reg_wen && (ex_rd != 5'd0) &&
-                   ((ex_rd == id_rs1) || (ex_rd == id_rs2));
+                   ((ex_rd == id_rs1) || (ex_rd == id_rs2)) && !wb_wen;
 
   always @(posedge clock) begin
     if (rst) begin ex_valid <= 1'b0; end
     else begin
-      ex_valid <= id_valid && !raw_stall;
-      if (id_valid && !raw_stall) begin
+      // When WB writes the register, the instruction is done; allow next to enter
+      if (wb_wen) ex_valid <= 1'b0;
+      else if (id_valid && !raw_stall) begin
+        ex_valid <= 1'b1;
         ex_pc<=id_pc; ex_rs1<=rf_rs1; ex_rs2<=rf_rs2;
         ex_imm_i<=id_imm_i; ex_imm_s<=id_imm_s; ex_imm_b<=id_imm_b; ex_imm_u<=id_imm_u; ex_imm_j<=id_imm_j;
         ex_rd<=id_rd; ex_funct3<=id_funct3; ex_funct7<=id_funct7;
