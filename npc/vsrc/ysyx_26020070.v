@@ -1,3 +1,4 @@
+/* verilator lint_off BLKANDNBLK */
 // ysyx_26020070 - RV32E processor for ysyxSoC
 // 符合 ysyxSoC 接口规范的顶层模块
 // AXI4 Master 总线连接 ysyxSoC 的 AXI4 Xbar
