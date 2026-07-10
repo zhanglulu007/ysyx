@@ -184,6 +184,40 @@ module ysyx_26020070(
   // WBU输出
   wire [31:0] rd_data;
   wire [31:0] pc_next;
+
+  // ===== 流水线控制信号 (3-stage: IF | ID | EX+LS+WB) =====
+  reg         pipe_if_id_valid;
+  reg  [31:0] pipe_if_id_pc, pipe_if_id_inst;
+  reg         pipe_id_ex_valid;
+  reg  [31:0] pipe_id_ex_pc, pipe_id_ex_rs1, pipe_id_ex_rs2;
+  reg  [31:0] pipe_id_ex_imm_i, pipe_id_ex_imm_s, pipe_id_ex_imm_b, pipe_id_ex_imm_u, pipe_id_ex_imm_j;
+  reg  [4:0]  pipe_id_ex_rd, pipe_id_ex_rs1_addr, pipe_id_ex_rs2_addr;
+  reg  [2:0]  pipe_id_ex_funct3;  reg [6:0] pipe_id_ex_funct7;
+  // 指令类型流水线寄存器
+  reg pipe_id_ex_is_add,pipe_id_ex_is_sub,pipe_id_ex_is_and,pipe_id_ex_is_or,pipe_id_ex_is_xor,pipe_id_ex_is_sll,pipe_id_ex_is_srl,pipe_id_ex_is_sra,pipe_id_ex_is_slt,pipe_id_ex_is_sltu;
+  reg pipe_id_ex_is_addi,pipe_id_ex_is_slti,pipe_id_ex_is_sltiu,pipe_id_ex_is_xori,pipe_id_ex_is_ori,pipe_id_ex_is_andi,pipe_id_ex_is_slli,pipe_id_ex_is_srli,pipe_id_ex_is_srai;
+  reg pipe_id_ex_is_lb,pipe_id_ex_is_lh,pipe_id_ex_is_lw,pipe_id_ex_is_lbu,pipe_id_ex_is_lhu;
+  reg pipe_id_ex_is_sb,pipe_id_ex_is_sh,pipe_id_ex_is_sw;
+  reg pipe_id_ex_is_beq,pipe_id_ex_is_bne,pipe_id_ex_is_blt,pipe_id_ex_is_bge,pipe_id_ex_is_bltu,pipe_id_ex_is_bgeu;
+  reg pipe_id_ex_is_lui,pipe_id_ex_is_auipc,pipe_id_ex_is_jal,pipe_id_ex_is_jalr;
+  reg pipe_id_ex_is_ebreak,pipe_id_ex_is_ecall,pipe_id_ex_is_mret,pipe_id_ex_is_fencei;
+  reg pipe_id_ex_is_csrrw,pipe_id_ex_is_csrrs;
+  reg pipe_id_ex_reg_wen, pipe_id_ex_mem_valid, pipe_id_ex_mem_wen, pipe_id_ex_csr_wen;
+
+  // 流水线控制
+  reg  stall_pipe;
+  reg  flush_pipe;
+  reg  [31:0] redirect_pc;
+  wire ex_is_branch = pipe_id_ex_is_beq||pipe_id_ex_is_bne||pipe_id_ex_is_blt||pipe_id_ex_is_bge||pipe_id_ex_is_bltu||pipe_id_ex_is_bgeu;
+  wire ex_is_jump   = pipe_id_ex_is_jal||pipe_id_ex_is_jalr;
+  wire ex_is_taken  = (ex_is_branch && branch_taken) || ex_is_jump;
+  wire [31:0] ex_target = pipe_id_ex_is_jalr ? jump_target : branch_target;
+  wire pipe_pc_next = flush_pipe ? redirect_pc : (pc + 32'd4);
+
+  // RAW检测: ID阶段需要读的寄存器与EX阶段要写的寄存器冲突
+  wire raw_rs1_ex = pipe_id_ex_valid && pipe_id_ex_reg_wen && (pipe_id_ex_rd != 5'd0) && (pipe_id_ex_rd == rs1);
+  wire raw_rs2_ex = pipe_id_ex_valid && pipe_id_ex_reg_wen && (pipe_id_ex_rd != 5'd0) && (pipe_id_ex_rd == rs2);
+  wire raw_hazard = ifu_valid && (raw_rs1_ex || raw_rs2_ex);
   wire exception_en;
   wire [31:0] exception_pc;
   wire [31:0] exception_cause;
@@ -289,9 +323,9 @@ module ysyx_26020070(
 
   // 访存地址计算
   wire [31:0] mem_addr;
-  wire is_store = is_sb || is_sh || is_sw;
-  assign mem_addr = is_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
-  wire is_load = is_lb || is_lh || is_lw || is_lbu || is_lhu;
+  wire is_store = pipe_id_ex_is_sb || pipe_id_ex_is_sh || pipe_id_ex_is_sw;
+  assign mem_addr = pipe_id_ex_is_sb||pipe_id_ex_is_sh||pipe_id_ex_is_sw ? (pipe_id_ex_rs1 + pipe_id_ex_imm_s) : (pipe_id_ex_rs1 + pipe_id_ex_imm_i);
+  wire is_load = pipe_id_ex_is_lb || pipe_id_ex_is_lh || pipe_id_ex_is_lw || pipe_id_ex_is_lbu || pipe_id_ex_is_lhu;
 
   // ========== 性能计数器观测信号 ==========
   wire        ifu_state;
@@ -341,10 +375,10 @@ module ysyx_26020070(
   IFU u_ifu(
     .clk(clock),
     .rst(rst),
-    .pc_next(pc_next),
-    .mem_valid(mem_valid),
-    .mem_wen(mem_wen),
-    .rd(rd),
+    .pc_next(pipe_pc_next),
+    .mem_valid(1'b0),
+    .mem_wen(1'b0),
+    .rd(5'd0),
     // AXI4 AR 通道
     .ifu_arready(ifu_arready),
     .ifu_arvalid(ifu_arvalid),
@@ -365,7 +399,7 @@ module ysyx_26020070(
     .lsu_bvalid(lsu_bvalid),
     .lsu_access_fault(lsu_access_fault),
     // 输出
-    .pc(pc),
+    .pc(pipe_id_ex_pc),
     .inst(inst),
     .ifu_valid(ifu_valid),
     .load_wb(load_wb),
@@ -421,68 +455,81 @@ module ysyx_26020070(
     .flush             (icache_flush)
   );
 
+  // ===== IF/ID 流水线寄存器 =====
+  always @(posedge clock) begin
+    if (rst || flush_pipe) begin
+      pipe_if_id_valid <= 1'b0;
+    end else if (!stall_pipe) begin
+      pipe_if_id_valid <= ifu_valid;
+      if (ifu_valid) begin
+        pipe_if_id_pc   <= pc;
+        pipe_if_id_inst <= inst;
+      end
+    end
+  end
+
   // IDU - 译码单元
   IDU u_idu(
-    .inst(inst),
-    .ifu_valid(ifu_valid),
+    .inst(pipe_if_id_inst),
+    .ifu_valid(pipe_if_id_valid),
     .opcode(opcode),
     .rd(rd),
     .rs1(rs1),
     .rs2(rs2),
-    .funct3(funct3),
+    .funct3(pipe_id_ex_funct3),
     .funct7(funct7),
     .imm_i(imm_i),
     .imm_s(imm_s),
     .imm_b(imm_b),
     .imm_u(imm_u),
     .imm_j(imm_j),
-    .is_add(is_add),
-    .is_sub(is_sub),
-    .is_and(is_and),
-    .is_or(is_or),
-    .is_xor(is_xor),
-    .is_sll(is_sll),
-    .is_srl(is_srl),
-    .is_sra(is_sra),
-    .is_slt(is_slt),
-    .is_sltu(is_sltu),
-    .is_addi(is_addi),
-    .is_slti(is_slti),
-    .is_sltiu(is_sltiu),
-    .is_xori(is_xori),
-    .is_ori(is_ori),
-    .is_andi(is_andi),
-    .is_slli(is_slli),
-    .is_srli(is_srli),
-    .is_srai(is_srai),
-    .is_lb(is_lb),
-    .is_lh(is_lh),
-    .is_lw(is_lw),
-    .is_lbu(is_lbu),
-    .is_lhu(is_lhu),
-    .is_sb(is_sb),
-    .is_sh(is_sh),
-    .is_sw(is_sw),
-    .is_beq(is_beq),
-    .is_bne(is_bne),
-    .is_blt(is_blt),
-    .is_bge(is_bge),
-    .is_bltu(is_bltu),
-    .is_bgeu(is_bgeu),
-    .is_lui(is_lui),
-    .is_auipc(is_auipc),
-    .is_jal(is_jal),
-    .is_jalr(is_jalr),
-    .is_ebreak(is_ebreak),
-    .is_ecall(is_ecall),
-    .is_mret(is_mret),
+    .is_add(pipe_id_ex_is_add),
+    .is_sub(pipe_id_ex_is_sub),
+    .is_and(pipe_id_ex_is_and),
+    .is_or(pipe_id_ex_is_or),
+    .is_xor(pipe_id_ex_is_xor),
+    .is_sll(pipe_id_ex_is_sll),
+    .is_srl(pipe_id_ex_is_srl),
+    .is_sra(pipe_id_ex_is_sra),
+    .is_slt(pipe_id_ex_is_slt),
+    .is_sltu(pipe_id_ex_is_sltu),
+    .is_addi(pipe_id_ex_is_addi),
+    .is_slti(pipe_id_ex_is_slti),
+    .is_sltiu(pipe_id_ex_is_sltiu),
+    .is_xori(pipe_id_ex_is_xori),
+    .is_ori(pipe_id_ex_is_ori),
+    .is_andi(pipe_id_ex_is_andi),
+    .is_slli(pipe_id_ex_is_slli),
+    .is_srli(pipe_id_ex_is_srli),
+    .is_srai(pipe_id_ex_is_srai),
+    .is_lb(pipe_id_ex_is_lb),
+    .is_lh(pipe_id_ex_is_lh),
+    .is_lw(pipe_id_ex_is_lw),
+    .is_lbu(pipe_id_ex_is_lbu),
+    .is_lhu(pipe_id_ex_is_lhu),
+    .is_sb(pipe_id_ex_is_sb),
+    .is_sh(pipe_id_ex_is_sh),
+    .is_sw(pipe_id_ex_is_sw),
+    .is_beq(pipe_id_ex_is_beq),
+    .is_bne(pipe_id_ex_is_bne),
+    .is_blt(pipe_id_ex_is_blt),
+    .is_bge(pipe_id_ex_is_bge),
+    .is_bltu(pipe_id_ex_is_bltu),
+    .is_bgeu(pipe_id_ex_is_bgeu),
+    .is_lui(pipe_id_ex_is_lui),
+    .is_auipc(pipe_id_ex_is_auipc),
+    .is_jal(pipe_id_ex_is_jal),
+    .is_jalr(pipe_id_ex_is_jalr),
+    .is_ebreak(pipe_id_ex_is_ebreak),
+    .is_ecall(pipe_id_ex_is_ecall),
+    .is_mret(pipe_id_ex_is_mret),
     .is_fencei(is_fencei),
     .icache_flush(icache_flush),
-    .is_csrrw(is_csrrw),
-    .is_csrrs(is_csrrs),
+    .is_csrrw(pipe_id_ex_is_csrrw),
+    .is_csrrs(pipe_id_ex_is_csrrs),
     .reg_wen(reg_wen),
-    .mem_valid(mem_valid),
-    .mem_wen(mem_wen),
+    .mem_valid(pipe_id_ex_mem_valid),
+    .mem_wen(pipe_id_ex_mem_wen),
     .csr_wen(csr_wen)
   );
 
@@ -499,43 +546,82 @@ module ysyx_26020070(
     .a0_value(a0_value)
   );
 
+  // ===== ID/EX 流水线寄存器 =====
+  always @(posedge clock) begin
+    if (rst) begin
+      pipe_id_ex_valid <= 1'b0;
+    end else begin
+      pipe_id_ex_valid <= pipe_if_id_valid && !raw_hazard;
+      if (pipe_if_id_valid && !raw_hazard) begin
+        pipe_id_ex_pc    <= pipe_if_id_pc;
+        pipe_id_ex_rs1   <= rs1_data;
+        pipe_id_ex_rs2   <= rs2_data;
+        pipe_id_ex_imm_i <= imm_i; pipe_id_ex_imm_s <= imm_s; pipe_id_ex_imm_b <= imm_b;
+        pipe_id_ex_imm_u <= imm_u; pipe_id_ex_imm_j <= imm_j;
+        pipe_id_ex_rd <= rd; pipe_id_ex_funct3 <= funct3; pipe_id_ex_funct7 <= funct7;
+        pipe_id_ex_is_add<=is_add; pipe_id_ex_is_sub<=is_sub; pipe_id_ex_is_and<=is_and; pipe_id_ex_is_or<=is_or;
+        pipe_id_ex_is_xor<=is_xor; pipe_id_ex_is_sll<=is_sll; pipe_id_ex_is_srl<=is_srl; pipe_id_ex_is_sra<=is_sra;
+        pipe_id_ex_is_slt<=is_slt; pipe_id_ex_is_sltu<=is_sltu;
+        pipe_id_ex_is_addi<=is_addi; pipe_id_ex_is_slti<=is_slti; pipe_id_ex_is_sltiu<=is_sltiu;
+        pipe_id_ex_is_xori<=is_xori; pipe_id_ex_is_ori<=is_ori; pipe_id_ex_is_andi<=is_andi;
+        pipe_id_ex_is_slli<=is_slli; pipe_id_ex_is_srli<=is_srli; pipe_id_ex_is_srai<=is_srai;
+        pipe_id_ex_is_lb<=is_lb; pipe_id_ex_is_lh<=is_lh; pipe_id_ex_is_lw<=is_lw; pipe_id_ex_is_lbu<=is_lbu; pipe_id_ex_is_lhu<=is_lhu;
+        pipe_id_ex_is_sb<=is_sb; pipe_id_ex_is_sh<=is_sh; pipe_id_ex_is_sw<=is_sw;
+        pipe_id_ex_is_beq<=is_beq; pipe_id_ex_is_bne<=is_bne; pipe_id_ex_is_blt<=is_blt; pipe_id_ex_is_bge<=is_bge;
+        pipe_id_ex_is_bltu<=is_bltu; pipe_id_ex_is_bgeu<=is_bgeu;
+        pipe_id_ex_is_lui<=is_lui; pipe_id_ex_is_auipc<=is_auipc; pipe_id_ex_is_jal<=is_jal; pipe_id_ex_is_jalr<=is_jalr;
+        pipe_id_ex_is_ebreak<=is_ebreak; pipe_id_ex_is_ecall<=is_ecall; pipe_id_ex_is_mret<=is_mret;
+        pipe_id_ex_is_fencei<=is_fencei;
+        pipe_id_ex_is_csrrw<=is_csrrw; pipe_id_ex_is_csrrs<=is_csrrs;
+        pipe_id_ex_reg_wen<=reg_wen; pipe_id_ex_mem_valid<=mem_valid; pipe_id_ex_mem_wen<=mem_wen; pipe_id_ex_csr_wen<=csr_wen;
+      end
+    end
+  end
+
+  // 流水线控制
+  always @(*) begin
+    stall_pipe = raw_hazard;
+    flush_pipe = pipe_id_ex_valid && ex_is_taken;
+    redirect_pc = ex_target;
+  end
+
   // EXU - 执行单元
   EXU u_exu(
-    .rs1_data(rs1_data),
-    .rs2_data(rs2_data),
-    .imm_i(imm_i),
-    .imm_b(imm_b),
-    .imm_j(imm_j),
-    .pc(pc),
-    .is_add(is_add),
-    .is_sub(is_sub),
-    .is_and(is_and),
-    .is_or(is_or),
-    .is_xor(is_xor),
-    .is_sll(is_sll),
-    .is_srl(is_srl),
-    .is_sra(is_sra),
-    .is_slt(is_slt),
-    .is_sltu(is_sltu),
-    .is_addi(is_addi),
-    .is_slti(is_slti),
-    .is_sltiu(is_sltiu),
-    .is_xori(is_xori),
-    .is_ori(is_ori),
-    .is_andi(is_andi),
-    .is_slli(is_slli),
-    .is_srli(is_srli),
-    .is_srai(is_srai),
-    .is_beq(is_beq),
-    .is_bne(is_bne),
-    .is_blt(is_blt),
-    .is_bge(is_bge),
-    .is_bltu(is_bltu),
-    .is_bgeu(is_bgeu),
-    .is_jal(is_jal),
-    .is_jalr(is_jalr),
-    .is_csrrw(is_csrrw),
-    .is_csrrs(is_csrrs),
+    .rs1_data(pipe_id_ex_rs1),
+    .rs2_data(pipe_id_ex_rs2),
+    .imm_i(pipe_id_ex_imm_i),
+    .imm_b(pipe_id_ex_imm_b),
+    .imm_j(pipe_id_ex_imm_j),
+    .pc(pipe_id_ex_pc),
+    .is_add(pipe_id_ex_is_add),
+    .is_sub(pipe_id_ex_is_sub),
+    .is_and(pipe_id_ex_is_and),
+    .is_or(pipe_id_ex_is_or),
+    .is_xor(pipe_id_ex_is_xor),
+    .is_sll(pipe_id_ex_is_sll),
+    .is_srl(pipe_id_ex_is_srl),
+    .is_sra(pipe_id_ex_is_sra),
+    .is_slt(pipe_id_ex_is_slt),
+    .is_sltu(pipe_id_ex_is_sltu),
+    .is_addi(pipe_id_ex_is_addi),
+    .is_slti(pipe_id_ex_is_slti),
+    .is_sltiu(pipe_id_ex_is_sltiu),
+    .is_xori(pipe_id_ex_is_xori),
+    .is_ori(pipe_id_ex_is_ori),
+    .is_andi(pipe_id_ex_is_andi),
+    .is_slli(pipe_id_ex_is_slli),
+    .is_srli(pipe_id_ex_is_srli),
+    .is_srai(pipe_id_ex_is_srai),
+    .is_beq(pipe_id_ex_is_beq),
+    .is_bne(pipe_id_ex_is_bne),
+    .is_blt(pipe_id_ex_is_blt),
+    .is_bge(pipe_id_ex_is_bge),
+    .is_bltu(pipe_id_ex_is_bltu),
+    .is_bgeu(pipe_id_ex_is_bgeu),
+    .is_jal(pipe_id_ex_is_jal),
+    .is_jalr(pipe_id_ex_is_jalr),
+    .is_csrrw(pipe_id_ex_is_csrrw),
+    .is_csrrs(pipe_id_ex_is_csrrs),
     .csr_rdata(csr_rdata),
     .csr_wdata(csr_wdata),
     .alu_result(alu_result),
@@ -550,7 +636,7 @@ module ysyx_26020070(
     .rst(rst),
     .csr_addr(imm_i[11:0]),
     .csr_wdata(csr_wdata),
-    .csr_wen(csr_wen),
+    .csr_wen(pipe_id_ex_csr_wen),
     .csr_rdata(csr_rdata),
     .exception_en(exception_en),
     .exception_pc(exception_pc),
@@ -565,12 +651,12 @@ module ysyx_26020070(
   LSU u_lsu(
     .clk(clock),
     .rst(rst),
-    .mem_valid(mem_valid),
-    .mem_wen(mem_wen),
-    .funct3(funct3),
+    .mem_valid(pipe_id_ex_mem_valid),
+    .mem_wen(pipe_id_ex_mem_wen),
+    .funct3(pipe_id_ex_funct3),
     .mem_addr(mem_addr),
     .wdata(rs2_data),
-    .cpu_pc(pc),                 // 当前指令 PC, 供 mtrace DPI 记录访存来源
+    .cpu_pc(pipe_id_ex_pc),                 // 当前指令 PC, 供 mtrace DPI 记录访存来源
     // AXI4 AR 通道
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
@@ -772,33 +858,33 @@ module ysyx_26020070(
 
   // WBU - 写回单元
   WBU u_wbu(
-    .pc(pc),
+    .pc(pipe_id_ex_pc),
     .alu_result(alu_result),
     .mem_rdata(lsu_mem_rdata),
     .imm_u(imm_u),
     .jump_target(jump_target),
     .branch_target(branch_target),
     .branch_taken(branch_taken),
-    .is_lb(is_lb),
-    .is_lh(is_lh),
-    .is_lw(is_lw),
-    .is_lbu(is_lbu),
-    .is_lhu(is_lhu),
-    .is_beq(is_beq),
-    .is_bne(is_bne),
-    .is_blt(is_blt),
-    .is_bge(is_bge),
-    .is_bltu(is_bltu),
-    .is_bgeu(is_bgeu),
-    .is_lui(is_lui),
-    .is_auipc(is_auipc),
-    .is_jal(is_jal),
-    .is_jalr(is_jalr),
-    .is_ebreak(is_ebreak),
-    .is_ecall(is_ecall),
-    .is_mret(is_mret),
-    .is_csrrw(is_csrrw),
-    .is_csrrs(is_csrrs),
+    .is_lb(pipe_id_ex_is_lb),
+    .is_lh(pipe_id_ex_is_lh),
+    .is_lw(pipe_id_ex_is_lw),
+    .is_lbu(pipe_id_ex_is_lbu),
+    .is_lhu(pipe_id_ex_is_lhu),
+    .is_beq(pipe_id_ex_is_beq),
+    .is_bne(pipe_id_ex_is_bne),
+    .is_blt(pipe_id_ex_is_blt),
+    .is_bge(pipe_id_ex_is_bge),
+    .is_bltu(pipe_id_ex_is_bltu),
+    .is_bgeu(pipe_id_ex_is_bgeu),
+    .is_lui(pipe_id_ex_is_lui),
+    .is_auipc(pipe_id_ex_is_auipc),
+    .is_jal(pipe_id_ex_is_jal),
+    .is_jalr(pipe_id_ex_is_jalr),
+    .is_ebreak(pipe_id_ex_is_ebreak),
+    .is_ecall(pipe_id_ex_is_ecall),
+    .is_mret(pipe_id_ex_is_mret),
+    .is_csrrw(pipe_id_ex_is_csrrw),
+    .is_csrrs(pipe_id_ex_is_csrrs),
     .csr_rdata(csr_rdata),
     .mtvec(mtvec_out),
     .mepc(mepc_out),
@@ -828,15 +914,20 @@ module ysyx_26020070(
   end
   always @(posedge clock) begin
     if (!rst && access_fault && !prev_access_fault) begin
-      $display("ACCESS FAULT detected at PC=0x%08x, is_store=%0d, mcycle=%0d", pc, mem_wen, mcycle_out);
-      access_fault_handler(pc, {31'b0, mem_wen});
+      $display("ACCESS FAULT detected at PC=0x%08x, is_store=%0d, mcycle=%0d", pipe_id_ex_pc, pipe_id_ex_mem_wen, mcycle_out);
+      access_fault_handler(pipe_id_ex_pc, {31'b0, pipe_id_ex_mem_wen});
     end
   end
 
   // ========== DiffTest skip 检测 ==========
-  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
+  wire is_mem_region = (mem_addr >= 32'h0f000000 && mem_addr < 32'h0f002000)
+                    || (mem_addr >= 32'h20000000 && mem_addr < 32'h20001000)
+                    || (mem_addr >= 32'h30000000 && mem_addr < 32'h31000000)
+                    || (mem_addr >= 32'h80000000 && mem_addr < 32'h80400000)
+                    || (mem_addr >= 32'ha0000000 && mem_addr < 32'ha2000000);
+  wire is_peripheral = pipe_id_ex_mem_valid && !is_mem_region;
   always @(posedge clock) begin
-    if (!rst && ifu_valid && is_uart_access) begin
+    if (!rst && pipe_id_ex_valid && is_peripheral) begin
       difftest_skip_ref();
     end
   end
@@ -844,22 +935,22 @@ module ysyx_26020070(
   always @(posedge clock) begin
     if (!rst && ifu_valid) begin
       // ebreak处理
-      if (is_ebreak) begin
-        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pc, a0_value, mcycle_out);
+      if (pipe_id_ex_is_ebreak) begin
+        $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", pipe_id_ex_pc, a0_value, mcycle_out);
         ebreak_handler(a0_value);
       end
 
       // ftrace检测
-      if (is_jalr) begin
-        if (rd == 5'd1) begin
+      if (pipe_id_ex_is_jalr) begin
+        if (pipe_id_ex_rd == 5'd1) begin
           ftrace_call_handler(pc, jump_target);
         end
-        else if (rd == 5'd0 && rs1 == 5'd1) begin
+        else if (pipe_id_ex_rd == 5'd0 && pipe_id_ex_rs1_addr == 5'd1) begin
           ftrace_ret_handler(pc, jump_target);
         end
       end
 
-      if (is_jal && rd == 5'd1) begin
+      if (pipe_id_ex_is_jal && rd == 5'd1) begin
         ftrace_call_handler(pc, branch_target);
       end
     end
