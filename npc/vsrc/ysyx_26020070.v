@@ -149,6 +149,7 @@ module ysyx_26020070(
     end
   end
 
+`ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   always @(posedge clock) begin
