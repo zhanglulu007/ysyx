@@ -172,7 +172,8 @@ module ysyx_26020070(
     else begin
       // When WB writes the register, the instruction is done; allow next to enter
       if (wb_wen) ex_valid <= 1'b0;
-      else if (id_valid && !raw_stall) begin
+      // Only capture new instruction when EX stage is empty (not processing multi-cycle op)
+      else if (!ex_valid && id_valid && !raw_stall) begin
         ex_valid <= 1'b1;
         ex_pc<=id_pc; ex_rs1<=rf_rs1; ex_rs2<=rf_rs2;
         ex_imm_i<=id_imm_i; ex_imm_s<=id_imm_s; ex_imm_b<=id_imm_b; ex_imm_u<=id_imm_u; ex_imm_j<=id_imm_j;
@@ -262,7 +263,9 @@ module ysyx_26020070(
                 !ex_is_ebreak && !ex_is_ecall && !ex_is_mret;
 
   // ===== Pipeline Control =====
-  wire stall_pipe = raw_stall;
+  // Stall IF/ID when: RAW hazard, or EX stage busy (multi-cycle instruction not done)
+  wire ex_busy = ex_valid && !wb_wen;
+  wire stall_pipe = raw_stall || ex_busy;
   wire flush_pipe = ex_taken || ex_fencei_hit;
   wire [31:0] redirect_pc = ex_fencei_hit ? (ex_pc+32'd4) : ex_target;
 
