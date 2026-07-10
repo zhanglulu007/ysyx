@@ -417,7 +417,7 @@ module ysyx_26020070(
     .icache_refill_req (icache_refill_req),
     .icache_refill_req_pulse (icache_refill_req_pulse),
     .icache_wait_ar    (icache_wait_ar),
-        .icache_wait_r     (icache_wait_r)
+            .icache_wait_r     (icache_wait_r),
         .flush             (icache_flush)
   );
 
