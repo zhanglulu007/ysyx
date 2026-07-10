@@ -149,12 +149,21 @@ module ysyx_26020070(
     end
   end
 
-`ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
   always @(posedge clock) begin
     if (!rst && if_valid && !stall_F) begin
       update_inst_value(if_pc, ifu_rdata);
+      update_pc_value(if_pc_next_default);
+    end
+    if (rst) begin
+`ifdef SOC_MODE
+      update_pc_value(32'h30000000);
+`else
+      update_pc_value(32'h80000000);
+`endif
+    end else if (flush_F) begin
+      update_pc_value(redirect_pc);
     end
   end
 `endif
