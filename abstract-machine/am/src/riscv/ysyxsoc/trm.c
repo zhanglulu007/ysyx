@@ -87,9 +87,9 @@ void ssbl(void) {
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 
   /* 跳转到 SDRAM 中的 _trm_init (此时主程序已就位)
-   * ⚠️ 无 fence.i: ICache 中仍缓存着前面的 NOP 序列!
-   *    程序将执行 NOP+RET 而非真正的 _trm_init → 出错 */
-  // fence.i 将在下一节实验添加
+   * fence.i 冲刷 ICache, 确保后续取指看到被覆盖的真实程序,
+   * 而非之前缓存的 NOP 序列 (B4.md "在bootloader中添加fence.i指令") */
+  asm volatile("fence.i");
   _trm_init();
   while (1);
 }
