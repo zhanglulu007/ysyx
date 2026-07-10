@@ -205,9 +205,9 @@ module ysyx_26020070(
   reg pipe_id_ex_reg_wen, pipe_id_ex_mem_valid, pipe_id_ex_mem_wen, pipe_id_ex_csr_wen;
 
   // 流水线控制
-  reg  stall_pipe;
-  reg  flush_pipe;
-  reg  [31:0] redirect_pc;
+  wire stall_pipe;
+  wire flush_pipe;
+  wire [31:0] redirect_pc;
   wire ex_is_branch = pipe_id_ex_is_beq||pipe_id_ex_is_bne||pipe_id_ex_is_blt||pipe_id_ex_is_bge||pipe_id_ex_is_bltu||pipe_id_ex_is_bgeu;
   wire ex_is_jump   = pipe_id_ex_is_jal||pipe_id_ex_is_jalr;
   wire ex_is_taken  = (ex_is_branch && branch_taken) || ex_is_jump;
@@ -579,11 +579,9 @@ module ysyx_26020070(
   end
 
   // 流水线控制
-  always @(*) begin
-    stall_pipe = raw_hazard;
-    flush_pipe = pipe_id_ex_valid && ex_is_taken;
-    redirect_pc = ex_target;
-  end
+  assign stall_pipe = raw_hazard;
+  assign flush_pipe = pipe_id_ex_valid && ex_is_taken;
+  assign redirect_pc = ex_target;
 
   // EXU - 执行单元
   EXU u_exu(
