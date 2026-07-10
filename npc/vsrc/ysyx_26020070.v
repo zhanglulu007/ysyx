@@ -65,19 +65,26 @@ module ysyx_26020070(
 `ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
   import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
+  // update_inst_value: called at IF stage (for itrace)
   always @(posedge clock) begin
     if (!rst && if_valid && !stall_pipe) begin
       update_inst_value(if_pc, if_rdata);
-      update_pc_value(if_pc + 32'd4);
     end
+  end
+  // update_pc_value: called at WB stage (after register write, for difftest sync)
+  reg wb_done_pulse;
+  always @(posedge clock) begin
     if (rst) begin
+      wb_done_pulse <= 1'b0;
 `ifdef SOC_MODE
       update_pc_value(32'h30000000);
 `else
       update_pc_value(32'h80000000);
 `endif
-    end else if (flush_pipe) begin
-      update_pc_value(redirect_pc);
+    end else begin
+      wb_done_pulse <= wb_wen;
+      if (wb_wen) update_pc_value(ex_pc + 32'd4);
+      else if (flush_pipe) update_pc_value(redirect_pc);
     end
   end
 `endif
