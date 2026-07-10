@@ -71,22 +71,28 @@ module ysyx_26020070(
       update_inst_value(if_pc, if_rdata);
     end
   end
-  // update_pc_value: called at WB stage (after register write, for difftest sync)
-  reg wb_done_pulse;
+  // update_pc_value: called one cycle AFTER WB (to ensure RF write completed)
+  reg wb_done;
   always @(posedge clock) begin
     if (rst) begin
-      wb_done_pulse <= 1'b0;
+      wb_done <= 1'b0;
 `ifdef SOC_MODE
       update_pc_value(32'h30000000);
 `else
       update_pc_value(32'h80000000);
 `endif
     end else begin
-      wb_done_pulse <= wb_wen;
-      if (wb_wen) update_pc_value(ex_pc + 32'd4);
-      else if (flush_pipe) update_pc_value(redirect_pc);
+      if (wb_done) begin
+        // WB happened last cycle — signal PC advance NOW (RF write completed)
+        update_pc_value(ex_pc_d + 32'd4);
+      end
+      wb_done <= wb_wen;
+      if (flush_pipe) update_pc_value(redirect_pc);
     end
   end
+  // Save ex_pc for delayed PC update
+  reg [31:0] ex_pc_d;
+  always @(posedge clock) if (wb_wen) ex_pc_d <= ex_pc;
 `endif
 
   // ===== IF/ID Pipeline Register =====
