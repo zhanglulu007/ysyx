@@ -66,7 +66,7 @@ void ssbl(void) {
   /* 清零 .bss (SDRAM) */
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 
-  /* 跳转到 SDRAM 中的 _trm_init (此时主程序已就位) */
+  asm volatile("fence.i");
   _trm_init();
   while (1);
 }

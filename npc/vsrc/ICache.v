@@ -1,6 +1,6 @@
 module ICache #(
   parameter BLOCK_SIZE   = 16,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
-  parameter NR_CACHE_BLK = 4    // 缓存块数, 默认 16
+  parameter NR_CACHE_BLK = 4     // 缓存块数, 默认 4
 )(
   input clk,
   input rst,
@@ -45,7 +45,10 @@ module ICache #(
   output icache_refill_req,        // 电平信号: IC_REFILL_AR 状态 (周期计数)
   output icache_refill_req_pulse,  // 脉冲信号: 进入 IC_REFILL_AR 的当拍 (事件计数)
   output icache_wait_ar,
-  output icache_wait_r
+  output icache_wait_r,
+
+  // ===== fence.i 控制 =====
+  input flush                      // 冲刷整个 ICache (所有 valid 位清零)
 );
 
   // ===================================================================
@@ -87,7 +90,7 @@ module ICache #(
 
   integer i;
   always @(posedge clk) begin
-    if (rst) begin
+    if (rst || flush) begin
       for (i = 0; i < NR_CACHE_BLK; i = i + 1) begin
         cache_valid[i] <= 1'b0;
       end
@@ -238,7 +241,7 @@ module ICache #(
   // ===================================================================
   reg [1:0] prev_state;
   always @(posedge clk) begin
-    if (rst) begin
+    if (rst || flush) begin
       state       <= IC_IDLE;
       prev_state  <= IC_IDLE;
       req_addr    <= 32'b0;

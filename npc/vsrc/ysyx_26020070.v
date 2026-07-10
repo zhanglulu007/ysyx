@@ -151,7 +151,9 @@ module ysyx_26020070(
   wire is_jal, is_jalr;
 
   // IDU输出 - 系统指令
-  wire is_ebreak, is_ecall, is_mret;
+  wire is_ebreak, is_ecall, is_mret, is_fencei;
+  // fence.i 控制
+  wire icache_flush;
 
   // IDU输出 - CSR指令
   wire is_csrrw, is_csrrs;
@@ -323,7 +325,7 @@ module ysyx_26020070(
   wire is_jump_cls   = is_jal||is_jalr;
   wire is_u_cls      = is_lui||is_auipc;
   wire is_csr_cls    = is_csrrw||is_csrrs;
-  wire is_sys_cls    = is_ebreak||is_ecall||is_mret;
+  wire is_sys_cls    = is_ebreak||is_ecall||is_mret||is_fencei;
   // EXU 计算完成: 一条指令执行完毕且为非访存指令 (即 EXU 本周期产出了有效结果)
   wire exu_calc_done = ifu_valid && !is_load && !is_store;
 `endif
@@ -415,7 +417,8 @@ module ysyx_26020070(
     .icache_refill_req (icache_refill_req),
     .icache_refill_req_pulse (icache_refill_req_pulse),
     .icache_wait_ar    (icache_wait_ar),
-    .icache_wait_r     (icache_wait_r)
+    .icache_wait_r     (icache_wait_r),
+    .flush             (icache_flush)
   );
 
   // IDU - 译码单元
@@ -473,6 +476,8 @@ module ysyx_26020070(
     .is_ebreak(is_ebreak),
     .is_ecall(is_ecall),
     .is_mret(is_mret),
+    .is_fencei(is_fencei),
+    .icache_flush(icache_flush),
     .is_csrrw(is_csrrw),
     .is_csrrs(is_csrrs),
     .reg_wen(reg_wen),
