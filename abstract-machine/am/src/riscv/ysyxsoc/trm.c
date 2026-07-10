@@ -66,8 +66,6 @@ void ssbl(void) {
   /* 清零 .bss (SDRAM) */
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
 
-  /* fence.i 冲刷 ICache, 确保后续取指不受缓存残留影响
-   * (B4.md "在bootloader中添加fence.i指令") */
   asm volatile("fence.i");
   _trm_init();
   while (1);
