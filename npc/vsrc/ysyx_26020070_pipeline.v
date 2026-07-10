@@ -5,7 +5,7 @@
 // Hazard: RAW stall (ID checks EX stage rd), branch flush, fence.i flush
 // Keeps ysyxSoC interface compatible
 
-module ysyx_26020070(
+module ysyx_26020070_pipeline(
   input clock, input reset, input io_interrupt,
   output io_master_arvalid, input io_master_arready, output [31:0] io_master_araddr,
   output [ 3:0] io_master_arid, output [ 7:0] io_master_arlen, output [ 2:0] io_master_arsize, output [ 1:0] io_master_arburst,
