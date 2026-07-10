@@ -9,8 +9,13 @@ AM_SRCS := riscv/ysyxsoc/start.S \
            platform/dummy/vme.c \
            platform/dummy/mpe.c
 
+# 程序代码填充 (B4.md "优化程序的内存布局")
+# make ARCH=riscv32e-ysyxsoc PADDING_SIZE=0|4|8|12
+PADDING_SIZE ?= 0
+
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/ysyxsoc-linker.ld
+LDFLAGS   += --defsym=PADDING_SIZE=$(PADDING_SIZE)
 LDFLAGS   += --gc-sections -e _start
 
 MAINARGS_MAX_LEN = 64

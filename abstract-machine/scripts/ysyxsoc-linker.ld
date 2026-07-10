@@ -28,6 +28,9 @@ SECTIONS {
 
   _text_lma = LOADADDR(.text);
   .text : {
+    /* === 程序代码填充 (B4.md "优化程序的内存布局") ===
+     * PADDING_SIZE 通过 LDFLAGS 传入, 默认为 0. */
+    . = . + PADDING_SIZE;
     _text_start = .;
     *(.text*)
     _text_end = .;
