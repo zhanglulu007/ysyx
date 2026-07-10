@@ -213,7 +213,7 @@ module ysyx_26020070(
   wire ex_is_jump   = pipe_id_ex_is_jal||pipe_id_ex_is_jalr;
   wire ex_is_taken  = (ex_is_branch && branch_taken) || ex_is_jump;
   wire [31:0] ex_target = pipe_id_ex_is_jalr ? jump_target : branch_target;
-  wire pipe_pc_next = flush_pipe ? redirect_pc : (pc + 32'd4);
+  wire [31:0] pipe_pc_next = flush_pipe ? redirect_pc : (pc + 32'd4);
 
   // RAW检测: ID阶段需要读的寄存器与EX阶段要写的寄存器冲突
   wire raw_rs1_ex = pipe_id_ex_valid && pipe_id_ex_reg_wen && (pipe_id_ex_rd != 5'd0) && (pipe_id_ex_rd == rs1);
