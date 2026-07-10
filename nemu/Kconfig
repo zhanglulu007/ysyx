@@ -226,7 +226,7 @@ config DIFFTEST_REF_NAME
 endmenu
 
 config YSYXSOC
-  depends on ISA_riscv && MODE_SYSTEM && TARGET_NATIVE_ELF
+  depends on ISA_riscv && MODE_SYSTEM && (TARGET_NATIVE_ELF || TARGET_SHARE)
   bool "Run riscv32e-ysyxsoc images (Flash-entry memory map + CLINT/UART16550)"
   default n
   help
