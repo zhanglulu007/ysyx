@@ -9,9 +9,11 @@ AM_SRCS := riscv/npc/start.S \
            platform/dummy/vme.c \
            platform/dummy/mpe.c
 
+PADDING_SIZE ?= 0
+
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/linker.ld
-LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
+LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0 --defsym=PADDING_SIZE=$(PADDING_SIZE)
 LDFLAGS   += --gc-sections -e _start
 
 MAINARGS_MAX_LEN = 64

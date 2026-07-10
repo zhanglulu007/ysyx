@@ -9,8 +9,11 @@ AM_SRCS := riscv/ysyxsoc/start.S \
            platform/dummy/vme.c \
            platform/dummy/mpe.c
 
+PADDING_SIZE ?= 0
+
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/ysyxsoc-linker.ld
+LDFLAGS   += --defsym=PADDING_SIZE=$(PADDING_SIZE)
 LDFLAGS   += --gc-sections -e _start
 
 MAINARGS_MAX_LEN = 64

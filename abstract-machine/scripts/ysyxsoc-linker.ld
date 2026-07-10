@@ -26,12 +26,18 @@ SECTIONS {
   } > sram AT> flash
   _ssbl_lma = LOADADDR(.text.ssbl);
 
-  _text_lma = LOADADDR(.text);
+  /* === .text: 主程序段 (SDRAM) ===
+   * PADDING_SIZE 通过 LDFLAGS --defsym 传入, 默认为 0.
+   * 填充放在段内 (_text_start 之后), 使代码偏移但不破坏 _text_lma 的复制逻辑.
+   * SSBL 复制时 sz = _text_end - _text_start, src = _text_lma, 均跳过填充头. */
   .text : {
+    /* 填充字节: 在 _text_start 之前插入 PADDING_SIZE 字节零 */
+    . = . + PADDING_SIZE;
     _text_start = .;
     *(.text*)
     _text_end = .;
   } > sdram AT> flash
+  _text_lma = LOADADDR(.text) + PADDING_SIZE;
 
   _rodata_lma = LOADADDR(.rodata);
   .rodata : {

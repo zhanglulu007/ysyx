@@ -42,7 +42,8 @@ module ICache #(
   output icache_hit,
   output icache_miss,
   output icache_uncache,
-  output icache_refill_req,
+  output icache_refill_req,        // 电平信号: IC_REFILL_AR 状态 (周期计数)
+  output icache_refill_req_pulse,  // 脉冲信号: 进入 IC_REFILL_AR 的当拍 (事件计数)
   output icache_wait_ar,
   output icache_wait_r
 );
@@ -235,13 +236,16 @@ module ICache #(
   // ===================================================================
   // 状态机
   // ===================================================================
+  reg [1:0] prev_state;
   always @(posedge clk) begin
     if (rst) begin
       state       <= IC_IDLE;
+      prev_state  <= IC_IDLE;
       req_addr    <= 32'b0;
       req_arid    <= 4'b0;
       refill_word <= {REFILL_CNT_BITS{1'b0}};
     end else begin
+      prev_state <= state;
       case (state)
         IC_IDLE: begin
           if (cpu_arvalid && cpu_arready) begin
@@ -304,8 +308,9 @@ module ICache #(
   assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
   assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !hit && !rst;
   assign icache_uncache    = (state == IC_LOOKUP) && !req_cacheable    && !rst;
-  assign icache_refill_req = (state == IC_REFILL_AR)                   && !rst;
-  assign icache_wait_ar    = (state == IC_REFILL_AR)                   && !rst;
-  assign icache_wait_r     = (state == IC_REFILL_R)                    && !rst;
+  assign icache_refill_req       = (state == IC_REFILL_AR)                   && !rst;
+  assign icache_refill_req_pulse = (state == IC_REFILL_AR) && (prev_state != IC_REFILL_AR) && !rst;
+  assign icache_wait_ar          = (state == IC_REFILL_AR)                   && !rst;
+  assign icache_wait_r           = (state == IC_REFILL_R)                    && !rst;
 
 endmodule
