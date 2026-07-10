@@ -5,10 +5,6 @@ SECTIONS {
   /* _pmem_start and _entry_offset are defined in LDFLAGS */
   . = _pmem_start + _entry_offset;
 
-  /* === 程序代码填充 (B4.md "优化程序的内存布局") ===
-   * PADDING_SIZE 通过 LDFLAGS 传入, 默认为 0.
-   * 在 .text 段之前插入填充, 使热点循环对齐到 cache 块边界.
-   * 0x00000013 = nop (addi x0, x0, 0) */
   .pad : {
     . = . + DEFINED(PADDING_SIZE) ? PADDING_SIZE : 0;
   } : text

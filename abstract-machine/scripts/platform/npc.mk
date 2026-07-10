@@ -9,8 +9,6 @@ AM_SRCS := riscv/npc/start.S \
            platform/dummy/vme.c \
            platform/dummy/mpe.c
 
-# 程序代码填充 (B4.md "优化程序的内存布局")
-# make ARCH=riscv32e-ysyxsoc PADDING_SIZE=0|4|8|12
 PADDING_SIZE ?= 0
 
 CFLAGS    += -fdata-sections -ffunction-sections
