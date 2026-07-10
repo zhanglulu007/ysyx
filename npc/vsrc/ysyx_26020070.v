@@ -312,6 +312,7 @@ module ysyx_26020070(
   wire        icache_miss;
   wire        icache_uncache;
   wire        icache_refill_req;
+  wire        icache_refill_req_pulse;
   wire        icache_wait_ar;
   wire        icache_wait_r;
 `ifdef ENABLE_PERF
@@ -412,6 +413,7 @@ module ysyx_26020070(
     .icache_miss       (icache_miss),
     .icache_uncache    (icache_uncache),
     .icache_refill_req (icache_refill_req),
+    .icache_refill_req_pulse (icache_refill_req_pulse),
     .icache_wait_ar    (icache_wait_ar),
     .icache_wait_r     (icache_wait_r)
   );
@@ -885,6 +887,7 @@ module ysyx_26020070(
     .icache_miss       (icache_miss),
     .icache_uncache    (icache_uncache),
     .icache_refill_req (icache_refill_req),
+    .icache_refill_req_pulse (icache_refill_req_pulse),
     .icache_wait_ar    (icache_wait_ar),
     .icache_wait_r     (icache_wait_r),
     // IDU 指令类别

@@ -27,7 +27,8 @@ module PerfCounter(
   input icache_hit,           // 命中 (可缓存且命中)
   input icache_miss,          // 缺失 (可缓存但未命中, 需回填)
   input icache_uncache,       // 不可缓存访问 (地址不在缓存范围, 直通总线)
-  input icache_refill_req,    // 向总线发起一次回填/直通读请求 (IC_REFILL_AR)
+  input icache_refill_req,    // 电平: IC_REFILL_AR 状态 (周期计数)
+  input icache_refill_req_pulse, // 脉冲: 进入 IC_REFILL_AR 当拍 (事件计数)
   input icache_wait_ar,       // 处于等待总线 AR 握手状态
   input icache_wait_r,        // 处于等待总线 R  握手状态
 
@@ -233,7 +234,7 @@ module PerfCounter(
         icache_miss_pend <= 1'b1;                   // 启动缺失服务周期统计
         icache_miss_acc  <= 64'd1;                  // 计入 IC_LOOKUP 当拍
       end
-      if (icache_refill_req) icache_refill_cnt <= icache_refill_cnt + 64'd1;
+      if (icache_refill_req_pulse) icache_refill_cnt <= icache_refill_cnt + 64'd1;
       // 缺失/不可缓存服务周期累加: miss_pend 期间每周期 +1
       if (icache_miss_pend && (icache_wait_ar || icache_wait_r))
         icache_miss_acc <= icache_miss_acc + 64'd1;
