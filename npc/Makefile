@@ -63,7 +63,7 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
-FFLASH  ?= 0
+FFLASH  ?= 1
 DIFFTEST ?= 0
 
 # DIFFTEST=1: 自动选择对应的 NEMU REF .so 并构建
