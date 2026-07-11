@@ -245,165 +245,165 @@ module PerfCounter(
   final begin
     $display("");
     $display("============================================================");
-    $display("        Pipeline Performance Counter Report                 ");
+    $display("     流水线性能计数器报告 (Pipeline Perf Counter Report)      ");
     $display("============================================================");
 
-    // --- Overview ---
+    // --- 概览 Overview ---
     $display("");
-    $display("[1. Overview]");
-    $display("  Total cycles                 : %0d", cyc_total);
-    $display("  Retired instructions         : %0d", cnt_retire);
-    $display("  IPC                          : %.4f", (cyc_total > 0) ? (1.0 * cnt_retire / cyc_total) : 0.0);
-    $display("  CPI (1/IPC)                  : %.4f", (cnt_retire > 0) ? (1.0 * cyc_total / cnt_retire) : 0.0);
-    $display("  Total stall cycles           : %0d  (%.2f%%)", cyc_stall,
+    $display("[1. 概览 Overview]");
+    $display("  总周期数 Total cycles         : %0d", cyc_total);
+    $display("  退休指令数 Retired inst       : %0d", cnt_retire);
+    $display("  IPC (指令/周期)               : %.4f", (cyc_total > 0) ? (1.0 * cnt_retire / cyc_total) : 0.0);
+    $display("  CPI (周期/指令)               : %.4f", (cnt_retire > 0) ? (1.0 * cyc_total / cnt_retire) : 0.0);
+    $display("  总停顿周期 Total stall cycles : %0d  (%.2f%%)", cyc_stall,
              (cyc_total > 0) ? (100.0 * cyc_stall / cyc_total) : 0.0);
-    $display("  Total flush events           : %0d", cnt_flush);
-    $display("  Flush penalty cycles         : %0d  (%.2f%%)", cyc_flush,
+    $display("  总冲刷次数 Total flush events : %0d", cnt_flush);
+    $display("  冲刷惩罚周期 Flush penalty    : %0d  (%.2f%%)", cyc_flush,
              (cyc_total > 0) ? (100.0 * cyc_flush / cyc_total) : 0.0);
 
-    // --- Stall Breakdown ---
+    // --- 停顿细分 Stall Breakdown ---
     $display("");
-    $display("[2. Stall Breakdown]  (percentage of total cycles)");
-    $display("  RAW data hazard stalls       : %0d  (%.2f%%)", cyc_stall_raw,
+    $display("[2. 停顿细分 Stall Breakdown]  (占总周期百分比)");
+    $display("  RAW数据冒险停顿 RAW hazard    : %0d  (%.2f%%)", cyc_stall_raw,
              (cyc_total > 0) ? (100.0 * cyc_stall_raw / cyc_total) : 0.0);
-    $display("  LSU backpressure stalls      : %0d  (%.2f%%)", cyc_stall_lsu,
+    $display("  LSU反压停顿 LSU backpressure  : %0d  (%.2f%%)", cyc_stall_lsu,
              (cyc_total > 0) ? (100.0 * cyc_stall_lsu / cyc_total) : 0.0);
-    $display("  Fetch bubbles (empty ID)     : %0d  (%.2f%%)", cyc_stall_fetch,
+    $display("  取指气泡 Fetch bubbles        : %0d  (%.2f%%)", cyc_stall_fetch,
              (cyc_total > 0) ? (100.0 * cyc_stall_fetch / cyc_total) : 0.0);
-    $display("  Useful work cycles           : %0d  (%.2f%%)",
+    $display("  有效工作周期 Useful work      : %0d  (%.2f%%)",
              (cyc_total - cyc_stall_raw - cyc_stall_lsu - cyc_stall_fetch),
              (cyc_total > 0) ? (100.0 * (cyc_total - cyc_stall_raw - cyc_stall_lsu - cyc_stall_fetch) / cyc_total) : 0.0);
 
-    // --- Pipeline Stage Utilization ---
+    // --- 流水级利用率 Pipeline Stage Utilization ---
     $display("");
-    $display("[3. Pipeline Stage Utilization]");
-    $display("  ID stage busy cycles         : %0d  (%.2f%%)", cyc_id_valid,
+    $display("[3. 流水级利用率 Pipeline Stage Utilization]");
+    $display("  ID译码级忙周期 ID stage busy  : %0d  (%.2f%%)", cyc_id_valid,
              (cyc_total > 0) ? (100.0 * cyc_id_valid / cyc_total) : 0.0);
-    $display("  EX stage busy cycles         : %0d  (%.2f%%)", cyc_ex_valid,
+    $display("  EX执行级忙周期 EX stage busy  : %0d  (%.2f%%)", cyc_ex_valid,
              (cyc_total > 0) ? (100.0 * cyc_ex_valid / cyc_total) : 0.0);
-    $display("  LS stage busy cycles         : %0d  (%.2f%%)", cyc_ls_valid,
+    $display("  LS访存级忙周期 LS stage busy  : %0d  (%.2f%%)", cyc_ls_valid,
              (cyc_total > 0) ? (100.0 * cyc_ls_valid / cyc_total) : 0.0);
-    $display("  Avg stages busy              : %.2f / 3  (ID+EX+LS)",
+    $display("  平均忙级数 Avg stages busy    : %.2f / 3  (ID+EX+LS)",
              (cyc_total > 0) ? (1.0 * (cyc_id_valid + cyc_ex_valid + cyc_ls_valid) / cyc_total) : 0.0);
 
-    // --- ICache ---
+    // --- ICache 指令缓存 ---
     $display("");
-    $display("[4. ICache — Hit Rate & AMAT]");
-    $display("  Accesses                     : %0d", icache_access_cnt);
-    $display("  Hits                         : %0d  (%.2f%%)",
+    $display("[4. ICache 指令缓存 — 命中率 Hit Rate & AMAT]");
+    $display("  访问次数 Accesses             : %0d", icache_access_cnt);
+    $display("  命中 Hits                     : %0d  (%.2f%%)",
              icache_hit_cnt,
              (icache_access_cnt > 0) ? (100.0 * icache_hit_cnt / icache_access_cnt) : 0.0);
-    $display("  Misses                       : %0d  (%.2f%%)",
+    $display("  缺失 Misses                   : %0d  (%.2f%%)",
              icache_miss_cnt,
              (icache_access_cnt > 0) ? (100.0 * icache_miss_cnt / icache_access_cnt) : 0.0);
-    $display("  Uncacheable                  : %0d  (%.2f%%)",
+    $display("  不可缓存 Uncacheable          : %0d  (%.2f%%)",
              icache_uncache_cnt,
              (icache_access_cnt > 0) ? (100.0 * icache_uncache_cnt / icache_access_cnt) : 0.0);
-    $display("  Refill requests              : %0d", icache_refill_cnt);
+    $display("  回填请求 Refill requests      : %0d", icache_refill_cnt);
     if ((icache_hit_cnt + icache_miss_cnt) > 0)
-      $display("  Cacheable hit rate (p)       : %.4f",
+      $display("  可缓存命中率 Cacheable hit rate (p) : %.4f",
                1.0 * icache_hit_cnt / (icache_hit_cnt + icache_miss_cnt));
     if (icache_hit_cnt > 0)
-      $display("  Hit access time (cycles/hit) : %.2f", 1.0 * icache_hit_cyc / icache_hit_cnt);
+      $display("  命中访问时间 Hit access time   : %.2f 周期/hit", 1.0 * icache_hit_cyc / icache_hit_cnt);
     if (icache_miss_cnt > 0)
-      $display("  Miss penalty (cycles/miss)   : %.2f", 1.0 * icache_miss_cyc / icache_miss_cnt);
+      $display("  缺失惩罚 Miss penalty          : %.2f 周期/miss", 1.0 * icache_miss_cyc / icache_miss_cnt);
     if ((icache_hit_cnt > 0) && (icache_miss_cnt > 0))
-      $display("  AMAT (cycles/access)         : %.2f",
+      $display("  AMAT 平均访存时间 (周期/访问) : %.2f",
                (1.0 * icache_hit_cyc / icache_hit_cnt) +
                (1.0 - 1.0 * icache_hit_cnt / (icache_hit_cnt + icache_miss_cnt)) *
                (1.0 * icache_miss_cyc / icache_miss_cnt));
-    $display("  Bus AR wait cycles           : %0d", icache_wait_ar_cyc);
-    $display("  Bus R  wait cycles           : %0d", icache_wait_r_cyc);
+    $display("  总线AR等待周期 Bus AR wait    : %0d", icache_wait_ar_cyc);
+    $display("  总线R等待周期  Bus R  wait    : %0d", icache_wait_r_cyc);
 
-    // --- LSU ---
+    // --- LSU 访存统计 ---
     $display("");
-    $display("[5. LSU — Load/Store Statistics]");
-    $display("  Load completions             : %0d", lsu_load_ret_cnt);
-    $display("  Store completions            : %0d", lsu_store_ret_cnt);
+    $display("[5. LSU 访存统计 Load/Store Statistics]");
+    $display("  Load完成次数 Load completions : %0d", lsu_load_ret_cnt);
+    $display("  Store完成次数 Store completions: %0d", lsu_store_ret_cnt);
     if ((lsu_load_ret_cnt + lsu_store_ret_cnt) > 0)
-      $display("  Memory inst per 1K retired   : %.1f",
+      $display("  每千条指令访存次数 Mem/1K inst : %.1f",
                1000.0 * (lsu_load_ret_cnt + lsu_store_ret_cnt) / (cnt_retire > 0 ? cnt_retire : 1));
 
-    // --- Instruction Mix ---
+    // --- 指令混合 Instruction Mix ---
     $display("");
-    $display("[6. Instruction Mix]  (count / %% / avg CPI)");
-    $display("  Total classified             : %0d", dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_utype+dec_csr+dec_sys);
+    $display("[6. 指令混合 Instruction Mix]  (数量 / 占比 / 平均CPI)");
+    $display("  分类总数 Total classified     : %0d", dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_utype+dec_csr+dec_sys);
     if (dec_calc > 0)
-      $display("  Compute (R+I arith)  : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  计算类 Compute (R+I arith): count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_calc, (cnt_retire > 0) ? (100.0 * dec_calc / cnt_retire) : 0.0,
                1.0 * cyc_calc / dec_calc);
     if (dec_load > 0)
-      $display("  Load                 : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  加载类 Load              : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_load, (cnt_retire > 0) ? (100.0 * dec_load / cnt_retire) : 0.0,
                1.0 * cyc_load / dec_load);
     if (dec_store > 0)
-      $display("  Store                : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  存储类 Store             : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_store, (cnt_retire > 0) ? (100.0 * dec_store / cnt_retire) : 0.0,
                1.0 * cyc_store / dec_store);
     if (dec_branch > 0)
-      $display("  Branch               : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  分支类 Branch            : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_branch, (cnt_retire > 0) ? (100.0 * dec_branch / cnt_retire) : 0.0,
                1.0 * cyc_branch / dec_branch);
     if (dec_jump > 0)
-      $display("  Jump (JAL/JALR)      : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  跳转类 Jump (JAL/JALR)   : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_jump, (cnt_retire > 0) ? (100.0 * dec_jump / cnt_retire) : 0.0,
                1.0 * cyc_jump / dec_jump);
     if (dec_utype > 0)
-      $display("  U-type (LUI/AUIPC)   : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  U型 U-type (LUI/AUIPC)   : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_utype, (cnt_retire > 0) ? (100.0 * dec_utype / cnt_retire) : 0.0,
                1.0 * cyc_utype / dec_utype);
     if (dec_csr > 0)
-      $display("  CSR                  : count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  CSR类 CSR                : count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_csr, (cnt_retire > 0) ? (100.0 * dec_csr / cnt_retire) : 0.0,
                1.0 * cyc_csr / dec_csr);
     if (dec_sys > 0)
-      $display("  System (ECALL/EBREAK etc.): count=%0d (%.1f%%)  avgCPI=%.2f",
+      $display("  系统类 System (ECALL/EBREAK等): count=%0d (%.1f%%)  avgCPI=%.2f",
                dec_sys, (cnt_retire > 0) ? (100.0 * dec_sys / cnt_retire) : 0.0,
                1.0 * cyc_sys / dec_sys);
 
-    // --- Branch Statistics ---
+    // --- 分支统计 Branch Statistics ---
     $display("");
-    $display("[7. Branch Statistics]");
-    $display("  Total branches retired       : %0d", branch_total_cnt);
-    $display("  Taken branches               : %0d  (%.2f%%)", branch_taken_cnt,
+    $display("[7. 分支统计 Branch Statistics]");
+    $display("  退休分支总数 Total branches   : %0d", branch_total_cnt);
+    $display("  跳转分支 Taken branches       : %0d  (%.2f%%)", branch_taken_cnt,
              (branch_total_cnt > 0) ? (100.0 * branch_taken_cnt / branch_total_cnt) : 0.0);
-    $display("  Not-taken branches           : %0d  (%.2f%%)",
+    $display("  不跳转分支 Not-taken branches : %0d  (%.2f%%)",
              branch_total_cnt - branch_taken_cnt,
              (branch_total_cnt > 0) ? (100.0 * (branch_total_cnt - branch_taken_cnt) / branch_total_cnt) : 0.0);
 
-    // --- Register Writeback ---
+    // --- 寄存器写回 Register Writeback ---
     $display("");
-    $display("[8. Register Writeback]");
-    $display("  Reg writes (rd != 0)         : %0d", reg_wb_cnt);
-    $display("  Reg writes per retired inst  : %.2f", (cnt_retire > 0) ? (1.0 * reg_wb_cnt / cnt_retire) : 0.0);
+    $display("[8. 寄存器写回 Register Writeback]");
+    $display("  写回次数 Reg writes (rd!=0)   : %0d", reg_wb_cnt);
+    $display("  每条指令写回数 Reg writes/inst: %.2f", (cnt_retire > 0) ? (1.0 * reg_wb_cnt / cnt_retire) : 0.0);
 
-    // --- Amdahl's Law Analysis ---
+    // --- Amdahl定律瓶颈分析 ---
     $display("");
-    $display("[9. Amdahl's Law Bottleneck Analysis]");
-    $display("  RAW hazard stall share       : %.2f%%  -> forwarding could recover most of this",
+    $display("[9. Amdahl定律瓶颈分析 Amdahl's Law Bottleneck Analysis]");
+    $display("  RAW冒险停顿占比               : %.2f%%  -> 加入前递(forwarding)可大幅消除",
              (cyc_total > 0) ? (100.0 * cyc_stall_raw / cyc_total) : 0.0);
-    $display("  LSU backpressure share       : %.2f%%  -> better memory/cache could help",
+    $display("  LSU反压停顿占比               : %.2f%%  -> 优化存储系统/缓存可改善",
              (cyc_total > 0) ? (100.0 * cyc_stall_lsu / cyc_total) : 0.0);
-    $display("  Fetch bubble share           : %.2f%%  -> better ICache/prefetch could help",
+    $display("  取指气泡占比                  : %.2f%%  -> 优化ICache/预取可改善",
              (cyc_total > 0) ? (100.0 * cyc_stall_fetch / cyc_total) : 0.0);
-    $display("  Flush penalty share          : %.2f%%  -> branch prediction could recover this",
+    $display("  冲刷惩罚占比                  : %.2f%%  -> 分支预测可消除大部分",
              (cyc_total > 0) ? (100.0 * cyc_flush / cyc_total) : 0.0);
-    $display("  Ideal IPC (no stalls)        : 1.00");
-    $display("  Achieved IPC                 : %.4f", (cyc_total > 0) ? (1.0 * cnt_retire / cyc_total) : 0.0);
-    $display("  Efficiency                   : %.2f%%",
+    $display("  理想IPC (无停顿)              : 1.00");
+    $display("  实际IPC Achieved IPC          : %.4f", (cyc_total > 0) ? (1.0 * cnt_retire / cyc_total) : 0.0);
+    $display("  效率 Efficiency               : %.2f%%",
              (cyc_total > 0) ? (100.0 * cnt_retire / cyc_total) : 0.0);
 
-    // --- Consistency Checks ---
+    // --- 一致性检查 Consistency Checks ---
     $display("");
-    $display("[10. Consistency Checks]");
-    $display("  Classified sum == retired?   : %s",
-             ((dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_utype+dec_csr+dec_sys) == cnt_retire) ? "PASS" : "FAIL");
+    $display("[10. 一致性检查 Consistency Checks]");
+    $display("  分类之和==退休指令数?          : %s",
+             ((dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_utype+dec_csr+dec_sys) == cnt_retire) ? "通过 PASS" : "失败 FAIL");
     $display("    sum=%0d  retired=%0d",
              dec_calc+dec_load+dec_store+dec_branch+dec_jump+dec_utype+dec_csr+dec_sys, cnt_retire);
-    $display("  Stall + useful == total?     : %s",
-             ((cyc_stall_raw + cyc_stall_lsu + cyc_stall_fetch + (cyc_total - cyc_stall_raw - cyc_stall_lsu - cyc_stall_fetch)) == cyc_total) ? "PASS" : "FAIL");
-    $display("  refill == miss+uncache?      : %s",
-             (icache_refill_cnt == (icache_miss_cnt + icache_uncache_cnt)) ? "PASS" : "FAIL");
+    $display("  停顿+有效==总周期?            : %s",
+             ((cyc_stall_raw + cyc_stall_lsu + cyc_stall_fetch + (cyc_total - cyc_stall_raw - cyc_stall_lsu - cyc_stall_fetch)) == cyc_total) ? "通过 PASS" : "失败 FAIL");
+    $display("  回填数==缺失+不可缓存?        : %s",
+             (icache_refill_cnt == (icache_miss_cnt + icache_uncache_cnt)) ? "通过 PASS" : "失败 FAIL");
     $display("    refill=%0d  miss+uncache=%0d", icache_refill_cnt, (icache_miss_cnt + icache_uncache_cnt));
 
     $display("============================================================");
