@@ -63,7 +63,7 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
-FFLASH  ?= 1
+FFLASH  ?= 0
 DIFFTEST ?= 0
 
 # DIFFTEST=1: 自动选择对应的 NEMU REF .so 并构建
@@ -153,13 +153,13 @@ SOC ?= 1
 YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
 YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
-VERILATOR_FLAGS += -DSIMPLE_PIPELINE
-  EXTRA_CFLAGS += -DSIMPLE_PIPELINE
 
 ifeq ($(SOC),1)
   # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
   CSRCS_DIR := csrc
   VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE -Wno-UNOPTFLAT
+  VERILATOR_FLAGS += -DSIMPLE_PIPELINE
+  EXTRA_CFLAGS += -DSIMPLE_PIPELINE
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
   							--timescale "1ns/1ns" \
 		    					--no-timing \
