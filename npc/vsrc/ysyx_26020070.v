@@ -834,9 +834,15 @@ module ysyx_26020070(
   end
 
   // ========== DiffTest skip 检测 ==========
-  wire is_uart_access = mem_valid && (mem_addr[31:12] == 20'h10000);
+  // 跳过所有外设访问: CLINT(0x02000000), APB外设(0x10000000~0x1001FFFF), VGA(0x21000000)
+  // 这些设备 NEMU REF 无法模拟, 访问时需跳过 difftest 比较
+  wire is_peripheral_access = mem_valid && (
+      (mem_addr >= 32'h02000000 && mem_addr < 32'h02010000) ||  // CLINT
+      (mem_addr >= 32'h10000000 && mem_addr < 32'h10020000) ||  // UART/SPI/GPIO/PS2
+      (mem_addr >= 32'h21000000 && mem_addr < 32'h21200000)     // VGA
+  );
   always @(posedge clock) begin
-    if (!rst && ifu_valid && is_uart_access) begin
+    if (!rst && ifu_valid && is_peripheral_access) begin
       difftest_skip_ref();
     end
   end

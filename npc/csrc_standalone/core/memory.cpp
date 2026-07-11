@@ -60,7 +60,7 @@ extern "C" int pmem_read(int raddr) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_read_cycle || raddr != last_read_addr) {
-        mtrace_read(raddr, 4, ret, pc);
+        mtrace_read(raddr, 4, ret, pc, cycle);
         last_read_cycle = cycle;
         last_read_addr = raddr;
     }
@@ -103,7 +103,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_write_cycle || waddr != last_write_addr) {
-        mtrace_write(waddr, len, wdata, pc);
+        mtrace_write(waddr, len, wdata, pc, cycle);
         last_write_cycle = cycle;
         last_write_addr = waddr;
     }

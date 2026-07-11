@@ -63,8 +63,23 @@ OBJ_DIR = $(BUILD_DIR)/obj_dir
 FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
-DIFFTEST_SO ?=
 FFLASH  ?= 0
+DIFFTEST ?= 0
+
+# DIFFTEST=1: 自动选择对应的 NEMU REF .so 并构建
+# 用户可显式指定 DIFFTEST_SO 覆盖自动选择 (e.g. make run DIFFTEST=1 DIFFTEST_SO=/path/to/ref.so)
+NEMU_HOME ?= $(abspath ../nemu)
+ifeq ($(DIFFTEST), 1)
+  ifndef DIFFTEST_SO
+    ifeq ($(SOC), 1)
+      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
+    else
+      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
+    endif
+  endif
+else
+  DIFFTEST_SO ?=
+endif
 
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
@@ -181,7 +196,7 @@ $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
 show-config:
-	@echo "SOC=$(SOC)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	@echo "SOC=$(SOC)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST=$(DIFFTEST)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "TOP_CLASS=$(TOP_CLASS)  CSRCS_DIR=$(CSRCS_DIR)"
 	@echo "Usage examples:"
 	@echo "  === 仿真环境 (SOC 开关) ==="
@@ -193,7 +208,7 @@ show-config:
 	@echo "  make build                          # 只编译 (全关, 最快)"
 	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
 	@echo "  make build FST=1                    # 开波形"
-	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
+	@echo "  make run PROG=... DIFFTEST=1        # 开启 Difftest (自动选择对应 REF .so)"
 	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (仅 SoC 模式)"
 
 define VERILATE_CMD
@@ -223,17 +238,17 @@ char-test: test/char-test.c
 	@echo "Built test/char-test.bin"
 
 # 只编译不运行
-build: $(NVBOARD_PREREQ)
+build: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
+	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF) DIFFTEST=$(DIFFTEST)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
 
 # 编译并运行 (默认使用当前 SOC 设置)
-run: $(NVBOARD_PREREQ)
+run: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF)] --------"
+	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF) DIFFTEST=$(DIFFTEST)] --------"
 	@mkdir -p $(WAVE_DIR)
 	$(VERILATE_CMD)
 	@echo "-- BUILD DONE --------------"
@@ -243,7 +258,7 @@ run: $(NVBOARD_PREREQ)
 	@if [ ! -f "$(PROG)" ]; then \
 		echo "Error: Program file '$(PROG)' not found."; exit 1; \
 	fi
-	@echo "-- RUN [SOC=$(SOC) DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
+	@echo "-- RUN [SOC=$(SOC) DIFFTEST=$(if $(filter 1,$(DIFFTEST)),ON,OFF)] -----------"
 	@echo "Running: $(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
 	@$(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
@@ -260,4 +275,15 @@ build-soc:
 build-npc:
 	$(MAKE) build SOC=0
 
-.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test
+# 构建 NEMU REF .so (供 difftest 使用)
+difftest-so:
+	$(MAKE) -C $(NEMU_HOME) difftest-so
+
+# 显式规则: 触发 NEMU 构建对应的 .so
+$(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
+	$(MAKE) -C $(NEMU_HOME) difftest-so-standalone
+
+$(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
+	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
+
+.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test difftest-so
