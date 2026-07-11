@@ -49,7 +49,10 @@ endif
 
 maintainer-copy::
 clean mostlyclean distclean maintainer-clean::
-	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
+	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR)
+
+clean-all:
+	-rm -rf $(BUILD_DIR) *.log *.dmp *.vpd core $(WAVE_DIR)
 
 all:
 	@echo "Write this Makefile by your self."
@@ -278,4 +281,4 @@ build-npc:
 difftest-refs:
 	$(MAKE) -C ../nemu difftest-refs
 
-.PHONY: build sim run run-soc run-npc build-soc build-npc difftest-refs clean char-test
+.PHONY: build sim run run-soc run-npc build-soc build-npc difftest-refs clean clean-all char-test

@@ -646,7 +646,8 @@ module SimplePipeline(
       end
 
       if ((mem_wb_inst[6:0] == OP_LOAD || mem_wb_inst[6:0] == OP_STORE) &&
-          (mem_wb_mem_addr[31:12] == 20'h10000)) begin
+          ((mem_wb_mem_addr[31:12] == 20'h10000) ||
+           (mem_wb_mem_addr[31:16] == 16'h0200))) begin
         difftest_skip_ref();
       end
 
