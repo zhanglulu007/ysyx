@@ -107,9 +107,13 @@ void reset_cpu() {
 // 单步执行
 void exec_once() {
     uint32_t current_pc = npc_get_pc();
+#ifdef SIMPLE_PIPELINE
     uint64_t current_commit = npc_get_commit_count();
 
     while(current_commit == npc_get_commit_count()) {
+#else
+    while(current_pc == npc_get_pc()) {
+#endif
          // 下降沿
         g_top->clock = 0;
         g_top->eval();

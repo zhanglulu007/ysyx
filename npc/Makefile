@@ -158,7 +158,6 @@ ifeq ($(SOC),1)
   # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
   CSRCS_DIR := csrc
   VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE -Wno-UNOPTFLAT
-  VERILATOR_FLAGS += -DSIMPLE_PIPELINE
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
   							--timescale "1ns/1ns" \
 		    					--no-timing \
@@ -185,6 +184,7 @@ else
   CSRCS_DIR := csrc_standalone
   VERILATOR_FLAGS += --top-module top
   VERILATOR_FLAGS += -DSIMPLE_PIPELINE
+  EXTRA_CFLAGS += -DSIMPLE_PIPELINE
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
   							--timescale "1ns/1ns" \
 		    					--no-timing --autoflush
