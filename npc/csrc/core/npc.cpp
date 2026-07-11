@@ -14,6 +14,7 @@ static uint32_t exit_code = 0;
 
 // 周期计数器
 static uint64_t g_cycle_cnt = 0;
+static uint64_t g_commit_cnt = 0;
 
 // 寄存器和指令缓存（在C++侧维护）
 static uint32_t reg_cache[32] = {0};
@@ -28,6 +29,10 @@ NPCState* npc_get_state() {
 // 获取当前周期数
 uint64_t npc_get_cycle() {
     return g_cycle_cnt;
+}
+
+uint64_t npc_get_commit_count() {
+    return g_commit_cnt;
 }
 
 // 增加周期计数
@@ -84,4 +89,11 @@ extern "C" void update_pc_value(int pc_val) {
 extern "C" void update_inst_value(int pc_val, int inst_val) {
     pc_cache = pc_val;
     inst_cache = inst_val;
+}
+
+extern "C" void commit_instruction(int pc_val, int inst_val, int next_pc_val) {
+    (void)pc_val;
+    pc_cache = next_pc_val;
+    inst_cache = inst_val;
+    g_commit_cnt++;
 }
