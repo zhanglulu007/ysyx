@@ -107,9 +107,7 @@ module PerfCounter(
 
   // ---- 阶段2: 每种类别指令的累计执行周期 (用于计算各类指令平均 CPI) ----
   // inst_cyc_acc: 当前指令已花费的周期数累加器, 每个非复位周期 +1;
-  //               当 ifu_valid (一条指令译码) 时, 把 acc 加到上一条指令的类别桶并清零.
-  // 关键: ifu_valid 触发时, inst_cyc_acc 的当前值是上一条指令从译码到当前指令译码之间
-  //       经历的全部周期, 因此类别需要延迟一拍归类到正确的桶里.
+  //               当 ifu_valid (一条指令完成) 时, 把 acc 加到对应类别桶并清零.
   reg [63:0] inst_cyc_acc;
   reg [63:0] cyc_calc;            // 计算类指令累计周期
   reg [63:0] cyc_load;            // 加载类指令累计周期
@@ -119,12 +117,6 @@ module PerfCounter(
   reg [63:0] cyc_u_type;          // U型指令累计周期
   reg [63:0] cyc_csr;             // CSR 类指令累计周期
   reg [63:0] cyc_sys;             // 系统类指令累计周期
-
-  // 延迟类别寄存器: 当 ifu_valid 触发时, inst_cyc_acc 实际属于上一条指令.
-  // prev_cat 保存上一条指令的类别编码 (0=calc,1=load,2=store,3=branch,4=jump,5=u,6=csr,7=sys),
-  // 以便在下一条指令的 ifu_valid 周期将 inst_cyc_acc 加到正确的桶里.
-  reg [2:0] prev_cat;
-  reg       prev_cat_valid;       // 复位后第一条指令无前驱, prev_cat 无效
 
   // EXU - 计算完成 & 分支 (阶段2)
   reg [63:0] exu_calc_cnt;        // EXU 完成计算次数
@@ -193,8 +185,6 @@ module PerfCounter(
       cyc_u_type        <= 64'b0;
       cyc_csr           <= 64'b0;
       cyc_sys           <= 64'b0;
-      prev_cat          <= 3'b0;
-      prev_cat_valid    <= 1'b0;
       exu_calc_cnt      <= 64'b0;
       branch_taken_cnt  <= 64'b0;
       reg_wb_cnt        <= 64'b0;
@@ -258,42 +248,26 @@ module PerfCounter(
       if (icache_wait_r)  icache_wait_r_cyc  <= icache_wait_r_cyc  + 64'd1;
 
       // 译码指令分类 + 每类指令累计周期 (仅在 ifu_valid 时统计)
-      // 注意: ifu_valid 触发时, inst_cyc_acc 实际属于上一条指令的周期数.
-      //       因此使用延迟类别 prev_cat 来决定加到哪个桶, 然后锁存本条指令类别.
       if (ifu_valid_dec) begin
         dec_total   <= dec_total   + 64'd1;
-        // 把 inst_cyc_acc (上一条指令的总周期) 加到 prev_cat 对应的桶里
-        if (prev_cat_valid) begin
-          case (prev_cat)
-            3'd0: cyc_calc   <= cyc_calc   + inst_cyc_acc;
-            3'd1: cyc_load   <= cyc_load   + inst_cyc_acc;
-            3'd2: cyc_store  <= cyc_store  + inst_cyc_acc;
-            3'd3: cyc_branch <= cyc_branch + inst_cyc_acc;
-            3'd4: cyc_jump   <= cyc_jump   + inst_cyc_acc;
-            3'd5: cyc_u_type <= cyc_u_type + inst_cyc_acc;
-            3'd6: cyc_csr    <= cyc_csr    + inst_cyc_acc;
-            3'd7: cyc_sys    <= cyc_sys    + inst_cyc_acc;
-          endcase
-        end
-        // 锁存本条指令的类别, 供下一条指令的 ifu_valid 使用
-        prev_cat_valid <= 1'b1;
-        if      (is_calc)       begin dec_calc    <= dec_calc    + 64'd1; prev_cat <= 3'd0; end
-        else if (is_load_inst)  begin dec_load    <= dec_load    + 64'd1; prev_cat <= 3'd1; end
-        else if (is_store_inst) begin dec_store   <= dec_store   + 64'd1; prev_cat <= 3'd2; end
-        else if (is_branch)     begin dec_branch  <= dec_branch  + 64'd1; prev_cat <= 3'd3; end
-        else if (is_jump)       begin dec_jump    <= dec_jump    + 64'd1; prev_cat <= 3'd4; end
-        else if (is_u_type)     begin dec_u_type  <= dec_u_type  + 64'd1; prev_cat <= 3'd5; end
-        else if (is_csr)        begin dec_csr     <= dec_csr     + 64'd1; prev_cat <= 3'd6; end
-        else if (is_sys)        begin dec_sys     <= dec_sys     + 64'd1; prev_cat <= 3'd7; end
-        inst_cyc_acc <= 64'd1;  // 本周期算作下一条指令的第1个周期
+        // 指令完成: 把本条指令已花费周期计入对应类别桶, 并清零累加器
+        if (is_calc)       begin dec_calc    <= dec_calc    + 64'd1; cyc_calc    <= cyc_calc    + inst_cyc_acc; end
+        if (is_load_inst)  begin dec_load    <= dec_load    + 64'd1; cyc_load    <= cyc_load    + inst_cyc_acc; end
+        if (is_store_inst) begin dec_store   <= dec_store   + 64'd1; cyc_store   <= cyc_store   + inst_cyc_acc; end
+        if (is_branch)     begin dec_branch  <= dec_branch  + 64'd1; cyc_branch  <= cyc_branch  + inst_cyc_acc; end
+        if (is_jump)       begin dec_jump    <= dec_jump    + 64'd1; cyc_jump    <= cyc_jump    + inst_cyc_acc; end
+        if (is_u_type)     begin dec_u_type  <= dec_u_type  + 64'd1; cyc_u_type  <= cyc_u_type  + inst_cyc_acc; end
+        if (is_csr)        begin dec_csr     <= dec_csr     + 64'd1; cyc_csr     <= cyc_csr     + inst_cyc_acc; end
+        if (is_sys)        begin dec_sys     <= dec_sys     + 64'd1; cyc_sys     <= cyc_sys     + inst_cyc_acc; end
+        inst_cyc_acc <= 64'd1;  // 本周期已算作下一条指令的第1个周期
       end
 
       // EXU 计算完成 & 分支 taken
       if (exu_calc_done) exu_calc_cnt <= exu_calc_cnt + 64'd1;
       if (ifu_valid && is_branch && branch_taken) branch_taken_cnt <= branch_taken_cnt + 64'd1;
 
-      // 寄存器写回统计 (reg_wen 已是顶层 reg_wen_final, 同时覆盖非访存+load写回)
-      if (reg_wen) reg_wb_cnt <= reg_wb_cnt + 64'd1;
+      // 寄存器写回统计
+      if (ifu_valid && reg_wen) reg_wb_cnt <= reg_wb_cnt + 64'd1;
     end
   end
 
