@@ -115,12 +115,20 @@ module LSU(
   // 否则 size 固定为 4 字节时, AXI Xbar 会把地址强制对齐到 4 字节边界
   // (addr & ~0x3), 导致 UART16550 等字节粒度设备的寄存器地址低位丢失.
   // 注: IFU 取指期间指令未变, funct3 在整个 LSU 事务期间稳定, 可直接组合使用.
-  wire [2:0] lsu_axi_size = {1'b0, funct3[1:0]};
+  // The ysyxSoC SPI flash XIP path only provides reliable word reads.  Keep
+  // byte/halfword transfers for MMIO devices, but read flash as an aligned
+  // word and select the requested lane locally below.
+  wire flash_read = !mem_wen && (mem_addr[31:24] == 8'h30);
+  wire latched_flash_read = !latched_wen && (latched_addr[31:24] == 8'h30);
+  wire [2:0] lsu_axi_size = ((lsu_state == L_IDLE) ? flash_read : latched_flash_read) ?
+                            3'b010 : {1'b0, funct3[1:0]};
 
   // AR 通道
   assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
-  assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+  assign lsu_araddr = (lsu_state == L_IDLE) ?
+                      (flash_read ? {mem_addr[31:2], 2'b0} : mem_addr) :
+                      (latched_flash_read ? {latched_addr[31:2], 2'b0} : latched_addr);
   assign lsu_arid = 4'b0000;      // ID固定为0
   assign lsu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
   assign lsu_arsize = lsu_axi_size; // 按 funct3 动态: 1/2/4字节
