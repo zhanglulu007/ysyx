@@ -124,8 +124,8 @@ module PipelineCore(
       case (ex_f3)
         3'b000: ex_alu = ex_f7[5] ? ex_rs1 - ex_rs2 : ex_rs1 + ex_rs2;
         3'b001: ex_alu = ex_rs1 << ex_rs2[4:0];
-        3'b010: ex_alu = $signed(ex_rs1) < $signed(ex_rs2);
-        3'b011: ex_alu = ex_rs1 < ex_rs2;
+        3'b010: ex_alu = {31'b0, $signed(ex_rs1) < $signed(ex_rs2)};
+        3'b011: ex_alu = {31'b0, ex_rs1 < ex_rs2};
         3'b100: ex_alu = ex_rs1 ^ ex_rs2;
         3'b101: ex_alu = ex_f7[5] ? $signed(ex_rs1) >>> ex_rs2[4:0] : ex_rs1 >> ex_rs2[4:0];
         3'b110: ex_alu = ex_rs1 | ex_rs2;
@@ -135,8 +135,8 @@ module PipelineCore(
       case (ex_f3)
         3'b000: ex_alu = ex_rs1 + ex_imm_i;
         3'b001: ex_alu = ex_rs1 << ex_imm_i[4:0];
-        3'b010: ex_alu = $signed(ex_rs1) < $signed(ex_imm_i);
-        3'b011: ex_alu = ex_rs1 < ex_imm_i;
+        3'b010: ex_alu = {31'b0, $signed(ex_rs1) < $signed(ex_imm_i)};
+        3'b011: ex_alu = {31'b0, ex_rs1 < ex_imm_i};
         3'b100: ex_alu = ex_rs1 ^ ex_imm_i;
         3'b101: ex_alu = ex_f7[5] ? $signed(ex_rs1) >>> ex_imm_i[4:0] : ex_rs1 >> ex_imm_i[4:0];
         3'b110: ex_alu = ex_rs1 | ex_imm_i;
