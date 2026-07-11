@@ -64,6 +64,7 @@ module PipelineCore(
   reg [31:0] ls_pc, ls_inst, ls_result, ls_addr, ls_store_data;
   reg [31:0] ls_csr_wdata;
   reg [31:0] wb_pc, wb_inst, wb_data, wb_csr_wdata;
+  reg [31:0] wb_mem_addr;
   reg [31:0] wb_next_pc;
 
   wire [4:0] id_rs1 = id_inst[19:15];
@@ -350,9 +351,9 @@ module PipelineCore(
 
   wire [31:0] wb_seq_pc = wb_pc + 4;
   wire wb_peripheral = (wb_inst[6:0] == 7'b0000011 || wb_inst[6:0] == 7'b0100011) &&
-    ((wb_data >= 32'h02000000 && wb_data < 32'h02010000) ||
-     (wb_data >= 32'h10000000 && wb_data < 32'h10020000) ||
-     (wb_data >= 32'h21000000 && wb_data < 32'h21200000));
+    ((wb_mem_addr >= 32'h02000000 && wb_mem_addr < 32'h02010000) ||
+     (wb_mem_addr >= 32'h10000000 && wb_mem_addr < 32'h10020000) ||
+     (wb_mem_addr >= 32'h21000000 && wb_mem_addr < 32'h21200000));
 
   always @(posedge clk) begin
     if (rst) begin
@@ -378,6 +379,7 @@ module PipelineCore(
         wb_inst <= ls_inst;
         wb_data <= ls_is_load ? lsu_rdata : ls_result;
         wb_csr_wdata <= ls_csr_wdata;
+        wb_mem_addr <= ls_addr;
         wb_next_pc <= (ls_inst[6:0] == 7'b1101111 || ls_inst[6:0] == 7'b1100111 ||
                        (ls_inst[6:0] == 7'b1100011 && ls_result[0]) ||
                        ls_inst == 32'h00000073 || ls_inst == 32'h30200073) ? ls_store_data : ls_pc + 4;
