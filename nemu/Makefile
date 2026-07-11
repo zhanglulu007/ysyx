@@ -28,8 +28,6 @@ remove_quote = $(patsubst "%",%,$(1))
 GUEST_ISA ?= $(call remove_quote,$(CONFIG_ISA))
 ENGINE ?= $(call remove_quote,$(CONFIG_ENGINE))
 NAME    = $(GUEST_ISA)-nemu-$(ENGINE)
-DIFFTEST_PROFILE := $(call remove_quote,$(CONFIG_DIFFTEST_PROFILE))
-NAME    := $(NAME)$(if $(DIFFTEST_PROFILE),-$(DIFFTEST_PROFILE),)
 
 # Include all filelist.mk to merge file lists
 FILELIST_MK = $(shell find -L ./src -name "filelist.mk")
@@ -58,38 +56,10 @@ LDFLAGS += $(CFLAGS_BUILD)
 # Include rules for menuconfig
 include $(NEMU_HOME)/scripts/config.mk
 
-DIFFTEST_REF_GOALS := difftest-refs difftest-ref-standalone difftest-ref-ysyxsoc
-
 ifdef CONFIG_TARGET_AM
-ifeq ($(filter $(DIFFTEST_REF_GOALS),$(MAKECMDGOALS)),)
 include $(AM_HOME)/Makefile
 LINKAGE += $(ARCHIVES)
-endif
 else
 # Include rules to build NEMU
 include $(NEMU_HOME)/scripts/native.mk
 endif
-
-DIFFTEST_STANDALONE_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
-DIFFTEST_YSYXSOC_SO    := $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
-
-difftest-ref-standalone: $(CONF) $(FIXDEP)
-	@$(CONF) $(silent) --defconfig=configs/riscv32-standalone-ref_defconfig $(Kconfig)
-	@$(CONF) $(silent) --syncconfig $(Kconfig)
-	@$(MAKE) --no-print-directory app
-	@echo "Built $(DIFFTEST_STANDALONE_SO)"
-
-difftest-ref-ysyxsoc: $(CONF) $(FIXDEP)
-	@$(CONF) $(silent) --defconfig=configs/riscv32-ysyxsoc-ref_defconfig $(Kconfig)
-	@$(CONF) $(silent) --syncconfig $(Kconfig)
-	@$(MAKE) --no-print-directory app
-	@echo "Built $(DIFFTEST_YSYXSOC_SO)"
-
-difftest-refs:
-	@$(MAKE) --no-print-directory difftest-ref-standalone
-	@$(MAKE) --no-print-directory difftest-ref-ysyxsoc
-	@echo "DiffTest references are ready:"
-	@echo "  standalone: $(DIFFTEST_STANDALONE_SO)"
-	@echo "  ysyxSoC:    $(DIFFTEST_YSYXSOC_SO)"
-
-.PHONY: $(DIFFTEST_REF_GOALS)

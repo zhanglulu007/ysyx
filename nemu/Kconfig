@@ -226,7 +226,7 @@ config DIFFTEST_REF_NAME
 endmenu
 
 config YSYXSOC
-  depends on ISA_riscv && MODE_SYSTEM && (TARGET_NATIVE_ELF || TARGET_SHARE)
+  depends on ISA_riscv && MODE_SYSTEM && TARGET_NATIVE_ELF
   bool "Run riscv32e-ysyxsoc images (Flash-entry memory map + CLINT/UART16550)"
   default n
   help
@@ -234,15 +234,6 @@ config YSYXSOC
     reset PC at 0x30000000 (Flash), adds SDRAM region,
     minimal CLINT (mtime) and UART16550 device models.
     Leaves the default riscv32-nemu behavior unchanged when disabled.
-
-config DIFFTEST_PROFILE
-  string
-  default "ysyxsoc" if TARGET_SHARE && YSYXSOC
-  default "standalone" if TARGET_SHARE
-  default ""
-  help
-    Distinguishes incompatible DiffTest reference memory maps in build paths
-    and file names, so standalone and ysyxSoC shared objects can coexist.
 
 if MODE_SYSTEM
 source "src/memory/Kconfig"

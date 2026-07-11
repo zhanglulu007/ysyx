@@ -168,23 +168,11 @@ void difftest_step(uint32_t pc, uint32_t npc) {
     return;
   }
   
-  // 检查 NEMU REF 的 PC 在执行前
-  ref_difftest_regcpy(&ref_state, DIFFTEST_TO_DUT);
-  uint32_t ref_pc_before = ref_state.pc;
-  
   // 让 REF 执行一条指令
   ref_difftest_exec(1);
   
   // 获取 REF 的状态
   ref_difftest_regcpy(&ref_state, DIFFTEST_TO_DUT);
-  
-  // 如果 NEMU REF 的 PC 没有变化，说明它可能进入了 ABORT/END 状态
-  if (ref_state.pc == ref_pc_before && ref_state.pc != npc_get_pc()) {
-    printf("[DiffTest WARN] NEMU REF PC stuck at 0x%08x (before exec), "
-           "NPC PC = 0x%08x, instruction PC = 0x%08x\n",
-           ref_pc_before, npc_get_pc(), pc);
-    printf("[DiffTest WARN] NEMU REF may have hit ABORT/END state\n");
-  }
   
   // 对比寄存器
   if (!checkregs(&ref_state, pc)) {
