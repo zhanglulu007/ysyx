@@ -48,14 +48,11 @@ menuconfig: $(MCONF) $(CONF) $(FIXDEP)
 savedefconfig: $(CONF)
 	$(Q)$< $(silent) --$@=configs/defconfig $(Kconfig)
 
-syncconfig: $(CONF)
-	$(Q)$< $(silent) --syncconfig $(Kconfig)
-
 %defconfig: $(CONF) $(FIXDEP)
 	$(Q)$< $(silent) --defconfig=configs/$@ $(Kconfig)
 	$(Q)$< $(silent) --syncconfig $(Kconfig)
 
-.PHONY: menuconfig savedefconfig defconfig syncconfig
+.PHONY: menuconfig savedefconfig defconfig
 
 # Help text used by make help
 help:
