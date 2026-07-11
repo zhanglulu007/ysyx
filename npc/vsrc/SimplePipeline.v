@@ -235,8 +235,10 @@ module SimplePipeline(
           3'b010: ex_result = {31'b0, ($signed(id_ex_rs1) < $signed(id_ex_rs2))};
           3'b011: ex_result = {31'b0, (id_ex_rs1 < id_ex_rs2)};
           3'b100: ex_result = id_ex_rs1 ^ id_ex_rs2;
-          3'b101: ex_result = ex_funct7[5] ? ($signed(id_ex_rs1) >>> id_ex_rs2[4:0])
-                                           : (id_ex_rs1 >> id_ex_rs2[4:0]);
+          3'b101: begin
+            if (ex_funct7[5]) ex_result = $signed(id_ex_rs1) >>> id_ex_rs2[4:0];
+            else              ex_result = id_ex_rs1 >> id_ex_rs2[4:0];
+          end
           3'b110: ex_result = id_ex_rs1 | id_ex_rs2;
           3'b111: ex_result = id_ex_rs1 & id_ex_rs2;
           default: ex_result = 32'b0;
@@ -249,8 +251,10 @@ module SimplePipeline(
           3'b010: ex_result = {31'b0, ($signed(id_ex_rs1) < $signed(ex_imm_i))};
           3'b011: ex_result = {31'b0, (id_ex_rs1 < ex_imm_i)};
           3'b100: ex_result = id_ex_rs1 ^ ex_imm_i;
-          3'b101: ex_result = ex_funct7[5] ? ($signed(id_ex_rs1) >>> id_ex_inst[24:20])
-                                           : (id_ex_rs1 >> id_ex_inst[24:20]);
+          3'b101: begin
+            if (ex_funct7[5]) ex_result = $signed(id_ex_rs1) >>> id_ex_inst[24:20];
+            else              ex_result = id_ex_rs1 >> id_ex_inst[24:20];
+          end
           3'b110: ex_result = id_ex_rs1 | ex_imm_i;
           3'b111: ex_result = id_ex_rs1 & ex_imm_i;
           default: ex_result = 32'b0;
