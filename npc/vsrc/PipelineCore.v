@@ -230,9 +230,9 @@ module PipelineCore(
     .lsu_wstrb(lsu_wstrb), .lsu_wlast(lsu_wlast),
     .lsu_bvalid(lsu_bvalid), .lsu_bready(lsu_bready), .lsu_bresp(lsu_bresp), .lsu_bid(lsu_bid),
     .rdata(lsu_rdata), .lsu_access_fault(lsu_fault), .lsu_state_o(),
-    .lsu_load_req(), .lsu_store_req(), .lsu_r_handshake(lsu_r_hs),
-    .lsu_b_handshake(lsu_b_hs), .lsu_wait_ar(), .lsu_wait_r(),
-    .lsu_wait_aw_w(), .lsu_wait_b()
+    .lsu_load_req(lsu_load_req), .lsu_store_req(lsu_store_req), .lsu_r_handshake(lsu_r_hs),
+    .lsu_b_handshake(lsu_b_hs), .lsu_wait_ar(lsu_wait_ar), .lsu_wait_r(lsu_wait_r),
+    .lsu_wait_aw_w(lsu_wait_aw_w), .lsu_wait_b(lsu_wait_b)
   );
 
   wire ls_done = !ls_is_mem || (ls_is_load ? lsu_r_hs : lsu_b_hs);
@@ -242,6 +242,31 @@ module PipelineCore(
   wire id_ready = !id_valid || id_issue;
   wire ex_advance = ex_valid && ls_ready;
   wire redirect = ex_advance && ex_redirect_kind;
+
+  // ---------------- Performance counter observation signals ----------------
+  wire icache_access, icache_hit, icache_miss, icache_uncache;
+  wire icache_refill_req, icache_refill_req_pulse;
+  wire icache_wait_ar, icache_wait_r;
+  wire lsu_load_req, lsu_store_req;
+  wire lsu_wait_ar, lsu_wait_r, lsu_wait_aw_w, lsu_wait_b;
+
+  // Instruction classification for retiring instruction (WB stage)
+  wire [6:0] wb_op = wb_inst[6:0];
+  wire wb_is_calc   = (wb_op == 7'b0110011) || (wb_op == 7'b0010011);
+  wire wb_is_load   = (wb_op == 7'b0000011);
+  wire wb_is_store  = (wb_op == 7'b0100011);
+  wire wb_is_branch = (wb_op == 7'b1100011);
+  wire wb_is_jump   = (wb_op == 7'b1101111) || (wb_op == 7'b1100111);
+  wire wb_is_utype  = (wb_op == 7'b0110111) || (wb_op == 7'b0010111);
+  wire wb_is_csr_op = (wb_op == 7'b1110011) && (wb_inst[14:12] != 0);
+  wire wb_is_sys_op = (wb_inst == 32'h00000073) || (wb_inst == 32'h00100073) ||
+                       (wb_inst == 32'h30200073) || (wb_op == 7'b0001111);
+
+  // Pipeline stall breakdown
+  wire stall_raw   = id_valid && id_hazard && ex_ready;      // RAW data hazard stall
+  wire stall_lsu   = ex_valid && !ls_ready;                   // LSU backpressure stall
+  wire stall_fetch = !id_valid && !redirect && !rst;          // waiting for fetch (bubble in ID)
+  wire pipe_flush  = redirect;                                 // branch/jump/exception flush
 
   wire if_arvalid, if_arready, if_rvalid, if_rready;
   wire [31:0] if_araddr, if_rdata;
@@ -268,9 +293,9 @@ module PipelineCore(
     .bus_arlen(ic_arlen), .bus_arsize(ic_arsize), .bus_arburst(ic_arburst),
     .bus_rvalid(ic_rvalid), .bus_rready(ic_rready), .bus_rdata(ic_rdata),
     .bus_rresp(ic_rresp), .bus_rlast(ic_rlast), .bus_rid(ic_rid),
-    .icache_access(), .icache_hit(), .icache_miss(), .icache_uncache(),
-    .icache_refill_req(), .icache_refill_req_pulse(), .icache_wait_ar(),
-    .icache_wait_r(), .flush(icache_flush)
+    .icache_access(icache_access), .icache_hit(icache_hit), .icache_miss(icache_miss), .icache_uncache(icache_uncache),
+    .icache_refill_req(icache_refill_req), .icache_refill_req_pulse(icache_refill_req_pulse), .icache_wait_ar(icache_wait_ar),
+    .icache_wait_r(icache_wait_r), .flush(icache_flush)
   );
 
   wire cl_arvalid, cl_arready, cl_rvalid, cl_rready;
@@ -455,4 +480,46 @@ module PipelineCore(
 `endif
     end
   end
+
+  // ---------------- Performance Counter ----------------
+`ifdef ENABLE_PERF
+  PerfCounter u_perf(
+    .clk(clk), .rst(rst),
+    // Pipeline
+    .pipe_retire(wb_valid),
+    .pipe_stall_raw(stall_raw),
+    .pipe_stall_lsu(stall_lsu),
+    .pipe_stall_fetch(stall_fetch),
+    .pipe_flush(pipe_flush),
+    .pipe_id_valid(id_valid),
+    .pipe_ex_valid(ex_valid),
+    .pipe_ls_valid(ls_valid),
+    // ICache
+    .icache_access(icache_access),
+    .icache_hit(icache_hit),
+    .icache_miss(icache_miss),
+    .icache_uncache(icache_uncache),
+    .icache_refill_req(icache_refill_req),
+    .icache_refill_req_pulse(icache_refill_req_pulse),
+    .icache_wait_ar(icache_wait_ar),
+    .icache_wait_r(icache_wait_r),
+    // LSU
+    .lsu_r_handshake(lsu_r_hs),
+    .lsu_b_handshake(lsu_b_hs),
+    // Retiring instruction classification
+    .wb_is_calc(wb_is_calc),
+    .wb_is_load(wb_is_load),
+    .wb_is_store(wb_is_store),
+    .wb_is_branch(wb_is_branch),
+    .wb_is_jump(wb_is_jump),
+    .wb_is_utype(wb_is_utype),
+    .wb_is_csr_op(wb_is_csr_op),
+    .wb_is_sys_op(wb_is_sys_op),
+    // Branch outcome
+    .pipe_branch_taken(wb_valid && wb_is_branch && wb_data[0]),
+    // Register writeback
+    .pipe_reg_wen(wb_valid && writes_rd(wb_inst))
+  );
+`endif
+
 endmodule
