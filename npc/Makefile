@@ -58,7 +58,6 @@ WAVE_DIR = wave
 WAVE_FILE = $(WAVE_DIR)/dump.fst
 
 BUILD_DIR = ./build
-OBJ_DIR = $(BUILD_DIR)/obj_dir
 
 FST     ?= 0
 TRACE   ?= 0
@@ -165,6 +164,7 @@ ifeq ($(SOC),1)
   VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
   VERILOG_FILES += $(wildcard vsrc/*.v)
   TOP_CLASS := VysyxSoCFull
+  OBJ_DIR := $(BUILD_DIR)/obj_dir_soc
 else
   CSRCS_DIR := csrc_standalone
   VERILATOR_FLAGS += --top-module top
@@ -175,6 +175,7 @@ else
   VERILOG_FILES += $(wildcard vsrc/*.v)
   VERILOG_FILES += $(wildcard vsrc/standalone/*.v)
   TOP_CLASS := Vtop
+  OBJ_DIR := $(BUILD_DIR)/obj_dir_npc
 endif
 
 $(shell mkdir -p $(BUILD_DIR))
