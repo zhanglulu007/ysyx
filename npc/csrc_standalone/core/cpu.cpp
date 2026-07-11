@@ -107,8 +107,9 @@ void reset_cpu() {
 // 单步执行
 void exec_once() {
     uint32_t current_pc = npc_get_pc();
+    uint64_t current_commit = npc_get_commit_count();
 
-    while(current_pc == npc_get_pc()) {
+    while(current_commit == npc_get_commit_count()) {
          // 下降沿
         g_top->clk = 0;
         g_top->eval();

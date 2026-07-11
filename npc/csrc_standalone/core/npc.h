@@ -29,6 +29,7 @@ NPCState* npc_get_state();
 
 // 周期计数
 uint64_t npc_get_cycle();
+uint64_t npc_get_commit_count();
 void npc_inc_cycle();
 
 // 获取当前PC

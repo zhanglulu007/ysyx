@@ -91,6 +91,40 @@ module ysyx_26020070(
   output        io_slave_rlast
 );
 
+`ifdef SIMPLE_PIPELINE
+  assign io_slave_awready = 1'b0;
+  assign io_slave_wready  = 1'b0;
+  assign io_slave_bvalid  = 1'b0;
+  assign io_slave_bid     = 4'b0;
+  assign io_slave_bresp   = 2'b0;
+  assign io_slave_arready = 1'b0;
+  assign io_slave_rvalid  = 1'b0;
+  assign io_slave_rid     = 4'b0;
+  assign io_slave_rdata   = 32'b0;
+  assign io_slave_rresp   = 2'b0;
+  assign io_slave_rlast   = 1'b0;
+
+  PipelineCore u_pipeline_core(
+    .clk(clock), .rst(reset),
+    .mem_arvalid(io_master_arvalid), .mem_arready(io_master_arready),
+    .mem_araddr(io_master_araddr), .mem_arid(io_master_arid),
+    .mem_arlen(io_master_arlen), .mem_arsize(io_master_arsize),
+    .mem_arburst(io_master_arburst),
+    .mem_rvalid(io_master_rvalid), .mem_rready(io_master_rready),
+    .mem_rdata(io_master_rdata), .mem_rresp(io_master_rresp),
+    .mem_rlast(io_master_rlast), .mem_rid(io_master_rid),
+    .mem_awvalid(io_master_awvalid), .mem_awready(io_master_awready),
+    .mem_awaddr(io_master_awaddr), .mem_awid(io_master_awid),
+    .mem_awlen(io_master_awlen), .mem_awsize(io_master_awsize),
+    .mem_awburst(io_master_awburst),
+    .mem_wvalid(io_master_wvalid), .mem_wready(io_master_wready),
+    .mem_wdata(io_master_wdata), .mem_wstrb(io_master_wstrb),
+    .mem_wlast(io_master_wlast),
+    .mem_bvalid(io_master_bvalid), .mem_bready(io_master_bready),
+    .mem_bresp(io_master_bresp), .mem_bid(io_master_bid)
+  );
+`else
+
   // ========== 内部信号定义 ==========
 
   // 复位信号转换 (ysyxSoC高电平复位 -> NPC低电平复位)
@@ -918,5 +952,6 @@ module ysyx_26020070(
     .reg_wen          (reg_wen_final)
   );
 `endif
+`endif // SIMPLE_PIPELINE
 
 endmodule
