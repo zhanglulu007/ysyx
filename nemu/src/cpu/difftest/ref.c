@@ -19,12 +19,14 @@
 #include <memory/paddr.h>
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
-  /* ysyxSoC: 按 addr 分流到 pmem / MROM / SRAM / Flash 四块物理内存区域 */
+  /* ysyxSoC: 按 addr 分流到 pmem / MROM / SRAM / Flash / PSRAM / SDRAM 物理内存区域 */
   uint8_t *host;
   if (in_pmem(addr))      host = guest_to_host(addr);
   else if (in_mrom(addr)) host = mrom_to_host(addr);
   else if (in_sram(addr)) host = sram_to_host(addr);
   else if (in_flash(addr)) host = flash_to_host(addr);
+  else if (in_psram(addr)) host = psram_to_host(addr);
+  else if (in_sdram(addr)) host = sdram_to_host(addr);
   else { assert(0); }     /* 不应同步到未知区域 */
 
   if (direction == DIFFTEST_TO_REF) {

@@ -185,6 +185,10 @@ static int decode_exec(Decode *s) {
     #endif
     s->dnpc = csr(0x341));
   
+  // Fence instructions (treated as NOPs for difftest)
+  INSTPAT("0000 0000 0000 00000 000 00000 00011 11", fence  , N, /* NOP: ordering hint */);
+  INSTPAT("0000 0000 0000 00000 001 00000 00011 11", fence_i, N, /* NOP: instruction cache sync */);
+  
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, INV(s->pc));
   INSTPAT_END();
 
