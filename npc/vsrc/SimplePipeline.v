@@ -383,11 +383,12 @@ module SimplePipeline(
   reg [31:0] fetch_pc;
   reg [31:0] fetch_req_pc;
   reg        fetch_pending;
-  wire       ifu_arvalid = !fetch_pending && !rst && !ex_redirect;
+  wire       ifu_arvalid = !fetch_pending && (!if_id_valid || id_fire) &&
+                           !rst && !ex_redirect;
   wire       ifu_arready;
   wire [31:0] ifu_araddr = fetch_pc;
   wire       ifu_rvalid;
-  wire       ifu_rready = fetch_pending && (ex_redirect || !if_id_valid || id_fire);
+  wire       ifu_rready = fetch_pending;
   wire [31:0] ifu_rdata;
   wire [1:0] ifu_rresp;
   wire       ifu_rlast;
