@@ -153,6 +153,8 @@ SOC ?= 1
 YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
 YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
+VERILATOR_FLAGS += -DSIMPLE_PIPELINE
+  EXTRA_CFLAGS += -DSIMPLE_PIPELINE
 
 ifeq ($(SOC),1)
   # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
