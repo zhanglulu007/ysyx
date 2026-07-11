@@ -63,7 +63,20 @@ FST     ?= 0
 TRACE   ?= 0
 PERF    ?= 0
 DIFFTEST_SO ?=
+DIFFTEST ?= 0
 FFLASH  ?= 0
+SOC ?= 1
+
+NEMU_REF_STANDALONE := $(abspath ../nemu/build/riscv32-nemu-interpreter-standalone-so)
+NEMU_REF_YSYXSOC    := $(abspath ../nemu/build/riscv32-nemu-interpreter-ysyxsoc-so)
+
+ifeq ($(DIFFTEST),1)
+  ifeq ($(SOC),1)
+    DIFFTEST_SO := $(NEMU_REF_YSYXSOC)
+  else
+    DIFFTEST_SO := $(NEMU_REF_STANDALONE)
+  endif
+endif
 
 # FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
 ifeq ($(FST), 1)
@@ -131,8 +144,6 @@ ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 
-SOC ?= 1
-
 # ysyxSoC paths
 YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
@@ -195,6 +206,9 @@ show-config:
 	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
+	@echo "  make difftest-refs                    # 同时构建 standalone/SoC 两套 NEMU REF"
+	@echo "  make run SOC=0 DIFFTEST=1 PROG=x.bin # 自动选择 standalone REF"
+	@echo "  make run SOC=1 DIFFTEST=1 PROG=x.bin # 自动选择 ysyxSoC REF"
 	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (仅 SoC 模式)"
 
 define VERILATE_CMD
@@ -261,4 +275,7 @@ build-soc:
 build-npc:
 	$(MAKE) build SOC=0
 
-.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test
+difftest-refs:
+	$(MAKE) -C ../nemu difftest-refs
+
+.PHONY: build sim run run-soc run-npc build-soc build-npc difftest-refs clean char-test

@@ -235,6 +235,15 @@ config YSYXSOC
     minimal CLINT (mtime) and UART16550 device models.
     Leaves the default riscv32-nemu behavior unchanged when disabled.
 
+config DIFFTEST_PROFILE
+  string
+  default "ysyxsoc" if TARGET_SHARE && YSYXSOC
+  default "standalone" if TARGET_SHARE
+  default ""
+  help
+    Distinguishes incompatible DiffTest reference memory maps in build paths
+    and file names, so standalone and ysyxSoC shared objects can coexist.
+
 if MODE_SYSTEM
 source "src/memory/Kconfig"
 source "src/device/Kconfig"
