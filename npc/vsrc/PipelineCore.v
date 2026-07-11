@@ -411,7 +411,15 @@ module PipelineCore(
       if (redirect) begin
         id_valid <= 0;
         fetch_pc <= ex_redirect_target;
-        if (fetch_state == F_WAIT) fetch_discard <= 1;
+        if (ex_is_fencei) begin
+          // ICache flush cancels an outstanding lookup/refill, so the fetch
+          // side must cancel the matching request instead of waiting for a
+          // response that the cache intentionally discarded.
+          fetch_state <= F_REQ;
+          fetch_discard <= 0;
+        end else if (fetch_state == F_WAIT) begin
+          fetch_discard <= 1;
+        end
       end else if (id_issue) begin
         id_valid <= 0;
       end
