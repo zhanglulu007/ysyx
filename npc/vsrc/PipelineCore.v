@@ -585,7 +585,9 @@ module PipelineCore(
     // Branch outcome
     .pipe_branch_taken(wb_valid && wb_is_branch && wb_data[0]),
     // Register writeback
-    .pipe_reg_wen(wb_valid && writes_rd(wb_inst))
+    .pipe_reg_wen(wb_valid && writes_rd(wb_inst)),
+    // Exception
+    .pipe_exception(wb_valid && wb_exception)
   );
 `endif
 

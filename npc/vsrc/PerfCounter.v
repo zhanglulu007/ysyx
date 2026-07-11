@@ -45,7 +45,9 @@ module PerfCounter(
   // ===== Branch outcome =====
   input pipe_branch_taken,     // retiring branch was taken
   // ===== Register writeback =====
-  input pipe_reg_wen           // retiring instruction writes a register
+  input pipe_reg_wen,          // retiring instruction writes a register
+  // ===== Exception =====
+  input pipe_exception         // retiring instruction triggered an exception
 );
 
   // ========== Counter registers (64-bit) ==========
@@ -97,6 +99,7 @@ module PerfCounter(
 
   // Register writeback
   reg [63:0] reg_wb_cnt;           // register writebacks
+  reg [63:0] cnt_exception;        // exception events
 
   // Per-category CPI accumulator (cycle cost per instruction type)
   // Uses a simple approach: each cycle, add 1 to an accumulator;
@@ -149,6 +152,7 @@ module PerfCounter(
       branch_taken_cnt   <= 64'b0;
       branch_total_cnt   <= 64'b0;
       reg_wb_cnt         <= 64'b0;
+      cnt_exception      <= 64'b0;
       inst_cyc_acc       <= 64'b0;
       cyc_calc           <= 64'b0;
       cyc_load           <= 64'b0;
@@ -238,6 +242,9 @@ module PerfCounter(
 
       // Register writeback
       if (pipe_retire && pipe_reg_wen) reg_wb_cnt <= reg_wb_cnt + 64'd1;
+
+      // Exception event
+      if (pipe_exception) cnt_exception <= cnt_exception + 64'd1;
     end
   end
 
@@ -376,6 +383,12 @@ module PerfCounter(
     $display("[8. 寄存器写回 Register Writeback]");
     $display("  写回次数 Reg writes (rd!=0)   : %0d", reg_wb_cnt);
     $display("  每条指令写回数 Reg writes/inst: %.2f", (cnt_retire > 0) ? (1.0 * reg_wb_cnt / cnt_retire) : 0.0);
+
+    // --- 异常统计 Exception Statistics ---
+    $display("");
+    $display("[8.5 异常统计 Exception Statistics]");
+    $display("  异常次数 Exception events      : %0d", cnt_exception);
+    $display("  异常率 Exception rate           : %.4f%%", (cnt_retire > 0) ? (100.0 * cnt_exception / cnt_retire) : 0.0);
 
     // --- Amdahl定律瓶颈分析 ---
     $display("");
