@@ -67,6 +67,15 @@ module PipelineCore(
   reg [31:0] wb_mem_addr;
   reg [31:0] wb_next_pc;
 
+  // Exception tracking through pipeline (propagated from ID → EX → LS → WB)
+  reg        ex_exception;
+  reg [3:0]  ex_excause;
+  reg        ls_exception;
+  reg [3:0]  ls_excause;
+  reg        wb_exception;
+  reg [3:0]  wb_excause;
+  reg        prev_lsu_fault;   // for rising-edge detection of LSU fault
+
   wire [4:0] id_rs1 = id_inst[19:15];
   wire [4:0] id_rs2 = id_inst[24:20];
   wire [4:0] ex_rd = ex_inst[11:7];
@@ -87,6 +96,32 @@ module PipelineCore(
                         (ls_valid && is_serial(ls_inst)) ||
                         (wb_valid && is_serial(wb_inst)));
   wire id_hazard = id_valid && (raw_ex || raw_ls || raw_wb || serial_hazard);
+
+  // ---------------- Exception detection in ID stage ----------------
+  // Detect ecall, ebreak, and illegal instructions
+  wire [6:0] id_op = id_inst[6:0];
+  wire id_is_load    = (id_op == 7'b0000011);
+  wire id_is_store   = (id_op == 7'b0100011);
+  wire id_is_branch  = (id_op == 7'b1100011);
+  wire id_is_jal     = (id_op == 7'b1101111);
+  wire id_is_jalr    = (id_op == 7'b1100111);
+  wire id_is_lui     = (id_op == 7'b0110111);
+  wire id_is_auipc   = (id_op == 7'b0010111);
+  wire id_is_rtype   = (id_op == 7'b0110011);
+  wire id_is_itype   = (id_op == 7'b0010011);
+  wire id_is_csr     = (id_op == 7'b1110011) && (id_inst[14:12] != 0);
+  wire id_is_ecall   = (id_inst == 32'h00000073);
+  wire id_is_ebreak  = (id_inst == 32'h00100073);
+  wire id_is_mret    = (id_inst == 32'h30200073);
+  wire id_is_fencei  = (id_op == 7'b0001111) && (id_inst[14:12] == 3'b001);
+  wire id_known      = id_is_load || id_is_store || id_is_branch || id_is_jal ||
+                       id_is_jalr || id_is_lui || id_is_auipc || id_is_rtype ||
+                       id_is_itype || id_is_csr || id_is_ecall || id_is_ebreak ||
+                       id_is_mret || id_is_fencei;
+  wire id_exception  = id_valid && (id_is_ecall || id_is_ebreak || !id_known);
+  wire [3:0] id_excause = id_is_ecall  ? 4'd11 :    // Environment call from M-mode
+                           id_is_ebreak ? 4'd3  :    // Breakpoint
+                           /* illegal  */ 4'd2;       // Illegal instruction
 
   wire [31:0] rf_rs1, rf_rs2, a0_value;
   wire wb_reg_wen = wb_valid && writes_rd(wb_inst);
@@ -185,8 +220,8 @@ module PipelineCore(
   CSR u_csr(
     .clk(clk), .rst(rst), .csr_addr(wb_valid ? wb_inst[31:20] : csr_raddr),
     .csr_wdata(wb_csr_wdata), .csr_wen(wb_csr_wen), .csr_rdata(csr_rdata),
-    .exception_en(wb_valid && wb_inst == 32'h00000073),
-    .exception_pc(wb_pc), .exception_cause(32'd11),
+    .exception_en(wb_valid && wb_exception),
+    .exception_pc(wb_pc), .exception_cause({28'b0, wb_excause}),
     .mret_en(wb_valid && wb_inst == 32'h30200073),
     .mepc_out(mepc), .mtvec_out(mtvec), .mcycle_out(mcycle)
   );
@@ -242,6 +277,15 @@ module PipelineCore(
   wire id_ready = !id_valid || id_issue;
   wire ex_advance = ex_valid && ls_ready;
   wire redirect = ex_advance && ex_redirect_kind;
+
+  // ---------------- LS stage exception detection ----------------
+  // Misaligned load/store + LSU access fault (rising-edge detected)
+  wire ls_misaligned = ls_is_mem && ls_valid && (
+    ((ls_inst[14:12] == 3'b010) && (ls_addr[1:0] != 2'b0)) ||              // LW/SW not word-aligned
+    ((ls_inst[14:12] == 3'b001 || ls_inst[14:12] == 3'b101) && ls_addr[0])  // LH/LHU/SH not halfword-aligned
+  );
+  // Rising-edge detect on lsu_fault to avoid false positives from persistent fault
+  wire lsu_fault_rise = lsu_fault && !prev_lsu_fault;
 
   // ---------------- Performance counter observation signals ----------------
   wire icache_access, icache_hit, icache_miss, icache_uncache;
@@ -389,6 +433,8 @@ module PipelineCore(
   always @(posedge clk) begin
     if (rst) begin
       id_valid <= 0; ex_valid <= 0; ls_valid <= 0; wb_valid <= 0;
+      ex_exception <= 0; ls_exception <= 0; wb_exception <= 0;
+      prev_lsu_fault <= 0;
       fetch_state <= F_REQ; fetch_discard <= 0;
 `ifdef SOC_MODE
       fetch_pc <= 32'h30000000;
@@ -414,6 +460,13 @@ module PipelineCore(
         wb_next_pc <= (ls_inst[6:0] == 7'b1101111 || ls_inst[6:0] == 7'b1100111 ||
                        (ls_inst[6:0] == 7'b1100011 && ls_result[0]) ||
                        ls_inst == 32'h00000073 || ls_inst == 32'h30200073) ? ls_store_data : ls_pc + 4;
+        // Compute WB exception: propagate from earlier stages + LS-stage detection
+        wb_exception <= ls_exception || ls_misaligned || (ls_is_mem && lsu_fault_rise);
+        wb_excause   <= ls_exception ? ls_excause :
+                        ls_misaligned ? (ls_is_load ? 4'd4 : 4'd6) :
+                        (ls_is_load ? 4'd5 : 4'd7);
+      end else begin
+        wb_exception <= 1'b0;
       end
 
       if (ls_ready) begin
@@ -424,12 +477,20 @@ module PipelineCore(
           ls_csr_wdata <= ex_csr_wdata;
           if (ex_is_branch) ls_result[0] <= ex_branch_taken;
         end
+        // Propagate exception from EX to LS (LS will overlay its own detection)
+        ls_exception <= ex_valid ? ex_exception : 1'b0;
+        ls_excause   <= ex_excause;
       end
 
       if (ex_ready) begin
         ex_valid <= id_valid && !id_hazard && !redirect;
         if (id_valid && !id_hazard && !redirect) begin
           ex_pc <= id_pc; ex_inst <= id_inst; ex_rs1 <= rf_rs1; ex_rs2 <= rf_rs2;
+          // Propagate exception info from ID to EX
+          ex_exception <= id_exception;
+          ex_excause   <= id_excause;
+        end else begin
+          ex_exception <= 1'b0;
         end
       end
 
@@ -437,9 +498,6 @@ module PipelineCore(
         id_valid <= 0;
         fetch_pc <= ex_redirect_target;
         if (ex_is_fencei) begin
-          // ICache flush cancels an outstanding lookup/refill, so the fetch
-          // side must cancel the matching request instead of waiting for a
-          // response that the cache intentionally discarded.
           fetch_state <= F_REQ;
           fetch_discard <= 0;
         end else if (fetch_state == F_WAIT) begin
@@ -448,6 +506,15 @@ module PipelineCore(
       end else if (id_issue) begin
         id_valid <= 0;
       end
+
+      // WB-stage exception redirect (precise: flush all + fetch from mtvec)
+      if (wb_valid && wb_exception) begin
+        id_valid <= 0; ex_valid <= 0; ls_valid <= 0;
+        fetch_pc <= mtvec;
+        if (fetch_state == F_WAIT) fetch_discard <= 1;
+      end
+
+      prev_lsu_fault <= lsu_fault;
 
       if (fetch_state == F_REQ && if_arvalid && if_arready) begin
         requested_pc <= fetch_pc;
