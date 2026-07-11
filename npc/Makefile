@@ -275,5 +275,16 @@ build-soc:
 build-npc:
 	$(MAKE) build SOC=0
 
+# 触发 NEMU 构建双份 REF .so
+# 通过 defconfig + syncconfig + DIFFTEST_DUAL_BUILD=y 一次 make 产出两份 .so
+$(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so &:
+	@echo "=== Building NEMU REF .so (dual variants) ==="
+	@if [ -f $(NEMU_HOME)/.config ]; then cp $(NEMU_HOME)/.config $(NEMU_HOME)/.config.bak; fi
+	cp $(NEMU_HOME)/configs/riscv32-ysyxsoc-so_defconfig $(NEMU_HOME)/.config
+	echo "CONFIG_DIFFTEST_DUAL_BUILD=y" >> $(NEMU_HOME)/.config
+	$(MAKE) -C $(NEMU_HOME) syncconfig
+	$(MAKE) -C $(NEMU_HOME) SHARE=1 app
+	@if [ -f $(NEMU_HOME)/.config.bak ]; then mv $(NEMU_HOME)/.config.bak $(NEMU_HOME)/.config; fi
+	@echo "=== NEMU REF .so build done ==="
 
 .PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test

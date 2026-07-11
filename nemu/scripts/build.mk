@@ -16,13 +16,17 @@ BINARY   = $(BUILD_DIR)/$(NAME)$(SO)
 
 # --- Dual REF .so build (standalone + ysyxsoc) ---
 # 当用户在 menuconfig 中选择了 "Shared object" 并启用
-# DIFFTEST_DUAL_BUILD 时，除当前配置的主 .so 外，还自动构建
-# 另一个 YSYXSOC 状态相反的变体。
+# DIFFTEST_DUAL_BUILD 时，同时构建两份 .so (带后缀命名):
+#   riscv32-nemu-interpreter-standalone-so
+#   riscv32-nemu-interpreter-ysyxsoc-so
+# 主构建的 NAME 也被覆盖为带后缀形式，保证两份 .so 命名一致。
 ifdef CONFIG_DIFFTEST_DUAL_BUILD
   ifeq ($(CONFIG_YSYXSOC),y)
+    NAME := $(GUEST_ISA)-nemu-$(ENGINE)-ysyxsoc
     SECOND_NAME = $(GUEST_ISA)-nemu-$(ENGINE)-standalone
     SECOND_DEFCONFIG = riscv32-standalone_defconfig
   else
+    NAME := $(GUEST_ISA)-nemu-$(ENGINE)-standalone
     SECOND_NAME = $(GUEST_ISA)-nemu-$(ENGINE)-ysyxsoc
     SECOND_DEFCONFIG = riscv32-ysyxsoc-so_defconfig
   endif
@@ -71,13 +75,14 @@ $(BINARY):: $(OBJS) $(ARCHIVES)
 	@echo + LD $@
 	@$(LD) -o $@ $(OBJS) $(LDFLAGS) $(ARCHIVES) $(LIBS)
 
-# 第二份 REF .so: 切换 defconfig 后递归 make, 完成后恢复原配置
-# 构建失败时也会恢复 .config (通过 trap)
+# 第二份 REF .so: 通过 defconfig 目标切换配置 (自动触发 syncconfig),
+# 然后递归 make 构建第二个变体, 完成后恢复原配置.
+# 构建失败时也会恢复 .config.
 ifdef CONFIG_DIFFTEST_DUAL_BUILD
 $(SECOND_SO): $(BINARY)
 	@echo "=== Building second REF .so variant: $(SECOND_NAME) ==="
 	@cp $(NEMU_HOME)/.config $(NEMU_HOME)/.config.dual_bak
-	@cp $(NEMU_HOME)/configs/$(SECOND_DEFCONFIG) $(NEMU_HOME)/.config
+	@$(MAKE) -s -C $(NEMU_HOME) $(SECOND_DEFCONFIG)
 	@$(MAKE) -s -C $(NEMU_HOME) SHARE=1 NAME=$(SECOND_NAME) app || \
 		{ rc=$$?; mv $(NEMU_HOME)/.config.dual_bak $(NEMU_HOME)/.config; exit $$rc; }
 	@mv $(NEMU_HOME)/.config.dual_bak $(NEMU_HOME)/.config
