@@ -192,6 +192,18 @@ config DIFFTEST
     Enable differential testing with a reference design.
     Note that this will significantly reduce the performance of NEMU.
 
+config DIFFTEST_DUAL_BUILD
+  depends on TARGET_SHARE && ISA_riscv
+  bool "Build dual REF .so variants (standalone + ysyxsoc)"
+  default y
+  help
+    When building NEMU as a shared object (REF for differential testing),
+    also build a second variant with the opposite YSYXSOC setting.
+    This produces both standalone-so and ysyxsoc-so, so that both
+    riscv32e-npc and riscv32e-ysyxsoc can use difftest with the
+    appropriate REF.  If disabled, only the variant matching the
+    current YSYXSOC setting is built.
+
 choice
   prompt "Reference design"
   default DIFFTEST_REF_SPIKE if ISA_riscv

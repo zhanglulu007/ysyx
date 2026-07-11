@@ -275,15 +275,5 @@ build-soc:
 build-npc:
 	$(MAKE) build SOC=0
 
-# 构建 NEMU REF .so (供 difftest 使用)
-difftest-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so
 
-# 显式规则: 触发 NEMU 构建对应的 .so
-$(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so-standalone
-
-$(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
-
-.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test difftest-so
+.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test
