@@ -327,7 +327,7 @@ module PipelineCore(
   wire [1:0] ic_arburst, ic_rresp;
   wire ic_rlast;
   wire icache_flush = ex_advance && ex_is_fencei;
-  ICache u_icache(
+  ICachePipelined u_icache(
     .clk(clk), .rst(rst), .cpu_arvalid(if_arvalid), .cpu_arready(if_arready),
     .cpu_araddr(if_araddr), .cpu_arid(if_arid), .cpu_arlen(if_arlen),
     .cpu_arsize(if_arsize), .cpu_arburst(if_arburst), .cpu_rvalid(if_rvalid),
