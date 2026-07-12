@@ -74,6 +74,7 @@ module ICache #(
   //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
   //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
   //   IC_RESP:      保存 refill 的 CPU 响应，等待 IFU 接收
+  //   IC_DISCARD_AR: fence.i 后补全一个已被仲裁器授权的 AR 请求
   //   IC_DISCARD_R: fence.i 冲刷已发出的 AXI 读事务时，排空剩余 R beat
   // ===================================================================
   localparam IC_IDLE      = 3'd0;
@@ -82,6 +83,7 @@ module ICache #(
   localparam IC_REFILL_R  = 3'd3;
   localparam IC_RESP      = 3'd4;
   localparam IC_DISCARD_R = 3'd5;
+  localparam IC_DISCARD_AR = 3'd6;
 
   reg [2:0] state;
 
@@ -165,7 +167,7 @@ module ICache #(
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
     req_addr;
 
-  assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
+  assign bus_arvalid = (state == IC_REFILL_AR) || (state == IC_DISCARD_AR);
   assign bus_araddr  = refill_araddr;
   assign bus_arid    = req_arid;
   assign bus_arlen   = is_burst ? (BURST_LEN) : 8'b0;
@@ -252,16 +254,24 @@ module ICache #(
     if (rst) begin
       state       <= IC_IDLE;
       prev_state  <= IC_IDLE;
-      req_addr    <= 32'b0;
-      req_arid    <= 4'b0;
-      refill_word <= {REFILL_CNT_BITS{1'b0}};
+      if (!((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready)) begin
+        // Keep the address and ID stable while completing a discarded AR.
+        req_addr    <= 32'b0;
+        req_arid    <= 4'b0;
+        refill_word <= {REFILL_CNT_BITS{1'b0}};
+      end
       resp_data   <= 32'b0;
       resp_resp   <= 2'b0;
       resp_id     <= 4'b0;
     end else if (flush) begin
       // An already accepted AR must still be drained, otherwise AXIArbiter
       // remains busy and the first post-fence.i request can deadlock.
-      if ((state == IC_REFILL_AR && bus_arready) ||
+      if ((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready) begin
+        // AXIArbiter may have granted this request before its slave raises
+        // ARREADY. Keep ARVALID asserted so that granted transaction can
+        // complete, then discard its response below.
+        state <= IC_DISCARD_AR;
+      end else if ((state == IC_REFILL_AR || state == IC_DISCARD_AR) && bus_arready ||
           ((state == IC_REFILL_R || state == IC_DISCARD_R) &&
            !(bus_rvalid && bus_rready && bus_rlast))) begin
         state <= IC_DISCARD_R;
@@ -305,6 +315,10 @@ module ICache #(
         IC_REFILL_AR: begin
           // 等待总线侧 AR 握手
           if (bus_arready) state <= IC_REFILL_R;
+        end
+
+        IC_DISCARD_AR: begin
+          if (bus_arready) state <= IC_DISCARD_R;
         end
 
         IC_REFILL_R: begin
