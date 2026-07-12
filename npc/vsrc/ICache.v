@@ -219,9 +219,10 @@ module ICache #(
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
   //   命中:  IC_LOOKUP 当拍直出 cache 数据 + OK resp + last
-  //   缺失:  最后一个回填 beat 被保存到 IC_RESP，直到 IFU 接收
+  //   缺失:  IFU 就绪时由最后一个回填 beat 直通；否则保存至 IC_RESP
   // ===================================================================
   wire lookup_hit  = (state == IC_LOOKUP)   && req_cacheable &&  hit;
+  wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && is_last_word;
 
   // 命中时从 cache_data 中选取对应 word
   wire [31:0] hit_word;
@@ -240,11 +241,13 @@ module ICache #(
   reg [ 1:0] resp_resp;
   reg [ 3:0] resp_id;
 
-  assign cpu_rvalid = !flush && (lookup_hit || (state == IC_RESP));
-  assign cpu_rdata  = lookup_hit ? hit_word : resp_data;
-  assign cpu_rresp  = lookup_hit ? 2'b00 : resp_resp;
+  assign cpu_rvalid = !flush && (lookup_hit || refill_done || (state == IC_RESP));
+  assign cpu_rdata  = lookup_hit ? hit_word :
+                      refill_done ? refill_word_data : resp_data;
+  assign cpu_rresp  = lookup_hit ? 2'b00 :
+                      refill_done ? bus_rresp : resp_resp;
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
-  assign cpu_rid    = lookup_hit ? req_arid : resp_id;
+  assign cpu_rid    = (lookup_hit || refill_done) ? req_arid : resp_id;
 
   // ===================================================================
   // 状态机
@@ -326,10 +329,14 @@ module ICache #(
             if (is_burst) begin
               // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
               if (bus_rlast) begin
-                resp_data <= refill_word_data;
-                resp_resp <= bus_rresp;
-                resp_id   <= req_arid;
-                state     <= IC_RESP;
+                if (cpu_rready) begin
+                  state <= IC_IDLE;
+                end else begin
+                  resp_data <= refill_word_data;
+                  resp_resp <= bus_rresp;
+                  resp_id   <= req_arid;
+                  state     <= IC_RESP;
+                end
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
@@ -338,11 +345,15 @@ module ICache #(
               //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IDLE
               //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
               if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                // 将总线结果保存到响应寄存器，等待 CPU 侧 R 握手。
-                resp_data <= refill_word_data;
-                resp_resp <= bus_rresp;
-                resp_id   <= req_arid;
-                state     <= IC_RESP;
+                if (cpu_rready) begin
+                  state <= IC_IDLE;
+                end else begin
+                  // IFU 反压时，保存总线结果后再应答。
+                  resp_data <= refill_word_data;
+                  resp_resp <= bus_rresp;
+                  resp_id   <= req_arid;
+                  state     <= IC_RESP;
+                end
               end else begin
                 // 还有更多 word 需要取, 递增计数器, 发下一个 AR
                 refill_word <= refill_word + 1'b1;
