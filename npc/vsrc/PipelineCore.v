@@ -1,6 +1,6 @@
 // Simple in-order RV32E pipeline used by the B5 implementation.
-// Hazards are handled conservatively: RAW dependencies stall in ID, the LSU
-// back-pressures the whole pipe, and EX redirects flush all younger work.
+// RAW dependencies are bypassed to ID when their youngest producer has data;
+// unresolved loads and the LSU still back-pressure the whole pipe.
 module PipelineCore(
   input clk, input rst,
   output mem_arvalid, input mem_arready, output [31:0] mem_araddr,
@@ -82,20 +82,10 @@ module PipelineCore(
   wire [4:0] ls_rd = ls_inst[11:7];
   wire [4:0] wb_rd = wb_inst[11:7];
 
-  wire raw_ex = ex_valid && writes_rd(ex_inst) &&
-                ((uses_rs1(id_inst) && id_rs1 == ex_rd) ||
-                 (uses_rs2(id_inst) && id_rs2 == ex_rd));
-  wire raw_ls = ls_valid && writes_rd(ls_inst) &&
-                ((uses_rs1(id_inst) && id_rs1 == ls_rd) ||
-                 (uses_rs2(id_inst) && id_rs2 == ls_rd));
-  wire raw_wb = wb_valid && writes_rd(wb_inst) &&
-                ((uses_rs1(id_inst) && id_rs1 == wb_rd) ||
-                 (uses_rs2(id_inst) && id_rs2 == wb_rd));
   wire serial_hazard = (is_serial(id_inst) && (ex_valid || ls_valid || wb_valid)) ||
                        ((ex_valid && is_serial(ex_inst)) ||
                         (ls_valid && is_serial(ls_inst)) ||
                         (wb_valid && is_serial(wb_inst)));
-  wire id_hazard = id_valid && (raw_ex || raw_ls || raw_wb || serial_hazard);
 
   // ---------------- Exception detection in ID stage ----------------
   // Detect ecall, ebreak, and illegal instructions
@@ -273,6 +263,39 @@ module PipelineCore(
   wire ls_done = !ls_is_mem || (ls_is_load ? lsu_r_hs : lsu_b_hs);
   wire ls_ready = !ls_valid || ls_done;
   wire ex_ready = !ex_valid || ls_ready;
+
+  // ---------------- ID-stage operand forwarding ----------------
+  // A matching producer in EX is younger than one in LS or WB, so it must
+  // win even when it is a load whose data has not returned yet.  In that
+  // case, waiting is required instead of forwarding an older value.
+  wire ex_writes_rd = ex_valid && writes_rd(ex_inst) && !ex_rd[4];
+  wire ls_writes_rd = ls_valid && writes_rd(ls_inst) && !ls_rd[4];
+  wire wb_writes_rd = wb_valid && writes_rd(wb_inst) && !wb_rd[4];
+  wire ex_fwd_ready = ex_writes_rd && !ex_is_load;
+  wire ls_fwd_ready = ls_writes_rd && (!ls_is_load || lsu_r_hs);
+
+  wire rs1_ex_match = uses_rs1(id_inst) && ex_writes_rd && (id_rs1 == ex_rd);
+  wire rs1_ls_match = uses_rs1(id_inst) && ls_writes_rd && (id_rs1 == ls_rd);
+  wire rs1_wb_match = uses_rs1(id_inst) && wb_writes_rd && (id_rs1 == wb_rd);
+  wire rs2_ex_match = uses_rs2(id_inst) && ex_writes_rd && (id_rs2 == ex_rd);
+  wire rs2_ls_match = uses_rs2(id_inst) && ls_writes_rd && (id_rs2 == ls_rd);
+  wire rs2_wb_match = uses_rs2(id_inst) && wb_writes_rd && (id_rs2 == wb_rd);
+
+  wire rs1_wait = rs1_ex_match ? !ex_fwd_ready :
+                  rs1_ls_match ? !ls_fwd_ready : 1'b0;
+  wire rs2_wait = rs2_ex_match ? !ex_fwd_ready :
+                  rs2_ls_match ? !ls_fwd_ready : 1'b0;
+  wire unresolved_raw = rs1_wait || rs2_wait;
+
+  wire [31:0] ls_fwd_data = ls_is_load ? lsu_rdata : ls_result;
+  wire [31:0] id_rs1_value = rs1_ex_match ? ex_result :
+                              rs1_ls_match ? ls_fwd_data :
+                              rs1_wb_match ? wb_data : rf_rs1;
+  wire [31:0] id_rs2_value = rs2_ex_match ? ex_result :
+                              rs2_ls_match ? ls_fwd_data :
+                              rs2_wb_match ? wb_data : rf_rs2;
+
+  wire id_hazard = id_valid && (unresolved_raw || serial_hazard);
   wire id_issue = id_valid && !id_hazard && ex_ready;
   wire id_ready = !id_valid || id_issue;
   wire ex_advance = ex_valid && ls_ready;
@@ -307,7 +330,7 @@ module PipelineCore(
                        (wb_inst == 32'h30200073) || (wb_op == 7'b0001111);
 
   // Pipeline stall breakdown
-  wire stall_raw   = id_valid && id_hazard && ex_ready;      // RAW data hazard stall
+  wire stall_raw   = id_valid && unresolved_raw && ex_ready; // no ready bypass source
   wire stall_lsu   = ex_valid && !ls_ready;                   // LSU backpressure stall
   wire stall_fetch = !id_valid && !redirect && !rst;          // waiting for fetch (bubble in ID)
   wire pipe_flush  = redirect;                                 // branch/jump/exception flush
@@ -492,7 +515,8 @@ module PipelineCore(
       if (ex_ready) begin
         ex_valid <= id_valid && !id_hazard && !redirect;
         if (id_valid && !id_hazard && !redirect) begin
-          ex_pc <= id_pc; ex_inst <= id_inst; ex_rs1 <= rf_rs1; ex_rs2 <= rf_rs2;
+          ex_pc <= id_pc; ex_inst <= id_inst;
+          ex_rs1 <= id_rs1_value; ex_rs2 <= id_rs2_value;
           // Propagate exception info from ID to EX
           ex_exception <= id_exception;
           ex_excause   <= id_excause;
