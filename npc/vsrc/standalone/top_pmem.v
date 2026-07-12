@@ -1,4 +1,6 @@
-module top(
+module top #(
+  parameter integer BTB_ENTRIES = 16
+)(
   input         clk,
   input         rst,
 
@@ -46,7 +48,7 @@ module top(
   // ========== 模块实例化 ==========
 
   // CPU 核心
-  ysyx_26020070 u_cpu(
+  ysyx_26020070 #(.BTB_ENTRIES(BTB_ENTRIES)) u_cpu(
     .clock(clk),
     .reset(rst),
     .io_interrupt(1'b0),

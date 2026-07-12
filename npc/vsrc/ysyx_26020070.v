@@ -3,7 +3,10 @@
 // AXI4 Master 总线连接 ysyxSoC 的 AXI4 Xbar
 // 内部包含: IFU, IDU, EXU, LSU, WBU, CSR, RegisterFile, CLINT, AXIArbiter
 
-module ysyx_26020070(
+module ysyx_26020070 #(
+  // Direct-mapped conditional-branch BTB entry count; use powers of two.
+  parameter integer BTB_ENTRIES = 16
+)(
   // ===== ysyxSoC 接口规范 =====
   input         clock,          // 时钟
   input         reset,          // 复位 (高电平有效)
@@ -105,7 +108,7 @@ module ysyx_26020070(
   assign io_slave_rlast   = 1'b0;
 
   // ===== 流水线处理器核心 (5-stage in-order pipeline) =====
-  PipelineCore u_pipeline_core(
+  PipelineCore #(.BTB_ENTRIES(BTB_ENTRIES)) u_pipeline_core(
     .clk(clock), .rst(reset),
     .mem_arvalid(io_master_arvalid), .mem_arready(io_master_arready),
     .mem_araddr(io_master_araddr), .mem_arid(io_master_arid),
