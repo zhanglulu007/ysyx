@@ -2,7 +2,7 @@
 // A matching entry proves that lookup_pc is a decoded B-type branch and
 // provides its target plus the static BTFN direction bit to IFU.
 module BranchTargetBuffer #(
-  parameter integer ENTRY_NUM = 16
+  parameter integer ENTRY_NUM = 8
 )(
   input         clk,
   input         rst,
