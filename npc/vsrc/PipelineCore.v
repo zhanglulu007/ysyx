@@ -429,7 +429,11 @@ module PipelineCore(
   assign if_arlen   = 0;
   assign if_arsize  = 3'b010;
   assign if_arburst = 2'b01;
-  assign if_rready  = (fetch_state == F_WAIT) && !rst;
+  // if_rready 表示本拍能接收 IC 返回的指令。只有三种情况可以接:
+  //  1) id_ready: 整条流水线可继续推进, 正常提交到 ID
+  //  2) fetch_discard: 该指令将被丢弃 (分支/异常冲刷), 仍需握手以免 ICache 卡住
+  //  3) pipe_flush: 同上 (WB 异常冲刷)
+  assign if_rready  = (fetch_state == F_WAIT) && (id_ready || fetch_discard || pipe_flush) && !rst;
 
 `ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);

@@ -291,16 +291,19 @@ module ICache #(
 
         IC_LOOKUP: begin
           if (req_cacheable && s2_hit) begin
-            // 命中: 本拍已组合逻辑应答 IFU
-            // 流水化: 若此拍同时有新 AR 握手 (s2_ar_hs=1), 下一拍直接停在 IC_LOOKUP 处理新请求
-            //         否则回 IC_REQ 等下一拍
-            if (s2_ar_hs) begin
-              req_addr <= cpu_araddr;
-              req_arid <= cpu_arid;
-              state    <= IC_LOOKUP;  // 保持流水
-            end else begin
-              state <= IC_REQ;
+            // 命中: 本拍已组合逻辑应答 IFU (cpu_rvalid=1)
+            // 必须等 IFU 接受 (cpu_rready=1) 后, 才能放开流水
+            if (cpu_rready) begin
+              // 流水化: 若此拍同时有新 AR 握手 (s2_ar_hs=1), 下一拍停在 IC_LOOKUP 处理新请求
+              if (s2_ar_hs) begin
+                req_addr <= cpu_araddr;
+                req_arid <= cpu_arid;
+                state    <= IC_LOOKUP;
+              end else begin
+                state <= IC_REQ;
+              end
             end
+            // cpu_rready=0: 保持 IC_LOOKUP, cpu_rvalid 持续 1, 等 IFU 接收
           end else begin
             // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
