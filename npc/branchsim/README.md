@@ -51,9 +51,9 @@ ideal-target-availability result beside the BTB-calibrated result.
 `--btb-entries=0` is an ideal-target-availability comparison baseline, not a
 hardware configuration with no BTB. It preserves pure static predictor
 behavior so cold-start and conflict costs can be measured directly. The
-default `16` entries are not an area-calibrated RTL decision: after an RTL BTB
-organization and size are selected, rerun branchsim with the same entry count
-and update this default if appropriate.
+default `16` entries match the current RTL `BranchTargetBuffer` default. The
+RTL configuration point is its `ENTRY_NUM` parameter; after changing it, rerun
+branchsim with the same `--btb-entries` value.
 
 ## Generate a btrace
 

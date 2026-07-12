@@ -44,6 +44,8 @@ module PerfCounter(
 
   // ===== Branch outcome =====
   input pipe_branch_taken,     // retiring branch was taken
+  input pipe_branch_predict_resolved, // EX resolved a conditional branch
+  input pipe_branch_predict_correct,  // predicted next PC matched actual next PC
   // ===== Register writeback =====
   input pipe_reg_wen,          // retiring instruction writes a register
   // ===== Exception =====
@@ -96,6 +98,8 @@ module PerfCounter(
   // Branch statistics
   reg [63:0] branch_taken_cnt;     // taken branches
   reg [63:0] branch_total_cnt;     // total branches retired
+  reg [63:0] branch_predict_total_cnt;
+  reg [63:0] branch_predict_correct_cnt;
 
   // Register writeback
   reg [63:0] reg_wb_cnt;           // register writebacks
@@ -151,6 +155,8 @@ module PerfCounter(
       dec_sys            <= 64'b0;
       branch_taken_cnt   <= 64'b0;
       branch_total_cnt   <= 64'b0;
+      branch_predict_total_cnt   <= 64'b0;
+      branch_predict_correct_cnt <= 64'b0;
       reg_wb_cnt         <= 64'b0;
       cnt_exception      <= 64'b0;
       inst_cyc_acc       <= 64'b0;
@@ -238,6 +244,11 @@ module PerfCounter(
       if (pipe_retire && wb_is_branch) begin
         branch_total_cnt <= branch_total_cnt + 64'd1;
         if (pipe_branch_taken) branch_taken_cnt <= branch_taken_cnt + 64'd1;
+      end
+      if (pipe_branch_predict_resolved) begin
+        branch_predict_total_cnt <= branch_predict_total_cnt + 64'd1;
+        if (pipe_branch_predict_correct)
+          branch_predict_correct_cnt <= branch_predict_correct_cnt + 64'd1;
       end
 
       // Register writeback
@@ -377,6 +388,12 @@ module PerfCounter(
     $display("  不跳转分支 Not-taken branches : %0d  (%.2f%%)",
              branch_total_cnt - branch_taken_cnt,
              (branch_total_cnt > 0) ? (100.0 * (branch_total_cnt - branch_taken_cnt) / branch_total_cnt) : 0.0);
+    $display("  预测分支数 Predicted branches  : %0d", branch_predict_total_cnt);
+    $display("  预测正确 Next-PC correct       : %0d  (%.2f%%)",
+             branch_predict_correct_cnt,
+             (branch_predict_total_cnt > 0) ?
+               (100.0 * branch_predict_correct_cnt / branch_predict_total_cnt) : 0.0);
+    $display("  预测错误 Next-PC incorrect     : %0d", branch_predict_total_cnt - branch_predict_correct_cnt);
 
     // --- 寄存器写回 Register Writeback ---
     $display("");

@@ -120,7 +120,7 @@ module PipelineCore(
   wire [31:0] id_imm_b = {{19{id_inst[31]}}, id_inst[31], id_inst[7],
                           id_inst[30:25], id_inst[11:8], 1'b0};
   wire [31:0] id_branch_target = id_pc + id_imm_b;
-  wire btb_update_valid = id_valid && id_is_branch;
+  wire btb_update_enable;
   wire btb_update_backward = id_imm_b[31];
   wire [31:0] btb_lookup_pc;
   wire btb_lookup_hit, btb_lookup_backward;
@@ -129,7 +129,7 @@ module PipelineCore(
     .clk(clk), .rst(rst), .lookup_pc(btb_lookup_pc),
     .lookup_hit(btb_lookup_hit), .lookup_target(btb_lookup_target),
     .lookup_backward(btb_lookup_backward),
-    .update_valid(btb_update_valid), .update_pc(id_pc),
+    .update_valid(btb_update_enable), .update_pc(id_pc),
     .update_target(id_branch_target), .update_backward(btb_update_backward)
   );
 
@@ -329,6 +329,8 @@ module PipelineCore(
                    (ex_redirect_kind && !ex_is_branch));
   wire [31:0] redirect_target = ex_is_branch ? ex_actual_next_pc :
                                 ex_redirect_target;
+  // An ID instruction squashed by an older EX redirect must not pollute BTB.
+  assign btb_update_enable = id_valid && id_is_branch && !redirect;
 
   // ---------------- LS stage exception detection ----------------
   // Misaligned load/store + LSU access fault (rising-edge detected)
@@ -663,6 +665,8 @@ module PipelineCore(
     .wb_is_sys_op(wb_is_sys_op),
     // Branch outcome
     .pipe_branch_taken(wb_valid && wb_is_branch && wb_data[0]),
+    .pipe_branch_predict_resolved(ex_advance && ex_is_branch),
+    .pipe_branch_predict_correct(ex_advance && ex_is_branch && !ex_branch_mispredict),
     // Register writeback
     .pipe_reg_wen(wb_valid && writes_rd(wb_inst)),
     // Exception
