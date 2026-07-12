@@ -95,6 +95,12 @@ static uint32_t rle_seg_cnt = 0;     /* 当前顺序段已累计的指令数 */
 static bool rle_have_seg = false;    /* 当前是否有未 flush 的段 */
 static vaddr_t rle_prev_snpc = 0;    /* 上一条指令的静态下一条 PC (用于判断顺序连续) */
 
+#ifdef CONFIG_ISA_riscv
+static FILE *btrace_fp = NULL;
+static bool  btrace_active = false;
+static uint64_t btrace_branch_count = 0;
+#endif
+
 /* flush 当前顺序段为一个 record 写入文件 */
 static void itracerle_flush_seg() {
   if (!itrace_active || !rle_have_seg) return;
@@ -154,6 +160,75 @@ void init_itracerle(const char *log_path) {
   Log("binary RLE itrace -> %s", bin_path);
 }
 
+#ifdef CONFIG_ISA_riscv
+void init_btrace(const char *log_path) {
+  btrace_fp = NULL;
+  btrace_active = false;
+  btrace_branch_count = 0;
+  if (log_path == NULL) return;
+
+  char btrace_path[4096];
+  size_t n = strlen(log_path);
+  if (n >= sizeof(btrace_path)) n = sizeof(btrace_path) - 8;
+  memcpy(btrace_path, log_path, n);
+  btrace_path[n] = '\0';
+  char *dot = strrchr(btrace_path, '.');
+  const char *slash = strrchr(btrace_path, '/');
+  if (dot && (!slash || dot > slash)) *dot = '\0';
+  if (strlen(btrace_path) + strlen(".btrace") >= sizeof(btrace_path)) return;
+  strcat(btrace_path, ".btrace");
+
+  btrace_fp = fopen(btrace_path, "w");
+  if (btrace_fp == NULL) {
+    fprintf(stderr, "[btrace] cannot open %s for writing, btrace disabled\n", btrace_path);
+    return;
+  }
+  fprintf(btrace_fp, "# branchsim-btrace v1\n");
+  fprintf(btrace_fp, "# fields: pc instruction taken\n");
+  btrace_active = true;
+  Log("branchsim btrace -> %s", btrace_path);
+}
+
+static bool btrace_is_conditional_branch(uint32_t inst) {
+  if ((inst & 0x7fu) != 0x63u) return false;
+  switch ((inst >> 12) & 0x7u) {
+    case 0x0: case 0x1: case 0x4: case 0x5: case 0x6: case 0x7:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool btrace_branch_taken(uint32_t inst) {
+  unsigned int rs1 = (inst >> 15) & 0x1fu;
+  unsigned int rs2 = (inst >> 20) & 0x1fu;
+  word_t lhs = rs1 == 0 ? 0 : cpu.gpr[rs1];
+  word_t rhs = rs2 == 0 ? 0 : cpu.gpr[rs2];
+
+  switch ((inst >> 12) & 0x7u) {
+    case 0x0: return lhs == rhs;                 /* beq  */
+    case 0x1: return lhs != rhs;                 /* bne  */
+    case 0x4: return (sword_t)lhs < (sword_t)rhs;/* blt  */
+    case 0x5: return (sword_t)lhs >= (sword_t)rhs;/* bge */
+    case 0x6: return lhs < rhs;                  /* bltu */
+    case 0x7: return lhs >= rhs;                 /* bgeu */
+    default:  return false;
+  }
+}
+
+static void btrace_step(const Decode *s) {
+  if (!btrace_active) return;
+
+  uint32_t inst = s->isa.inst;
+  if (!btrace_is_conditional_branch(inst)) return;
+
+  int taken = btrace_branch_taken(inst);
+  fprintf(btrace_fp, "0x%08" PRIx32 " 0x%08" PRIx32 " %d\n",
+          (uint32_t)s->pc, inst, taken);
+  btrace_branch_count++;
+}
+#endif
+
 /* 程序结束/退出时调用: flush 最后一个未写出的段 */
 void finish_itracerle() {
   if (!itrace_active) return;
@@ -161,6 +236,18 @@ void finish_itracerle() {
   if (itrace_fp) { fflush(itrace_fp); fclose(itrace_fp); }
   itrace_active = false;
 }
+
+#ifdef CONFIG_ISA_riscv
+void finish_btrace() {
+  if (!btrace_active) return;
+  fprintf(btrace_fp, "# total-instructions=%" PRIu64 "\n", g_nr_guest_inst);
+  fprintf(btrace_fp, "# conditional-branches=%" PRIu64 "\n", btrace_branch_count);
+  fflush(btrace_fp);
+  fclose(btrace_fp);
+  btrace_fp = NULL;
+  btrace_active = false;
+}
+#endif
 #endif /* CONFIG_ITRACE */
 
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
@@ -168,6 +255,9 @@ static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
 #ifdef CONFIG_ITRACE
   /* 二进制 RLE itrace: 用本条 pc/snpc/dnpc 推进 RLE 状态机 */
   itracerle_step(_this->pc, _this->snpc, _this->dnpc);
+#ifdef CONFIG_ISA_riscv
+  btrace_step(_this);
+#endif
 #endif
 
   if (g_print_step) { IFDEF(CONFIG_ITRACE, puts(_this->logbuf)); }

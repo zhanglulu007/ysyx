@@ -25,6 +25,9 @@ void init_sdb();
 void init_disasm();
 #ifdef CONFIG_ITRACE
 void init_itracerle(const char *log_path); /* 初始化二进制 RLE itrace 输出 (派生 .bin 文件) */
+#ifdef CONFIG_ISA_riscv
+void init_btrace(const char *log_path);    /* branchsim 的条件分支轨迹 (派生 .btrace 文件) */
+#endif
 #endif
 
 static void welcome() {
@@ -122,6 +125,9 @@ void init_monitor(int argc, char *argv[]) {
    * 未指定 -l 时不生成 itrace. */
   if (log_file != NULL) {
     init_itracerle(log_file);
+#ifdef CONFIG_ISA_riscv
+    init_btrace(log_file);
+#endif
   }
 #endif
 

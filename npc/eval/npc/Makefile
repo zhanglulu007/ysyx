@@ -19,7 +19,8 @@ RTL_FILES := $(NPC_VSRC)/ysyx_26020070.v \
              $(NPC_VSRC)/LSU.v \
              $(NPC_VSRC)/ICache.v \
              $(NPC_VSRC)/CLINT.v \
-             $(NPC_VSRC)/AXIArbiter.v
+             $(NPC_VSRC)/AXIArbiter.v \
+			 $(NPC_VSRC)/BranchTargetBuffer.v \
 
 RESULT_DIR := $(PROJ_PATH)/result/$(DESIGN)-$(CLK_FREQ_MHZ)MHz
 TIMING_RPT := $(RESULT_DIR)/$(DESIGN).rpt
