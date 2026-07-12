@@ -554,11 +554,7 @@ module PipelineCore(
       end else if (fetch_state == F_WAIT && if_rvalid && if_rready && fetch_discard) begin
         // 冲刷: 丢弃 R 数据
         fetch_discard <= 0;
-        if (redirect) begin
-          fetch_pc <= ex_redirect_target;
-        end else begin
-          fetch_state <= F_REQ;
-        end
+        fetch_state <= F_REQ;
       end
 
 `ifndef SYNTHESIS
