@@ -403,17 +403,33 @@ module PipelineCore(
     .mem_bready(mem_bready), .mem_bresp(mem_bresp), .mem_bid(mem_bid)
   );
 
-  // ---------------- Fetch engine ----------------
+  // ===================================================================
+  // 流水化取指引擎 (Pipelined Fetch Engine)
+  //   F_REQ: 可以发送 AR (无待处理请求)
+  //   F_WAIT: 等待 ICache 的 R 应答
+  //
+  // 流水化原理:
+  //   改进后的 ICache 支持在 IC_LOOKUP 命中并 R 应答的同拍接收新 AR,
+  //   因此取指引擎可在 F_WAIT 收到 R 的同一周期也发出下一个指令的 AR,
+  //   实现 S1(AR) / S2(LOOKUP+RESP) 两级流水, 命中吞吐 ≈ 1 条/周期.
+  // ===================================================================
   localparam F_REQ = 1'b0, F_WAIT = 1'b1;
   reg fetch_state, fetch_discard;
   reg [31:0] fetch_pc, requested_pc;
-  assign if_arvalid = fetch_state == F_REQ && id_ready && !redirect && !rst;
-  assign if_araddr = fetch_pc;
-  assign if_arid = 0;
-  assign if_arlen = 0;
-  assign if_arsize = 3'b010;
+
+  // 组合 AR 通道:
+  //   F_REQ:                正常发送 AR (地址 = fetch_pc)
+  //   F_WAIT + R握手 + 提交: 同拍发送下一指令的 AR (地址 = requested_pc+4)
+  wire fetch_r_commit = (fetch_state == F_WAIT) && if_rvalid && if_rready &&
+                        !fetch_discard && !redirect;
+  assign if_arvalid = ((fetch_state == F_REQ) || (fetch_r_commit && id_ready)) &&
+                      id_ready && !redirect && !rst;
+  assign if_araddr  = fetch_r_commit ? (requested_pc + 4) : fetch_pc;
+  assign if_arid    = 0;
+  assign if_arlen   = 0;
+  assign if_arsize  = 3'b010;
   assign if_arburst = 2'b01;
-  assign if_rready = fetch_state == F_WAIT && !rst;
+  assign if_rready  = (fetch_state == F_WAIT) && !rst;
 
 `ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
@@ -516,19 +532,32 @@ module PipelineCore(
 
       prev_lsu_fault <= lsu_fault;
 
-      if (fetch_state == F_REQ && if_arvalid && if_arready) begin
-        requested_pc <= fetch_pc;
-        fetch_state <= F_WAIT;
+      // ===== 流水化取指状态机 =====
+      if (fetch_state == F_REQ && if_arvalid && if_arready && !rst) begin
+        // S1: AR 握手成功 → 进入 F_WAIT
+        requested_pc <= if_araddr;
+        fetch_state  <= F_WAIT;
       end
-      if (fetch_state == F_WAIT && if_rvalid && if_rready) begin
-        fetch_state <= F_REQ;
-        if (fetch_discard || redirect) begin
-          fetch_discard <= 0;
+
+      if (fetch_r_commit) begin
+        // S2: R 握手 → 指令提交到 ID
+        id_valid <= 1;
+        id_pc    <= requested_pc;
+        id_inst  <= if_rresp[1] ? 32'h00100073 : if_rdata;
+        // 如果同拍也发出了新的 AR (流水化: AR + R 同拍), 更新 requested_pc
+        if (if_arvalid && if_arready) begin
+          requested_pc <= if_araddr;
         end else begin
-          id_valid <= 1;
-          id_pc <= requested_pc;
-          id_inst <= if_rresp[1] ? 32'h00100073 : if_rdata;
           fetch_pc <= requested_pc + 4;
+          fetch_state <= F_REQ;
+        end
+      end else if (fetch_state == F_WAIT && if_rvalid && if_rready && fetch_discard) begin
+        // 冲刷: 丢弃 R 数据
+        fetch_discard <= 0;
+        if (redirect) begin
+          fetch_pc <= ex_redirect_target;
+        end else begin
+          fetch_state <= F_REQ;
         end
       end
 

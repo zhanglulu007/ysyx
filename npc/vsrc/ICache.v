@@ -66,12 +66,18 @@ module ICache #(
   localparam BURST_LEN       = NR_WORDS - 1;  // AXI arlen = 节拍数 - 1
 
   // ===================================================================
-  // 状态机
-  //   IC_IDLE:      等待 IFU 取指请求 (AR 阶段), 与 IFU 的 arready 握手
-  //   IC_LOOKUP:    本周期查命中/缺失, 决定应答方式
-  //   IC_REFILL_AR: 向 Arbiter 发 AR, 等握手
-  //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
-  //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
+  // 流水化 icache 状态机
+  //   IC_IDLE:      S1 流水段 - 接收 IFU 的 AR 请求 (锁存到 s1_req)
+  //   IC_LOOKUP:    S2 流水段 - 命中/缺失判定; 命中时本拍应答, 同时可接收下个 AR
+  //   IC_REFILL_AR: 缺失/不可缓存 - 向 Arbiter 发 AR, 等握手
+  //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填
+  //
+  // 流水化关键点:
+  //   1. IC_LOOKUP 命中应答的同一拍, IC_IDLE 仍可接收下个 AR 请求,
+  //      实现 S1(AR接收) / S2(LOOKUP+RESP) 两级流水, 命中吞吐 ≈ 1 条/周期
+  //   2. IFU 侧 R 通道 rready 由 PipelineCore 提供, 仅在它能消化该指令时才置 1,
+  //      故 IC_LOOKUP 命中后若 IFU不 rready, 需保持 resp 直到 R 握手完成
+  //   3. 缺失时阻塞 S1 (cpu_arready=0), 直到 refill 完成
   // ===================================================================
   localparam IC_IDLE      = 2'b00;
   localparam IC_LOOKUP    = 2'b01;
@@ -79,10 +85,10 @@ module ICache #(
   localparam IC_REFILL_R  = 2'b11;
 
   reg [1:0] state;
+  reg [1:0] prev_state;
 
   // ===================================================================
   // 存储阵列 (触发器实现, 复位全部无效)
-  // 每个 cache 块存储 BLOCK_SIZE 字节 (BLOCK_SIZE*8 位宽)
   // ===================================================================
   reg [(BLOCK_SIZE*8)-1:0] cache_data [0:NR_CACHE_BLK-1];
   reg [TAG_BITS-1:0]       cache_tag  [0:NR_CACHE_BLK-1];
@@ -98,7 +104,7 @@ module ICache #(
   end
 
   // ===================================================================
-  // 请求信息 (锁存 IFU 的请求, 跨阶段稳定使用)
+  // S1 流水段寄存器: 锁存 IFU 的 AR 请求 (在 IC_IDLE 握手时捕获)
   // ===================================================================
   reg [31:0] req_addr;
   reg [ 3:0] req_arid;
@@ -108,7 +114,7 @@ module ICache #(
   wire [INDEX_BITS-1:0]     req_index     = req_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
   wire [TAG_BITS-1:0]       req_tag       = req_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
 
-  // 块内 word 索引 (通过 generate 避免 OFFSET_BITS≤2 时产生非法降序切片)
+  // 块内 word 索引
   wire [WORD_IDX_BITS-1:0]  req_word_idx;
   generate
     if (OFFSET_BITS > 2) begin : gen_word_idx
@@ -128,9 +134,7 @@ module ICache #(
   wire hit = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
 
   // ===================================================================
-  // Burst 传输判定: 仅 SDRAM 支持 AXI Burst (讲义 B4.md 839行:
-  //   "使icache支持突发传输...访问SDRAM中的数据块")
-  // Flash/PSRAM 不支持 Burst, 需多次单 beat AR 逐 word 填充
+  // Burst 传输判定: 仅 SDRAM 支持 AXI Burst
   // ===================================================================
   wire is_burst = req_cacheable && req_sdram && (NR_WORDS > 1);
 
@@ -142,22 +146,14 @@ module ICache #(
 
   // ===================================================================
   // Refill word 计数器
-  //   Burst 模式: 每次 R 握手递增, 用于确定写入位置
-  //   非 Burst 模式: 每次完成一个 word 后在状态机中递增, 用于计算下个 AR 地址
   // ===================================================================
   reg [REFILL_CNT_BITS-1:0] refill_word;
 
-  // 进入 refill 时复位计数器
-  wire enter_refill = (state == IC_LOOKUP) && !(req_cacheable && hit);
-
   // ===================================================================
   // 总线侧 AR 通道
-  //   Burst:   arlen = BURST_LEN,  addr = block_aligned_addr (所有 word 一次返回)
-  //   非Burst: arlen = 0,          addr = block_aligned_addr + refill_word*4
-  //   不可缓存: arlen = 0,          addr = req_addr
   // ===================================================================
   wire [31:0] refill_word_addr;
-  assign refill_word_addr = {{REFILL_ADDR_PAD{1'b0}}, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
+  assign refill_word_addr = {{REFILL_ADDR_PAD{1'b0}}, refill_word, 2'b0};
   wire [31:0] refill_araddr;
   assign refill_araddr = req_cacheable ?
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
@@ -175,8 +171,7 @@ module ICache #(
   // ===================================================================
   assign bus_rready = (state == IC_REFILL_R);
 
-  // 逐 word 写入数据: 在 IC_REFILL_R 每个 R 握手时, 将 bus_rdata 写入对应 word 位置
-  // (Burst 模式: refill_word 由本块递增; 非 Burst 模式: refill_word 由状态机控制)
+  // 逐 word 写入数据
   wire do_store_beat = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
                        req_cacheable && !bus_rresp[1];
 
@@ -186,10 +181,7 @@ module ICache #(
     end
   end
 
-  // 当前传输是否为最后一个 word:
-  //   Burst 模式: bus_rlast 指示
-  //   非 Burst 可缓存: refill_word == NR_WORDS-1 时即为最后一个 word
-  //   不可缓存: 单拍即最后一拍
+  // 当前传输是否为最后一个 word
   wire is_last_word = is_burst ? bus_rlast :
                       req_cacheable ? (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) : 1'b1;
 
@@ -205,16 +197,28 @@ module ICache #(
   end
 
   // ===================================================================
-  // CPU 侧 (IFU) AR 通道应答
+  // CPU 侧 (IFU) AR 通道应答 -- S1 流水段
+  //   IC_IDLE:        接收新的 AR (S1)
+  //   IC_LOOKUP:      若上一拍命中且本拍能应答(R握手), 则同时接收下个 AR (流水化关键)
+  //   IC_REFILL_*:    缺失/不可缓存期间, 阻塞接收新 AR
   // ===================================================================
-  assign cpu_arready = (state == IC_IDLE) ? 1'b1 : 1'b0;
+  wire lookup_hit_can_resp = (state == IC_LOOKUP) && req_cacheable && hit;
+  wire lookup_hit_resp_hs  = lookup_hit_can_resp && cpu_rready;
+
+  // 流水化: IC_LOOKUP 命中且 R 握手完成时, 同拍接收下一 AR
+  wire s1_take_next_ar = (state == IC_IDLE) ||
+                         (lookup_hit_resp_hs && cpu_arvalid);
+
+  assign cpu_arready = s1_take_next_ar && !rst;
 
   // ===================================================================
-  // CPU 侧 (IFU) R 通道应答
-  //   命中:  IC_LOOKUP 当拍直出 cache 数据 + OK resp + last
-  //   缺失:  IC_REFILL_R 最后一个 word 的 R 握手当拍应答
+  // CPU 侧 (IFU) R 通道应答 -- S2 流水段
+  //   命中:
+  //     - IC_LOOKUP 当拍直出 cache 数据
+  //     - 若 IFU rready=0, 保持 lookup_hit 状态直到 R 握手 (停顿 S2)
+  //     - 若 IFU rready=1, 同拍可接收下个 AR (流水化)
+  //   缺失: IC_REFILL_R 最后一个 word 的 R 握手当拍应答
   // ===================================================================
-  wire lookup_hit  = (state == IC_LOOKUP)   && req_cacheable &&  hit;
   wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && is_last_word;
 
   // 命中时从 cache_data 中选取对应 word
@@ -222,16 +226,14 @@ module ICache #(
   assign hit_word = cache_data[req_index][(req_word_idx * 32) +: 32];
 
   // refill_done 时, 最后一个 word 可能不是 CPU 请求的 word (当 BLOCK_SIZE>4).
-  // 若最后一个 word 恰好是请求 word, 直接用 bus_rdata; 否则从已写入的 cache 中读取.
-  // 不可缓存 (req_cacheable=0) 时 refill 仅取一个 word, 直通 bus_rdata.
   wire [31:0] refill_word_data;
   assign refill_word_data = req_cacheable ?
       ((refill_word == req_word_idx) ? bus_rdata
                                      : cache_data[req_index][(req_word_idx * 32) +: 32]) :
       bus_rdata;
 
-  assign cpu_rvalid = lookup_hit || refill_done;
-  assign cpu_rdata  = lookup_hit ? hit_word : refill_word_data;
+  assign cpu_rvalid = lookup_hit_can_resp || refill_done;
+  assign cpu_rdata  = lookup_hit_can_resp ? hit_word : refill_word_data;
   assign cpu_rresp  = refill_done ? bus_rresp : 2'b00;
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
   assign cpu_rid    = req_arid;
@@ -239,7 +241,6 @@ module ICache #(
   // ===================================================================
   // 状态机
   // ===================================================================
-  reg [1:0] prev_state;
   always @(posedge clk) begin
     if (rst || flush) begin
       state       <= IC_IDLE;
@@ -251,6 +252,7 @@ module ICache #(
       prev_state <= state;
       case (state)
         IC_IDLE: begin
+          // S1: 接收 IFU 的 AR 请求
           if (cpu_arvalid && cpu_arready) begin
             req_addr <= cpu_araddr;
             req_arid <= cpu_arid;
@@ -259,9 +261,24 @@ module ICache #(
         end
 
         IC_LOOKUP: begin
+          // S2: 命中/缺失判定
           if (req_cacheable && hit) begin
-            // 命中: 本拍已组合逻辑应答 IFU, 次拍回 IDLE
-            state <= IC_IDLE;
+            // 命中: 若 IFU rready=1, 当拍应答并完成 R 握手
+            // 流水化关键: 若同拍 IFU 又送来新 AR, 直接接收并保持 IC_LOOKUP
+            // - 这样下一周期 S2 仍对新 req_addr 做 lookup, 形成 1拍/指令的命中流
+            // - 若 rready=0: 暂停 S2 (保持 IC_LOOKUP, 不动 state), 等到 rready=1
+            if (cpu_rready) begin
+              if (cpu_arvalid) begin
+                // 同拍接收新 AR: 流水段 S1 与 S2 重叠在 IC_LOOKUP 中
+                req_addr <= cpu_araddr;
+                req_arid <= cpu_arid;
+                state    <= IC_LOOKUP;  // 保持 S2 (下周期对新地址做 lookup)
+              end else begin
+                // 无新 AR: 回 S1 等待
+                state <= IC_IDLE;
+              end
+            end
+            // else: 等 cpu_rready, 保持 IC_LOOKUP 不动
           end else begin
             // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
@@ -277,21 +294,17 @@ module ICache #(
         IC_REFILL_R: begin
           if (bus_rvalid && bus_rready) begin
             if (is_burst) begin
-              // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
+              // Burst 模式
               if (bus_rlast) begin
                 state <= IC_IDLE;
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
             end else begin
-              // 非 Burst 模式 (单 beat):
-              //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IDLE
-              //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
+              // 非 Burst 模式 (单 beat)
               if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                // 最后一个 word 完成, 回 IDLE (refill_word 不需要再递增)
                 state <= IC_IDLE;
               end else begin
-                // 还有更多 word 需要取, 递增计数器, 发下一个 AR
                 refill_word <= refill_word + 1'b1;
                 state       <= IC_REFILL_AR;
               end
@@ -306,6 +319,11 @@ module ICache #(
 
   // ===================================================================
   // 性能计数器观测信号
+  //   - icache_access: 在 IC_LOOKUP 完成判定时计 (命中+缺失+uncache)
+  //   - icache_hit:    IC_LOOKUP 拍且命中
+  //   - icache_miss:   IC_LOOKUP 拍且可缓存但缺失
+  //   - icache_uncache:IC_LOOKUP 拍且不可缓存
+  //   - 流水化后: 同一拍 IC_LOOKUP 命中应答 + 接收下个 AR, 仍只算 1 次访问
   // ===================================================================
   assign icache_access     = (state == IC_LOOKUP) && !rst;
   assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
