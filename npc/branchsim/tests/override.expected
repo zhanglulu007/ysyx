@@ -1,0 +1,16 @@
+btrace: tests/override.btrace
+Input:  3 lines, 1 comments/blank, 0 malformed, 0 non-branch opcode, 0 reserved branch funct3 skipped
+Total instruction source: --total-insts
+Mispredict penalty: 3 cycles
+
+Predictor: btfn
+  Branches:    2
+  Taken:       2
+  Not taken:   0
+  Correct:     1
+  Incorrect:   1
+  Accuracy:    50.00%
+  Total insts: 20
+  Cycles:      23 (ideal single-issue + 1 x 3 mispredict penalty)
+  IPC:         0.869565
+  Speedup vs always-not-taken: 1.130435x

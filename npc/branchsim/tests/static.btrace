@@ -1,0 +1,14 @@
+# branchsim-btrace v1
+# A backward BNE, taken twice then not taken once.
+0x30000000 0xfe001ce3 1
+0x30000000 0xfe001ce3 1
+0x30000000 0xfe001ce3 0
+# A forward BEQ, not taken twice then taken once.
+0x30000004 0x00008463 0
+0x30000004 0x00008463 0
+0x30000004 0x00008463 1
+# These records are rejected defensively.
+0x30000008 0x00000013 0
+0x3000000c 0x00002063 1
+not-a-record
+# total-instructions=20
