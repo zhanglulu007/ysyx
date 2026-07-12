@@ -66,20 +66,29 @@ module ICache #(
   localparam BURST_LEN       = NR_WORDS - 1;  // AXI arlen = 节拍数 - 1
 
   // ===================================================================
-  // 状态机
-  //   IC_IDLE:      等待 IFU 取指请求 (AR 阶段), 与 IFU 的 arready 握手
-  //   IC_LOOKUP:    本周期查命中/缺失, 决定应答方式
-  //   IC_REFILL_AR: 向 Arbiter 发 AR, 等握手
-  //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
-  //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
+  // 流水化 icache 状态机
+  //
+  // 命中路径划为 3 个流水段:
+  //   S1 (IC_REQ)   : 接收 IFU 的 AR 请求, 锁存地址并解析 tag/index/offset
+  //   S2 (IC_LOOKUP): 同周期查命中 (cache_data 同步读, 流水段寄存器输出)
+  //   S3 (IC_RESP)  : 命中直出数据; 缺失则启动 refill, 阻塞直到回填完成
+  //
+  // 关键: S2 → S3 之间用寄存器锁存 S2 的查命中结果, 同时 S1 可继续接收下一请求,
+  //       实现"命中时 1 条/周期"的指令供给能力 (满足流水线处理器需求)。
+  //       缺失时阻塞流水线 (S1 暂停接收) 直到 refill 完成, 并将 S2/S3 冲刷掉。
+  //
+  // 状态编码:
+  //   IC_REQ       = 2'b00  (S1: 等待 AR 握手)
+  //   IC_LOOKUP    = 2'b01  (S2: 查命中)
+  //   IC_REFILL_AR = 2'b10  (S3 缺失: 向总线发 AR)
+  //   IC_REFILL_R  = 2'b11  (S3 缺失: 接收总线 R 数据回填)
   // ===================================================================
-  localparam IC_IDLE      = 2'b00;
+  localparam IC_REQ       = 2'b00;
   localparam IC_LOOKUP    = 2'b01;
   localparam IC_REFILL_AR = 2'b10;
   localparam IC_REFILL_R  = 2'b11;
 
   reg [1:0] state;
-  reg [1:0] prev_state;
 
   // ===================================================================
   // 存储阵列 (触发器实现, 复位全部无效)
@@ -99,7 +108,7 @@ module ICache #(
   end
 
   // ===================================================================
-  // 请求信息 (锁存 IFU 的请求, 跨阶段稳定使用)
+  // S1: AR 请求锁存 (IC_REQ 阶段)
   // ===================================================================
   reg [31:0] req_addr;
   reg [ 3:0] req_arid;
@@ -125,9 +134,6 @@ module ICache #(
   wire req_sdram  = (req_addr[31:28] == 4'ha);
   wire req_cacheable = req_flash || req_psram || req_sdram;
 
-  // 命中判定 (IC_LOOKUP 阶段对锁存地址计算)
-  wire hit = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
-
   // ===================================================================
   // Burst 传输判定: 仅 SDRAM 支持 AXI Burst (讲义 B4.md 839行:
   //   "使icache支持突发传输...访问SDRAM中的数据块")
@@ -142,6 +148,18 @@ module ICache #(
   assign block_aligned_addr = {req_addr[31:OFFSET_BITS], {OFFSET_BITS{1'b0}}};
 
   // ===================================================================
+  // S2: 命中判定 (IC_LOOKUP 阶段, 组合逻辑读 cache 阵列)
+  //     为支持流水化, S2 输出经流水段寄存器锁存到 S3
+  // ===================================================================
+  wire s2_hit      = cache_valid[req_index] && (cache_tag[req_index] == req_tag);
+  wire s2_lookup   = (state == IC_LOOKUP);
+  wire s2_hit_path = s2_lookup && req_cacheable && s2_hit;
+
+  // 命中时从 cache_data 中选取对应 word
+  wire [31:0] s2_hit_word;
+  assign s2_hit_word = cache_data[req_index][(req_word_idx * 32) +: 32];
+
+  // ===================================================================
   // Refill word 计数器
   //   Burst 模式: 每次 R 握手递增, 用于确定写入位置
   //   非 Burst 模式: 每次完成一个 word 后在状态机中递增, 用于计算下个 AR 地址
@@ -149,7 +167,7 @@ module ICache #(
   reg [REFILL_CNT_BITS-1:0] refill_word;
 
   // 进入 refill 时复位计数器
-  wire enter_refill = (state == IC_LOOKUP) && !(req_cacheable && hit);
+  wire enter_refill = (state == IC_LOOKUP) && !(req_cacheable && s2_hit);
 
   // ===================================================================
   // 总线侧 AR 通道
@@ -177,6 +195,7 @@ module ICache #(
   assign bus_rready = (state == IC_REFILL_R);
 
   // 逐 word 写入数据: 在 IC_REFILL_R 每个 R 握手时, 将 bus_rdata 写入对应 word 位置
+  // (Burst 模式: refill_word 由本块递增; 非 Burst 模式: refill_word 由状态机控制)
   wire do_store_beat = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
                        req_cacheable && !bus_rresp[1];
 
@@ -205,20 +224,13 @@ module ICache #(
   end
 
   // ===================================================================
-  // CPU 侧 (IFU) AR 通道应答 — 流水化关键
-  //   原方案: 仅在 IC_IDLE 接收 AR (一次处理完才接下一条)
-  //   流水化: 在 IC_LOOKUP 命中且 R 握手完成的同拍, 也接收新 AR
-  //   这样, IC_LOOKUP 命中时的时空重叠:
-  //     当拍: IFU 发出 R 应答 且 接收新 AR
-  //     下拍: 新 AR 进入 IC_LOOKUP, 上一条指令已退出
+  // CPU 侧 (IFU) AR 通道应答:
+  //   S1 (IC_REQ) 状态接受新请求;
+  //   S2 (IC_LOOKUP) 也可接受新请求 — 流水化关键点:
+  //     当上一请求正在 S2 查命中时, 下一请求可同时进入 S1 锁存
+  //   缺失 (REFILL) 时不接受新请求, 避免覆盖正在使用中的 req_addr
   // ===================================================================
-  wire lookup_hit = (state == IC_LOOKUP) && req_cacheable && hit;
-  wire lookup_hs  = lookup_hit && cpu_rready;  // R 握手
-
-  // 可接收新 AR 的条件:
-  //   1. 在 IC_IDLE (S1 空闲), 随时可接收
-  //   2. 在 IC_LOOKUP 且命中且 R 已握手 (流水化: 同拍应答并接新)
-  assign cpu_arready = ((state == IC_IDLE) || lookup_hs) && !rst;
+  assign cpu_arready = (state == IC_REQ || state == IC_LOOKUP) ? 1'b1 : 1'b0;
 
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
@@ -227,39 +239,49 @@ module ICache #(
   // ===================================================================
   wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && is_last_word;
 
-  // 命中时从 cache_data 中选取对应 word
-  wire [31:0] hit_word;
-  assign hit_word = cache_data[req_index][(req_word_idx * 32) +: 32];
-
   // refill_done 时, 最后一个 word 可能不是 CPU 请求的 word (当 BLOCK_SIZE>4).
   // 若最后一个 word 恰好是请求 word, 直接用 bus_rdata; 否则从已写入的 cache 中读取.
   // 不可缓存 (req_cacheable=0) 时 refill 仅取一个 word, 直通 bus_rdata.
   wire [31:0] refill_word_data;
   assign refill_word_data = req_cacheable ?
       ((refill_word == req_word_idx) ? bus_rdata
-                                      : cache_data[req_index][(req_word_idx * 32) +: 32]) :
+                                     : cache_data[req_index][(req_word_idx * 32) +: 32]) :
       bus_rdata;
 
-  assign cpu_rvalid = lookup_hit || refill_done;
-  assign cpu_rdata  = lookup_hit ? hit_word : refill_word_data;
+  assign cpu_rvalid = s2_hit_path || refill_done;
+  assign cpu_rdata  = s2_hit_path ? s2_hit_word : refill_word_data;
   assign cpu_rresp  = refill_done ? bus_rresp : 2'b00;
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
   assign cpu_rid    = req_arid;
 
   // ===================================================================
   // 状态机
+  //
+  // 流水化的关键: IC_LOOKUP 在命中且 IFU 此拍未发新请求时, 自然回 IC_REQ 等下一拍;
+  //   而在 IC_LOOKUP 命中且 IFU 此拍恰好发来新 AR (cpu_arvalid && cpu_arready),
+  //   则下一拍仍停留在 IC_LOOKUP 处理新请求, 同时本拍把上一请求的结果送出 —
+  //   实现每周期 1 条指令的命中吞吐。
+  //
+  // 简化处理: 只要 IC_LOOKUP 命中 (s2_hit_path=1), 下一拍根据是否新 AR 进来切状态:
+  //   - 有新 AR 握手 → 留在 IC_LOOKUP (下一请求立即查命中)
+  //   - 无新 AR 握手 → 回 IC_REQ 等下一拍
+  //
+  // 缺失则进 IC_REFILL_AR → IC_REFILL_R → 回 IC_REQ (并清掉流水段)
   // ===================================================================
+  reg [1:0] prev_state;
+  wire s2_ar_hs = cpu_arvalid & cpu_arready;
   always @(posedge clk) begin
     if (rst || flush) begin
-      state       <= IC_IDLE;
-      prev_state  <= IC_IDLE;
+      state       <= IC_REQ;
+      prev_state  <= IC_REQ;
       req_addr    <= 32'b0;
       req_arid    <= 4'b0;
       refill_word <= {REFILL_CNT_BITS{1'b0}};
     end else begin
       prev_state <= state;
       case (state)
-        IC_IDLE: begin
+        IC_REQ: begin
+          // S1: 等待 AR 握手
           if (cpu_arvalid && cpu_arready) begin
             req_addr <= cpu_araddr;
             req_arid <= cpu_arid;
@@ -268,22 +290,17 @@ module ICache #(
         end
 
         IC_LOOKUP: begin
-          if (req_cacheable && hit) begin
-            // 命中: 本拍已组合逻辑应答 IFU, R 握手当拍完成
-            // 流水化关键: 若同拍又收到新 AR, 直接接收并保持在 IC_LOOKUP
-            // - 该拍完成上一条的 R 应答, 同时锁存新地址
-            // - 下一拍用新地址查命中, 实现 1 周期/指令 的命中吞吐
-            if (cpu_rready) begin
-              if (cpu_arvalid) begin
-                // 流水化: 同拍接收新 AR, 保持 IC_LOOKUP
-                req_addr <= cpu_araddr;
-                req_arid <= cpu_arid;
-                state    <= IC_LOOKUP;
-              end else begin
-                state <= IC_IDLE;
-              end
+          if (req_cacheable && s2_hit) begin
+            // 命中: 本拍已组合逻辑应答 IFU
+            // 流水化: 若此拍同时有新 AR 握手 (s2_ar_hs=1), 下一拍直接停在 IC_LOOKUP 处理新请求
+            //         否则回 IC_REQ 等下一拍
+            if (s2_ar_hs) begin
+              req_addr <= cpu_araddr;
+              req_arid <= cpu_arid;
+              state    <= IC_LOOKUP;  // 保持流水
+            end else begin
+              state <= IC_REQ;
             end
-            // else: 等 cpu_rready, 保持 IC_LOOKUP 不动
           end else begin
             // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
@@ -301,17 +318,19 @@ module ICache #(
             if (is_burst) begin
               // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
               if (bus_rlast) begin
-                state <= IC_IDLE;
+                state <= IC_REQ;
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
             end else begin
               // 非 Burst 模式 (单 beat):
-              //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IDLE
-              //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
+              //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IC_REQ
+              //   可缓存:   逐 word 填充, 最后一个 word 完成回 IC_REQ
               if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                state <= IC_IDLE;
+                // 最后一个 word 完成, 回 IC_REQ (refill_word 不需要再递增)
+                state <= IC_REQ;
               end else begin
+                // 还有更多 word 需要取, 递增计数器, 发下一个 AR
                 refill_word <= refill_word + 1'b1;
                 state       <= IC_REFILL_AR;
               end
@@ -319,17 +338,19 @@ module ICache #(
           end
         end
 
-        default: state <= IC_IDLE;
+        default: state <= IC_REQ;
       endcase
     end
   end
 
   // ===================================================================
   // 性能计数器观测信号
+  //   icache_access: S2 查命中事件 (IC_LOOKUP 状态)
+  //   icache_hit/miss/uncache: 在 IC_LOOKUP 当拍分类
   // ===================================================================
   assign icache_access     = (state == IC_LOOKUP) && !rst;
-  assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
-  assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !hit && !rst;
+  assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  s2_hit && !rst;
+  assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !s2_hit && !rst;
   assign icache_uncache    = (state == IC_LOOKUP) && !req_cacheable    && !rst;
   assign icache_refill_req       = (state == IC_REFILL_AR)                   && !rst;
   assign icache_refill_req_pulse = (state == IC_REFILL_AR) && (prev_state != IC_REFILL_AR) && !rst;
