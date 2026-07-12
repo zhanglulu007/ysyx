@@ -1,18 +1,15 @@
 // ===================================================================
-// ICachePipelined - 流水化 ICache (v2 - 修复版)
+// ICachePipelined - 流水化 ICache (v3 - 修复 S2 数据寄存器 bug)
 // ===================================================================
 // 目标：将 ICache 访问流水化，命中时吞吐接近 1 条指令/周期。
 //
 // 流水线阶段划分（3 级）：
 //   S1 (REQ)   : 接收 CPU AR 请求，锁存地址
-//   S2 (LOOKUP): 查 Tag + 读 cache 数据 + 命中判定（组合逻辑）
+//   S2 (LOOKUP): 查 Tag + 读 cache 数据 + 命中判定
 //   S3 (RESP)  : 寄存输出，向 CPU 返回 rdata/rvalid
 //
-// 命中路径：
-//   S1→S2→S3 各 1 拍，连续请求可每个周期返回 1 条指令。
-//
-// 缺失路径：S2 检测到缺失后暂停 S1，启动独立 refill FSM，
-//           refill 完成后重启流水线。
+// 关键修复：S2 阶段将命中数据保存到寄存器 s2_hit_word，
+//           避免 S3 读取时 s2_addr 已被 S1→S2 推进覆盖。
 // ===================================================================
 
 module ICachePipelined #(
@@ -98,11 +95,50 @@ module ICachePipelined #(
   end
 
   // ===================================================================
+  // 地址拆解辅助函数
+  // ===================================================================
+  function [INDEX_BITS-1:0] get_index;
+    input [31:0] addr;
+    begin
+      get_index = addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
+    end
+  endfunction
+
+  function [TAG_BITS-1:0] get_tag;
+    input [31:0] addr;
+    begin
+      get_tag = addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
+    end
+  endfunction
+
+  function [WORD_IDX_BITS-1:0] get_word_idx;
+    input [31:0] addr;
+    begin
+      if (OFFSET_BITS > 2)
+        get_word_idx = addr[OFFSET_BITS-1:2];
+      else
+        get_word_idx = {WORD_IDX_BITS{1'b0}};
+    end
+  endfunction
+
+  function is_cacheable;
+    input [31:0] addr;
+    begin
+      is_cacheable = (addr[31:28] == 4'h3) || (addr[31:28] == 4'h8) || (addr[31:28] == 4'ha);
+    end
+  endfunction
+
+  // ===================================================================
   // S1 阶段寄存器
   // ===================================================================
   reg         s1_valid;
   reg  [31:0] s1_addr;
   reg  [ 3:0] s1_arid;
+
+  // S1 组合逻辑：基于 s1_addr 判定命中（用于 s1_can_accept）
+  wire s1_hit_raw = cache_valid[get_index(s1_addr)] && (cache_tag[get_index(s1_addr)] == get_tag(s1_addr));
+  wire s1_is_cacheable = is_cacheable(s1_addr);
+  wire s1_hit = s1_valid && s1_is_cacheable && s1_hit_raw;
 
   // ===================================================================
   // S2 阶段寄存器
@@ -111,6 +147,16 @@ module ICachePipelined #(
   reg  [31:0] s2_addr;
   reg  [ 3:0] s2_arid;
   reg         s2_cacheable;
+  reg  [31:0] s2_hit_word;   // [关键修复] S2 命中时保存数据到寄存器
+
+  // S2 组合逻辑：基于 s2_addr 判定命中
+  wire s2_hit_raw = cache_valid[get_index(s2_addr)] && (cache_tag[get_index(s2_addr)] == get_tag(s2_addr));
+  wire s2_hit     = s2_valid && s2_cacheable && s2_hit_raw;
+  wire s2_is_sdram = s2_valid && (s2_addr[31:28] == 4'ha);
+  wire s2_is_burst = s2_valid && s2_cacheable && s2_is_sdram && (NR_WORDS > 1);
+
+  // S2 组合逻辑：读 cache 数据（用于 S2 推进时保存）
+  wire [31:0] s2_computed_hit_word = cache_data[get_index(s2_addr)][(get_word_idx(s2_addr) * 32) +: 32];
 
   // ===================================================================
   // S3 阶段寄存器
@@ -149,14 +195,12 @@ module ICachePipelined #(
 
   assign bus_rready  = (rf_state == RF_REFILL_R);
 
-  // Refill 写入 cache
-  // 注意：s2_index 必须在 refill 期间保持有效
+  // Refill 写入 cache（使用 rf_addr 计算 index，避免 s2_addr 被覆盖的问题）
   wire rf_store_beat = (rf_state == RF_REFILL_R) && bus_rvalid && bus_rready &&
                        rf_cacheable && !bus_rresp[1];
   always @(posedge clk) begin
     if (rf_store_beat) begin
-      // 使用 rf_addr 计算 index（因为 s2_addr 可能已改变）
-      cache_data[rf_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS]][(rf_word * 32) +: 32] <= bus_rdata;
+      cache_data[get_index(rf_addr)][(rf_word * 32) +: 32] <= bus_rdata;
     end
   end
 
@@ -164,33 +208,21 @@ module ICachePipelined #(
                     rf_cacheable ? (rf_word == REFILL_CNT_BITS'(NR_WORDS-1)) : 1'b1;
   wire rf_done    = (rf_state == RF_REFILL_R) && bus_rvalid && bus_rready && rf_is_last;
 
-  // Refill 完成时写 Tag + Valid
+  // Refill 完成时写 Tag + Valid（使用 rf_addr 计算 index）
   wire rf_update_tag = rf_done && rf_cacheable && !bus_rresp[1];
   always @(posedge clk) begin
     if (rf_update_tag) begin
-      cache_tag  [rf_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS]] <= rf_addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
-      cache_valid[rf_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS]] <= 1'b1;
+      cache_tag  [get_index(rf_addr)] <= get_tag(rf_addr);
+      cache_valid[get_index(rf_addr)] <= 1'b1;
     end
   end
 
-  // Refill 完成时的数据
-  // 用 rf_addr 计算 index 和 word_idx 来读取 cache 数据
-  wire [INDEX_BITS-1:0]    rf_idx = rf_addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
-  wire [WORD_IDX_BITS-1:0] rf_widx;
-  generate
-    if (OFFSET_BITS > 2) begin
-      assign rf_widx = rf_addr[OFFSET_BITS-1:2];
-    end else begin
-      assign rf_widx = {WORD_IDX_BITS{1'b0}};
-    end
-  endgenerate
+  // Refill 完成时的数据（使用 rf_addr 计算 index 和 word_idx）
   wire [31:0] rf_final_data = rf_cacheable ?
-    ((rf_word == rf_widx) ? bus_rdata : cache_data[rf_idx][(rf_widx * 32) +: 32]) :
+    ((rf_word == get_word_idx(rf_addr)) ? bus_rdata : cache_data[get_index(rf_addr)][(get_word_idx(rf_addr) * 32) +: 32]) :
     bus_rdata;
 
-  // ===================================================================
   // Refill FSM
-  // ===================================================================
   always @(posedge clk) begin
     if (rst || flush) begin
       rf_state      <= RF_IDLE;
@@ -205,11 +237,11 @@ module ICachePipelined #(
       case (rf_state)
         RF_IDLE: begin
           // S2 检测到缺失，启动 refill
-          // 必须在 S2 有有效数据且确实 miss 时才启动
+          // [关键] 使用 s2_valid 和 s2_hit，它们在同一周期稳定
           if (s2_valid && s2_cacheable && !s2_hit) begin
             rf_addr      <= s2_addr;
             rf_arid      <= s2_arid;
-            rf_is_burst  <= s2_addr[31:28] == 4'ha && (NR_WORDS > 1);
+            rf_is_burst  <= s2_is_burst;
             rf_cacheable <= s2_cacheable;
             rf_word      <= {REFILL_CNT_BITS{1'b0}};
             rf_state     <= RF_REFILL_AR;
@@ -255,44 +287,12 @@ module ICachePipelined #(
   end
 
   // ===================================================================
-  // 命中判定（组合逻辑，用于 S1/S2）
-  // ===================================================================
-  function [INDEX_BITS-1:0] get_index;
-    input [31:0] addr;
-    begin
-      get_index = addr[OFFSET_BITS+INDEX_BITS-1:OFFSET_BITS];
-    end
-  endfunction
-
-  function [TAG_BITS-1:0] get_tag;
-    input [31:0] addr;
-    begin
-      get_tag = addr[ADDR_WIDTH-1:OFFSET_BITS+INDEX_BITS];
-    end
-  endfunction
-
-  function is_cacheable;
-    input [31:0] addr;
-    begin
-      is_cacheable = (addr[31:28] == 4'h3) || (addr[31:28] == 4'h8) || (addr[31:28] == 4'ha);
-    end
-  endfunction
-
-  // S1 组合逻辑：基于 s1_addr 判定命中
-  wire s1_hit_raw = cache_valid[get_index(s1_addr)] && (cache_tag[get_index(s1_addr)] == get_tag(s1_addr));
-  wire s1_cacheable = is_cacheable(s1_addr);
-  wire s1_hit = s1_valid && s1_cacheable && s1_hit_raw;
-
-  // S2 组合逻辑：基于 s2_addr 判定命中
-  wire s2_hit_raw = cache_valid[get_index(s2_addr)] && (cache_tag[get_index(s2_addr)] == get_tag(s2_addr));
-  wire s2_hit = s2_valid && s2_cacheable && s2_hit_raw;
-
-  // ===================================================================
   // 流水线控制
   // ===================================================================
   wire rf_busy    = (rf_state != RF_IDLE);
 
   // S2 命中时推进到 S3
+  // [关键修复] 命中数据已保存在 s2_hit_word 寄存器中
   wire s2_advance = s2_valid && s2_hit && !rst;
   wire s3_load_hit = s2_advance;
 
@@ -328,6 +328,7 @@ module ICachePipelined #(
       s2_addr      <= 32'b0;
       s2_arid      <= 4'b0;
       s2_cacheable <= 1'b0;
+      s2_hit_word  <= 32'b0;
       s3_valid     <= 1'b0;
       s3_rdata     <= 32'b0;
       s3_rresp     <= 2'b0;
@@ -347,18 +348,22 @@ module ICachePipelined #(
       if (s1_to_s2) begin
         s2_addr      <= s1_addr;
         s2_arid      <= s1_arid;
-        s2_cacheable <= s1_cacheable;
+        s2_cacheable <= s1_is_cacheable;
         s2_valid     <= 1'b1;
+        // [关键修复] 在 S1→S2 推进时，从 cache 读取数据并保存到寄存器
+        s2_hit_word  <= cache_data[get_index(s1_addr)][(get_word_idx(s1_addr) * 32) +: 32];
       end else if (s2_advance) begin
+        // 命中后清空 S2
         s2_valid <= 1'b0;
       end
       // 缺失时 s2_valid 保持为 1，等待 refill 完成
+      // refill 过程中 s2_addr 保持原值，供 refill FSM 使用
 
       // ---- S3: 命中或 refill 完成时加载 ----
       if (s3_load_hit) begin
-        // 命中路径：从 s2_addr 计算 index/word_idx 读取数据
+        // [关键修复] 命中路径：使用 s2_hit_word 寄存器（已保存正确的命中数据）
         s3_valid <= 1'b1;
-        s3_rdata <= cache_data[get_index(s2_addr)][(get_word_idx(s2_addr) * 32) +: 32];
+        s3_rdata <= s2_hit_word;
         s3_rresp <= 2'b00;
         s3_rlast <= 1'b1;
         s3_rid   <= s2_arid;
@@ -375,24 +380,13 @@ module ICachePipelined #(
     end
   end
 
-  // 辅助函数：计算 word_idx
-  function [WORD_IDX_BITS-1:0] get_word_idx;
-    input [31:0] addr;
-    begin
-      if (OFFSET_BITS > 2)
-        get_word_idx = addr[OFFSET_BITS-1:2];
-      else
-        get_word_idx = {WORD_IDX_BITS{1'b0}};
-    end
-  endfunction
-
   // ===================================================================
   // 性能计数器
   // ===================================================================
   assign icache_access           = s1_valid && !rst;
-  assign icache_hit              = s1_valid && s1_cacheable && s1_hit_raw && !rst;
-  assign icache_miss             = s1_valid && s1_cacheable && !s1_hit_raw && !rst;
-  assign icache_uncache          = s1_valid && !s1_cacheable && !rst;
+  assign icache_hit              = s1_valid && s1_is_cacheable && s1_hit_raw && !rst;
+  assign icache_miss             = s1_valid && s1_is_cacheable && !s1_hit_raw && !rst;
+  assign icache_uncache          = s1_valid && !s1_is_cacheable && !rst;
   assign icache_refill_req       = (rf_state == RF_REFILL_AR) && !rst;
   assign icache_refill_req_pulse = (rf_state == RF_REFILL_AR) && (rf_prev_state != RF_REFILL_AR) && !rst;
   assign icache_wait_ar          = (rf_state == RF_REFILL_AR) && !rst;
