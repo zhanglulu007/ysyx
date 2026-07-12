@@ -310,7 +310,7 @@ module PipelineCore(
   wire stall_raw   = id_valid && id_hazard && ex_ready;      // RAW data hazard stall
   wire stall_lsu   = ex_valid && !ls_ready;                   // LSU backpressure stall
   wire stall_fetch = !id_valid && !redirect && !rst;          // waiting for fetch (bubble in ID)
-  wire pipe_flush  = redirect;                                 // branch/jump/exception flush
+  wire pipe_flush  = redirect || (wb_valid && wb_exception);  // any reason to flush the pipeline
 
   wire if_arvalid, if_arready, if_rvalid, if_rready;
   wire [31:0] if_araddr, if_rdata;
@@ -421,9 +421,9 @@ module PipelineCore(
   //   F_REQ:                正常发送 AR (地址 = fetch_pc)
   //   F_WAIT + R握手 + 提交: 同拍发送下一指令的 AR (地址 = requested_pc+4)
   wire fetch_r_commit = (fetch_state == F_WAIT) && if_rvalid && if_rready &&
-                        !fetch_discard && !redirect;
+                        !fetch_discard && !pipe_flush;
   assign if_arvalid = ((fetch_state == F_REQ) || (fetch_r_commit && id_ready)) &&
-                      id_ready && !redirect && !rst;
+                      id_ready && !pipe_flush && !rst;
   assign if_araddr  = fetch_r_commit ? (requested_pc + 4) : fetch_pc;
   assign if_arid    = 0;
   assign if_arlen   = 0;
