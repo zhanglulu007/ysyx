@@ -55,33 +55,6 @@ default `8` entries match the current RTL `BranchTargetBuffer` default. The
 RTL configuration point is its `ENTRY_NUM` parameter; after changing it, rerun
 branchsim with the same `--btb-entries` value.
 
-## RTL selection
-
-The 8-entry `MicroBench train` evaluation selects always-taken (AT) for the
-current RTL: its BTB-calibrated Next-PC accuracy is `73.50%`, ahead of BTFN
-(`69.97%`) and always-not-taken (`26.43%`). Accordingly, IFU follows `target`
-on every BTB hit. The RTL table stores only valid, full PC tag, and target;
-branchsim retains BTFN state solely to evaluate its alternative policy.
-
-### MicroBench train result
-
-Measured with the direct-mapped 8-entry BTB and a 2-cycle EX-stage
-mispredict penalty:
-
-| Predictor | Calibrated Next-PC accuracy | Estimated IPC | Speedup vs ANT |
-| --- | ---: | ---: | ---: |
-| Always not taken | 26.43% | 0.716080 | 1.000000x |
-| Always taken | **73.50%** | **0.875055** | **1.222008x** |
-| BTFN | 69.97% | 0.860719 | 1.201987x |
-
-The trace contains 195,301,237 dynamic instructions and 52,624,413 valid
-conditional branches. It was generated and evaluated with:
-
-```sh
-cd am-kernels/benchmarks/microbench
-make ARCH=riscv32e-branchsim run mainargs=train BRANCHSIM_BTB_ENTRIES=8
-```
-
 ## Generate a btrace
 
 The RISC-V NEMU build writes a sibling `.btrace` whenever instruction tracing
