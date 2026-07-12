@@ -10,10 +10,12 @@ module BranchTargetBuffer #(
   input  [31:0] lookup_pc,
   output        lookup_hit,
   output [31:0] lookup_target,
+  output        lookup_backward,
 
   input         update_valid,
   input  [31:0] update_pc,
-  input  [31:0] update_target
+  input  [31:0] update_target,
+  input         update_backward
 );
 
   // ENTRY_NUM=1 is useful for conflict tests; larger configurations must be
@@ -23,6 +25,7 @@ module BranchTargetBuffer #(
   reg        valid_array    [0:ENTRY_NUM-1];
   reg [31:0] pc_tag_array   [0:ENTRY_NUM-1];
   reg [31:0] target_array   [0:ENTRY_NUM-1];
+  reg        backward_array [0:ENTRY_NUM-1];
   integer i;
 
   wire [INDEX_BITS-1:0] lookup_index;
@@ -40,6 +43,7 @@ module BranchTargetBuffer #(
   assign lookup_hit      = valid_array[lookup_index] &&
                            (pc_tag_array[lookup_index] == lookup_pc);
   assign lookup_target   = target_array[lookup_index];
+  assign lookup_backward = backward_array[lookup_index];
 
 `ifndef SYNTHESIS
   initial begin
@@ -58,6 +62,7 @@ module BranchTargetBuffer #(
       valid_array[update_index]    <= 1'b1;
       pc_tag_array[update_index]   <= update_pc;
       target_array[update_index]   <= update_target;
+      backward_array[update_index] <= update_backward;
     end
   end
 
