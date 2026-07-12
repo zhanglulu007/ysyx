@@ -410,7 +410,8 @@ module PipelineCore(
   reg fetch_state, fetch_discard;
   reg [31:0] fetch_pc, requested_pc;
   wire fetch_response = (fetch_state == F_WAIT) && if_rvalid && if_rready;
-  assign if_arvalid = !rst && !redirect && !fetch_discard && id_ready &&
+  wire fetch_flush = redirect || (wb_valid && wb_exception);
+  assign if_arvalid = !rst && !fetch_flush && !fetch_discard && id_ready &&
                       ((fetch_state == F_REQ) || fetch_response);
   assign if_araddr = fetch_pc;
   assign if_arid = 0;
@@ -528,7 +529,7 @@ module PipelineCore(
         fetch_state <= F_WAIT;
       end
       if (fetch_state == F_WAIT && if_rvalid && if_rready) begin
-        if (fetch_discard || redirect) begin
+        if (fetch_discard || fetch_flush) begin
           fetch_discard <= 0;
           fetch_state <= F_REQ;
         end else begin

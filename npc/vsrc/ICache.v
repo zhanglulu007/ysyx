@@ -354,10 +354,14 @@ module ICache #(
   // ===================================================================
   // 性能计数器观测信号
   // ===================================================================
-  assign icache_access     = (state == IC_LOOKUP) && !rst;
-  assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
-  assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !hit && !rst;
-  assign icache_uncache    = (state == IC_LOOKUP) && !req_cacheable    && !rst;
+  // A hit can stay in IC_LOOKUP while CPU R is back-pressured.  Count the
+  // lookup once, when its response is actually consumed; misses leave this
+  // state immediately and therefore remain one-cycle events.
+  wire lookup_event = (state == IC_LOOKUP) && (!req_cacheable || !hit || cpu_rready);
+  assign icache_access     = lookup_event && !rst;
+  assign icache_hit        = lookup_event && req_cacheable &&  hit && !rst;
+  assign icache_miss       = lookup_event && req_cacheable && !hit && !rst;
+  assign icache_uncache    = lookup_event && !req_cacheable    && !rst;
   assign icache_refill_req       = (state == IC_REFILL_AR)                   && !rst;
   assign icache_refill_req_pulse = (state == IC_REFILL_AR) && (prev_state != IC_REFILL_AR) && !rst;
   assign icache_wait_ar          = (state == IC_REFILL_AR)                   && !rst;
