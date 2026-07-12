@@ -21,6 +21,27 @@ Choose one with `--predictor=always-not-taken`, `--predictor=always-taken`,
 or `--predictor=btfn`; `--predict=<name>` is an equivalent integration alias.
 The short aliases `ant` and `at` are accepted too.
 
+## Generate a btrace
+
+The RISC-V NEMU build writes a sibling `.btrace` whenever instruction tracing
+is enabled and NEMU is given `-l <log-file>`. For example, with the ysyxSoC
+configuration:
+
+```sh
+make -C nemu riscv32-ysyxsoc_defconfig
+make -C nemu
+cd nemu
+./build/riscv32-nemu-interpreter -b -l /tmp/program.log /path/to/program.bin
+../npc/branchsim/branchsim /tmp/program.btrace
+```
+
+For an AM workload, the same flow is wrapped by
+`ARCH=riscv32e-branchsim`, for example:
+
+```sh
+make ARCH=riscv32e-branchsim run mainargs=test
+```
+
 ## btrace format
 
 The NEMU producer format is supported directly:

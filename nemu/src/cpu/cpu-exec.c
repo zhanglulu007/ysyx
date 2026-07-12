@@ -206,8 +206,10 @@ static bool btrace_is_conditional_branch(uint32_t inst) {
 }
 
 static bool btrace_branch_taken(uint32_t inst) {
-  word_t lhs = cpu.gpr[(inst >> 15) & 0x1fu];
-  word_t rhs = cpu.gpr[(inst >> 20) & 0x1fu];
+  unsigned int rs1 = (inst >> 15) & 0x1fu;
+  unsigned int rs2 = (inst >> 20) & 0x1fu;
+  word_t lhs = rs1 == 0 ? 0 : cpu.gpr[rs1];
+  word_t rhs = rs2 == 0 ? 0 : cpu.gpr[rs2];
 
   switch ((inst >> 12) & 0x7u) {
     case 0x0: return lhs == rhs;                 /* beq  */
