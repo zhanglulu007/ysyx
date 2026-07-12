@@ -405,7 +405,6 @@ module ICache #(
   assign icache_miss       = s2_valid && cacheable_addr(s2_addr) && (!cache_valid[addr_index(s2_addr)] || (cache_tag[addr_index(s2_addr)] != addr_tag(s2_addr))) && !rst;
   assign icache_uncache    = s2_valid && !cacheable_addr(s2_addr) && !rst;
   assign icache_refill_req       = (refill_state == RF_AR) && !rst;
-  assign icache_refill_req_pulse = (refill_state == RF_AR);
   assign icache_wait_ar          = (refill_state == RF_AR) && !rst;
   assign icache_wait_r           = (refill_state == RF_R)  && !rst;
 
