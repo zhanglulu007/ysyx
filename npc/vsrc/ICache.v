@@ -254,12 +254,9 @@ module ICache #(
     if (rst) begin
       state       <= IC_IDLE;
       prev_state  <= IC_IDLE;
-      if (!((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready)) begin
-        // Keep the address and ID stable while completing a discarded AR.
-        req_addr    <= 32'b0;
-        req_arid    <= 4'b0;
-        refill_word <= {REFILL_CNT_BITS{1'b0}};
-      end
+      req_addr    <= 32'b0;
+      req_arid    <= 4'b0;
+      refill_word <= {REFILL_CNT_BITS{1'b0}};
       resp_data   <= 32'b0;
       resp_resp   <= 2'b0;
       resp_id     <= 4'b0;
@@ -271,17 +268,20 @@ module ICache #(
         // ARREADY. Keep ARVALID asserted so that granted transaction can
         // complete, then discard its response below.
         state <= IC_DISCARD_AR;
-      end else if ((state == IC_REFILL_AR || state == IC_DISCARD_AR) && bus_arready ||
-          ((state == IC_REFILL_R || state == IC_DISCARD_R) &&
-           !(bus_rvalid && bus_rready && bus_rlast))) begin
+      end else if (((state == IC_REFILL_AR || state == IC_DISCARD_AR) && bus_arready) ||
+                   ((state == IC_REFILL_R || state == IC_DISCARD_R) &&
+                    !(bus_rvalid && bus_rready && bus_rlast))) begin
         state <= IC_DISCARD_R;
       end else begin
         state <= IC_IDLE;
       end
       prev_state  <= state;
-      req_addr    <= 32'b0;
-      req_arid    <= 4'b0;
-      refill_word <= {REFILL_CNT_BITS{1'b0}};
+      if (!((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready)) begin
+        // Keep the address and ID stable while completing a discarded AR.
+        req_addr    <= 32'b0;
+        req_arid    <= 4'b0;
+        refill_word <= {REFILL_CNT_BITS{1'b0}};
+      end
     end else begin
       prev_state <= state;
       case (state)
