@@ -1,11 +1,7 @@
 // Simple in-order RV32E pipeline used by the B5 implementation.
 // RAW dependencies are bypassed to ID when their youngest producer has data;
 // unresolved loads and the LSU still back-pressure the whole pipe.
-module PipelineCore #(
-  // Must be a positive power of two. BTFN is used on a BTB hit; a miss
-  // follows the existing always-not-taken fetch path.
-  parameter integer BTB_ENTRIES = 16
-)(
+module PipelineCore(
   input clk, input rst,
   output mem_arvalid, input mem_arready, output [31:0] mem_araddr,
   output [3:0] mem_arid, output [7:0] mem_arlen,
@@ -129,7 +125,7 @@ module PipelineCore #(
   wire [31:0] btb_lookup_pc;
   wire btb_lookup_hit, btb_lookup_backward;
   wire [31:0] btb_lookup_target;
-  BranchTargetBuffer #(.ENTRY_NUM(BTB_ENTRIES)) u_btb(
+  BranchTargetBuffer u_btb(
     .clk(clk), .rst(rst), .lookup_pc(btb_lookup_pc),
     .lookup_hit(btb_lookup_hit), .lookup_target(btb_lookup_target),
     .lookup_backward(btb_lookup_backward),
