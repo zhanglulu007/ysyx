@@ -116,21 +116,19 @@ module PipelineCore(
   // ---------------- Branch Target Buffer ----------------
   // The lookup runs from the fetch PC, where neither the instruction nor its
   // immediate is available. ID decodes every valid B instruction and fills
-  // the entry so subsequent fetches can obtain target and BTFN direction.
+  // the entry so subsequent fetches can predict it taken from the target.
   wire [31:0] id_imm_b = {{19{id_inst[31]}}, id_inst[31], id_inst[7],
                           id_inst[30:25], id_inst[11:8], 1'b0};
   wire [31:0] id_branch_target = id_pc + id_imm_b;
   wire btb_update_enable;
-  wire btb_update_backward = id_imm_b[31];
   wire [31:0] btb_lookup_pc;
-  wire btb_lookup_hit, btb_lookup_backward;
+  wire btb_lookup_hit;
   wire [31:0] btb_lookup_target;
   BranchTargetBuffer u_btb(
     .clk(clk), .rst(rst), .lookup_pc(btb_lookup_pc),
     .lookup_hit(btb_lookup_hit), .lookup_target(btb_lookup_target),
-    .lookup_backward(btb_lookup_backward),
     .update_valid(btb_update_enable), .update_pc(id_pc),
-    .update_target(id_branch_target), .update_backward(btb_update_backward)
+    .update_target(id_branch_target)
   );
 
   wire [31:0] rf_rs1, rf_rs2, a0_value;
@@ -466,7 +464,8 @@ module PipelineCore(
   // BTB is only consulted with the PC being sent to IFU. A miss means IFU
   // cannot identify the instruction as a branch and must fetch PC+4.
   assign btb_lookup_pc = fetch_pc;
-  wire btb_predicted_taken = btb_lookup_hit && btb_lookup_backward;
+  // MicroBench train selection: always-taken on every BTB hit.
+  wire btb_predicted_taken = btb_lookup_hit;
   wire [31:0] fetch_predicted_next_pc = btb_predicted_taken ?
                                         btb_lookup_target : fetch_pc + 4;
   wire fetch_response = (fetch_state == F_WAIT) && if_rvalid && if_rready;
