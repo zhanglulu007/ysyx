@@ -59,8 +59,8 @@ module PipelineCore(
 
   // ---------------- Pipeline registers ----------------
   reg id_valid, ex_valid, ls_valid, wb_valid;
-  reg [31:0] id_pc, id_inst;
-  reg [31:0] ex_pc, ex_inst, ex_rs1, ex_rs2;
+  reg [31:0] id_pc, id_inst, id_predicted_next_pc;
+  reg [31:0] ex_pc, ex_inst, ex_rs1, ex_rs2, ex_predicted_next_pc;
   reg [31:0] ls_pc, ls_inst, ls_result, ls_addr, ls_store_data;
   reg [31:0] ls_csr_wdata;
   reg [31:0] wb_pc, wb_inst, wb_data, wb_csr_wdata;
@@ -112,6 +112,24 @@ module PipelineCore(
   wire [3:0] id_excause = id_is_ecall  ? 4'd11 :    // Environment call from M-mode
                            id_is_ebreak ? 4'd3  :    // Breakpoint
                            /* illegal  */ 4'd2;       // Illegal instruction
+
+  // ---------------- Branch Target Buffer ----------------
+  // The lookup runs from the fetch PC, where neither the instruction nor its
+  // immediate is available. ID decodes every valid B instruction and fills
+  // the entry so subsequent fetches can predict it taken from the target.
+  wire [31:0] id_imm_b = {{19{id_inst[31]}}, id_inst[31], id_inst[7],
+                          id_inst[30:25], id_inst[11:8], 1'b0};
+  wire [31:0] id_branch_target = id_pc + id_imm_b;
+  wire btb_update_enable;
+  wire [31:0] btb_lookup_pc;
+  wire btb_lookup_hit;
+  wire [31:0] btb_lookup_target;
+  BranchTargetBuffer u_btb(
+    .clk(clk), .rst(rst), .lookup_pc(btb_lookup_pc),
+    .lookup_hit(btb_lookup_hit), .lookup_target(btb_lookup_target),
+    .update_valid(btb_update_enable), .update_pc(id_pc),
+    .update_target(id_branch_target)
+  );
 
   wire [31:0] rf_rs1, rf_rs2, a0_value;
   wire wb_reg_wen = wb_valid && writes_rd(wb_inst);
@@ -299,7 +317,18 @@ module PipelineCore(
   wire id_issue = id_valid && !id_hazard && ex_ready;
   wire id_ready = !id_valid || id_issue;
   wire ex_advance = ex_valid && ls_ready;
-  wire redirect = ex_advance && ex_redirect_kind;
+  wire [31:0] ex_actual_next_pc = ex_redirect_kind ? ex_redirect_target : ex_pc + 4;
+  // Branches are corrected only when their IFU prediction differs. Other
+  // control transfers retain the pre-existing EX redirect path.
+  wire ex_branch_mispredict = ex_is_branch &&
+                               (ex_predicted_next_pc != ex_actual_next_pc);
+  wire redirect = ex_advance &&
+                  ((ex_is_branch && ex_branch_mispredict) ||
+                   (ex_redirect_kind && !ex_is_branch));
+  wire [31:0] redirect_target = ex_is_branch ? ex_actual_next_pc :
+                                ex_redirect_target;
+  // An ID instruction squashed by an older EX redirect must not pollute BTB.
+  assign btb_update_enable = id_valid && id_is_branch && !redirect;
 
   // ---------------- LS stage exception detection ----------------
   // Misaligned load/store + LSU access fault (rising-edge detected)
@@ -431,7 +460,14 @@ module PipelineCore(
   // handshake in the same cycle, matching the ICache hit-path pipeline.
   localparam F_REQ = 1'b0, F_WAIT = 1'b1;
   reg fetch_state, fetch_discard;
-  reg [31:0] fetch_pc, requested_pc;
+  reg [31:0] fetch_pc, requested_pc, requested_predicted_next_pc;
+  // BTB is only consulted with the PC being sent to IFU. A miss means IFU
+  // cannot identify the instruction as a branch and must fetch PC+4.
+  assign btb_lookup_pc = fetch_pc;
+  // MicroBench train selection: always-taken on every BTB hit.
+  wire btb_predicted_taken = btb_lookup_hit;
+  wire [31:0] fetch_predicted_next_pc = btb_predicted_taken ?
+                                        btb_lookup_target : fetch_pc + 4;
   wire fetch_response = (fetch_state == F_WAIT) && if_rvalid && if_rready;
   wire fetch_flush = redirect || (wb_valid && wb_exception);
   assign if_arvalid = !rst && !fetch_flush && !fetch_discard && id_ready &&
@@ -469,12 +505,14 @@ module PipelineCore(
 `ifdef SOC_MODE
       fetch_pc <= 32'h30000000;
       requested_pc <= 32'h30000000;
+      requested_predicted_next_pc <= 32'h30000004;
 `ifndef SYNTHESIS
       update_pc_value(32'h30000000);
 `endif
 `else
       fetch_pc <= 32'h80000000;
       requested_pc <= 32'h80000000;
+      requested_predicted_next_pc <= 32'h80000004;
 `ifndef SYNTHESIS
       update_pc_value(32'h80000000);
 `endif
@@ -517,6 +555,7 @@ module PipelineCore(
         if (id_valid && !id_hazard && !redirect) begin
           ex_pc <= id_pc; ex_inst <= id_inst;
           ex_rs1 <= id_rs1_value; ex_rs2 <= id_rs2_value;
+          ex_predicted_next_pc <= id_predicted_next_pc;
           // Propagate exception info from ID to EX
           ex_exception <= id_exception;
           ex_excause   <= id_excause;
@@ -527,7 +566,7 @@ module PipelineCore(
 
       if (redirect) begin
         id_valid <= 0;
-        fetch_pc <= ex_redirect_target;
+        fetch_pc <= redirect_target;
         if (ex_is_fencei) begin
           fetch_state <= F_REQ;
           fetch_discard <= 0;
@@ -549,7 +588,8 @@ module PipelineCore(
 
       if (fetch_state == F_REQ && if_arvalid && if_arready) begin
         requested_pc <= fetch_pc;
-        fetch_pc <= fetch_pc + 4;
+        requested_predicted_next_pc <= fetch_predicted_next_pc;
+        fetch_pc <= fetch_predicted_next_pc;
         fetch_state <= F_WAIT;
       end
       if (fetch_state == F_WAIT && if_rvalid && if_rready) begin
@@ -560,9 +600,11 @@ module PipelineCore(
           id_valid <= 1;
           id_pc <= requested_pc;
           id_inst <= if_rresp[1] ? 32'h00100073 : if_rdata;
+          id_predicted_next_pc <= requested_predicted_next_pc;
           if (if_arvalid && if_arready) begin
             requested_pc <= fetch_pc;
-            fetch_pc <= fetch_pc + 4;
+            requested_predicted_next_pc <= fetch_predicted_next_pc;
+            fetch_pc <= fetch_predicted_next_pc;
             fetch_state <= F_WAIT;
           end else begin
             fetch_state <= F_REQ;
@@ -622,6 +664,8 @@ module PipelineCore(
     .wb_is_sys_op(wb_is_sys_op),
     // Branch outcome
     .pipe_branch_taken(wb_valid && wb_is_branch && wb_data[0]),
+    .pipe_branch_predict_resolved(ex_advance && ex_is_branch),
+    .pipe_branch_predict_correct(ex_advance && ex_is_branch && !ex_branch_mispredict),
     // Register writeback
     .pipe_reg_wen(wb_valid && writes_rd(wb_inst)),
     // Exception
