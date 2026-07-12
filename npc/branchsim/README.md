@@ -17,7 +17,7 @@ taken branch, IFU also needs the branch target. A BTB miss therefore predicts
 cd npc/branchsim
 make
 make run BTRACE=/path/to/program.btrace
-make run BTRACE=/path/to/program.btrace ARGS="--predictor=btfn --btb-entries=16"
+make run BTRACE=/path/to/program.btrace ARGS="--predictor=btfn --btb-entries=8"
 make run BTRACE=/path/to/program.btrace ARGS="--btb-entries=0"
 make test
 ```
@@ -30,7 +30,7 @@ The short aliases `ant` and `at` are accepted too.
 ## BTB model
 
 `--btb-entries=N` selects a direct-mapped BTB with `N` entries. `N` must be a
-power of two; the temporary design-space-exploration default is `16`. Each
+power of two; the RTL-matched default is `8`. Each
 entry holds a valid bit, the full branch PC (tag), target PC, and a saved
 backward bit for BTFN. Its index is:
 
@@ -51,7 +51,7 @@ ideal-target-availability result beside the BTB-calibrated result.
 `--btb-entries=0` is an ideal-target-availability comparison baseline, not a
 hardware configuration with no BTB. It preserves pure static predictor
 behavior so cold-start and conflict costs can be measured directly. The
-default `16` entries match the current RTL `BranchTargetBuffer` default. The
+default `8` entries match the current RTL `BranchTargetBuffer` default. The
 RTL configuration point is its `ENTRY_NUM` parameter; after changing it, rerun
 branchsim with the same `--btb-entries` value.
 
@@ -66,14 +66,14 @@ make -C nemu riscv32-ysyxsoc_defconfig
 make -C nemu
 cd nemu
 ./build/riscv32-nemu-interpreter -b -l /tmp/program.log /path/to/program.bin
-../npc/branchsim/branchsim --btb-entries=16 /tmp/program.btrace
+../npc/branchsim/branchsim --btb-entries=8 /tmp/program.btrace
 ```
 
 For an AM workload, the same flow is wrapped by
 `ARCH=riscv32e-branchsim`, for example:
 
 ```sh
-make ARCH=riscv32e-branchsim run mainargs=test BRANCHSIM_BTB_ENTRIES=16
+make ARCH=riscv32e-branchsim run mainargs=test BRANCHSIM_BTB_ENTRIES=8
 ```
 
 ## btrace format

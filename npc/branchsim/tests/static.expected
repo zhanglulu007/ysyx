@@ -2,7 +2,7 @@ btrace: tests/static.btrace
 Input:  14 lines, 5 comments/blank, 1 malformed, 1 non-branch opcode, 1 reserved branch funct3 skipped
 Total instruction source: btrace metadata
 Mispredict penalty: 2 cycles
-BTB: direct-mapped, 16 entries
+BTB: direct-mapped, 8 entries
   Conditional-branch trace lookups: 6
   Hits:              4
   Misses:            2 (cold: 2, conflict: 0)

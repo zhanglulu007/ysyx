@@ -17,7 +17,7 @@ enum predictor {
   PRED_ALL,
 };
 
-#define DEFAULT_BTB_ENTRIES 16u
+#define DEFAULT_BTB_ENTRIES 8u
 
 typedef struct {
   enum predictor predictor;
@@ -88,7 +88,7 @@ static void usage(FILE *stream) {
           "                           default: all\n"
           "  --total-insts=<N>        dynamic instruction count; overrides trace metadata\n"
           "  --mispredict-penalty=<N> extra cycles per wrong prediction, default: 2\n"
-          "  --btb-entries=<N>        direct-mapped BTB entries (power of two); default: 16\n"
+          "  --btb-entries=<N>        direct-mapped BTB entries (power of two); default: 8\n"
           "                           0 disables the finite BTB model (ideal target baseline)\n"
           "  -h, --help               show this help\n"
           "\n"

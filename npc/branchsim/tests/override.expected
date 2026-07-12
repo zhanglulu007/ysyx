@@ -2,7 +2,7 @@ btrace: tests/override.btrace
 Input:  3 lines, 1 comments/blank, 0 malformed, 0 non-branch opcode, 0 reserved branch funct3 skipped
 Total instruction source: --total-insts
 Mispredict penalty: 3 cycles
-BTB: direct-mapped, 16 entries
+BTB: direct-mapped, 8 entries
   Conditional-branch trace lookups: 2
   Hits:              0
   Misses:            2 (cold: 2, conflict: 0)
