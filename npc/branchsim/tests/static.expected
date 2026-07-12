@@ -2,16 +2,27 @@ btrace: tests/static.btrace
 Input:  14 lines, 5 comments/blank, 1 malformed, 1 non-branch opcode, 1 reserved branch funct3 skipped
 Total instruction source: btrace metadata
 Mispredict penalty: 2 cycles
+BTB: direct-mapped, 16 entries
+  Conditional-branch trace lookups: 6
+  Hits:              4
+  Misses:            2 (cold: 2, conflict: 0)
+  Hit rate:          66.67%
+  Updates:           6 (cold fills: 2, replacements: 0)
+  Target mismatches: 0
+Performance uses BTB-calibrated next-PC mispredictions.
 
 Predictor: always-not-taken
   Branches:    6
   Taken:       3
   Not taken:   3
-  Correct:     3
-  Incorrect:   3
-  Accuracy:    50.00%
+  Ideal target availability:
+    Direction  correct: 3, incorrect: 3, accuracy: 50.00%
+    Next-PC    correct: 3, incorrect: 3, accuracy: 50.00%
+  BTB-calibrated:
+    Direction  correct: 3, incorrect: 3, accuracy: 50.00%
+    Next-PC    correct: 3, incorrect: 3, accuracy: 50.00%
   Total insts: 20
-  Cycles:      26 (ideal single-issue + 3 x 2 mispredict penalty)
+  Cycles:      26 (ideal single-issue + 3 x 2 calibrated next-PC mispredict penalty)
   IPC:         0.769231
   Speedup vs always-not-taken: 1.000000x
 
@@ -19,11 +30,14 @@ Predictor: always-taken
   Branches:    6
   Taken:       3
   Not taken:   3
-  Correct:     3
-  Incorrect:   3
-  Accuracy:    50.00%
+  Ideal target availability:
+    Direction  correct: 3, incorrect: 3, accuracy: 50.00%
+    Next-PC    correct: 3, incorrect: 3, accuracy: 50.00%
+  BTB-calibrated:
+    Direction  correct: 3, incorrect: 3, accuracy: 50.00%
+    Next-PC    correct: 3, incorrect: 3, accuracy: 50.00%
   Total insts: 20
-  Cycles:      26 (ideal single-issue + 3 x 2 mispredict penalty)
+  Cycles:      26 (ideal single-issue + 3 x 2 calibrated next-PC mispredict penalty)
   IPC:         0.769231
   Speedup vs always-not-taken: 1.000000x
 
@@ -31,10 +45,13 @@ Predictor: btfn
   Branches:    6
   Taken:       3
   Not taken:   3
-  Correct:     4
-  Incorrect:   2
-  Accuracy:    66.67%
+  Ideal target availability:
+    Direction  correct: 4, incorrect: 2, accuracy: 66.67%
+    Next-PC    correct: 4, incorrect: 2, accuracy: 66.67%
+  BTB-calibrated:
+    Direction  correct: 3, incorrect: 3, accuracy: 50.00%
+    Next-PC    correct: 3, incorrect: 3, accuracy: 50.00%
   Total insts: 20
-  Cycles:      24 (ideal single-issue + 2 x 2 mispredict penalty)
-  IPC:         0.833333
-  Speedup vs always-not-taken: 1.083333x
+  Cycles:      26 (ideal single-issue + 3 x 2 calibrated next-PC mispredict penalty)
+  IPC:         0.769231
+  Speedup vs always-not-taken: 1.000000x

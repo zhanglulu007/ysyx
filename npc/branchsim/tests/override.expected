@@ -2,15 +2,26 @@ btrace: tests/override.btrace
 Input:  3 lines, 1 comments/blank, 0 malformed, 0 non-branch opcode, 0 reserved branch funct3 skipped
 Total instruction source: --total-insts
 Mispredict penalty: 3 cycles
+BTB: direct-mapped, 16 entries
+  Conditional-branch trace lookups: 2
+  Hits:              0
+  Misses:            2 (cold: 2, conflict: 0)
+  Hit rate:          0.00%
+  Updates:           2 (cold fills: 2, replacements: 0)
+  Target mismatches: 0
+Performance uses BTB-calibrated next-PC mispredictions.
 
 Predictor: btfn
   Branches:    2
   Taken:       2
   Not taken:   0
-  Correct:     1
-  Incorrect:   1
-  Accuracy:    50.00%
+  Ideal target availability:
+    Direction  correct: 1, incorrect: 1, accuracy: 50.00%
+    Next-PC    correct: 1, incorrect: 1, accuracy: 50.00%
+  BTB-calibrated:
+    Direction  correct: 0, incorrect: 2, accuracy: 0.00%
+    Next-PC    correct: 0, incorrect: 2, accuracy: 0.00%
   Total insts: 20
-  Cycles:      23 (ideal single-issue + 1 x 3 mispredict penalty)
-  IPC:         0.869565
-  Speedup vs always-not-taken: 1.130435x
+  Cycles:      26 (ideal single-issue + 2 x 3 calibrated next-PC mispredict penalty)
+  IPC:         0.769231
+  Speedup vs always-not-taken: 1.000000x

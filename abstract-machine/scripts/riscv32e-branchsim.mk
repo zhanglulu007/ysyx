@@ -14,6 +14,7 @@ AM_SRCS += riscv/npc/libgcc/div.S \
 # branchsim accepts all three lecture algorithms in one pass by default.
 BRANCHSIM_PREDICTOR          ?= all
 BRANCHSIM_MISPREDICT_PENALTY ?= 2
+BRANCHSIM_BTB_ENTRIES        ?= 16
 BRANCHSIM_EXTRA_ARGS         ?=
 
 NEMU_HOME ?= $(abspath $(AM_HOME)/../nemu)
@@ -38,10 +39,10 @@ run: insert-arg
 	@echo "=================================================================="
 	@$(MAKE) -s -C $(NPC_HOME)/branchsim run \
 	  BTRACE=$(BTRACE) \
-	  ARGS="--predictor=$(BRANCHSIM_PREDICTOR) --mispredict-penalty=$(BRANCHSIM_MISPREDICT_PENALTY) $(BRANCHSIM_EXTRA_ARGS)"
+	  ARGS="--predictor=$(BRANCHSIM_PREDICTOR) --mispredict-penalty=$(BRANCHSIM_MISPREDICT_PENALTY) --btb-entries=$(BRANCHSIM_BTB_ENTRIES) $(BRANCHSIM_EXTRA_ARGS)"
 	@echo ""
 	@echo " [branchsim] Done. Example:"
-	@echo "   make ARCH=riscv32e-branchsim run BRANCHSIM_PREDICTOR=btfn BRANCHSIM_MISPREDICT_PENALTY=2"
+	@echo "   make ARCH=riscv32e-branchsim run BRANCHSIM_PREDICTOR=btfn BRANCHSIM_BTB_ENTRIES=16"
 	@echo "=================================================================="
 
 .PHONY: run

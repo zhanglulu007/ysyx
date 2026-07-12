@@ -1,0 +1,10 @@
+# A one-entry BTB: A is backward, B is forward, and B evicts A.
+# Every record must update the BTB, including not-taken records.
+# total-instructions=20
+0x00000100 0xfe001ce3 1
+0x00000100 0xfe001ce3 1
+0x00000200 0x00008463 0
+0x00000200 0x00008463 1
+0x00000100 0xfe001ce3 1
+0x00000100 0xfe001ce3 0
+0x00000100 0xfe001ce3 1
