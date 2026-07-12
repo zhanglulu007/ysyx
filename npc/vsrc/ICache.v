@@ -68,17 +68,24 @@ module ICache #(
   // ===================================================================
   // 状态机
   //   IC_IDLE:      等待 IFU 取指请求 (AR 阶段), 与 IFU 的 arready 握手
-  //   IC_LOOKUP:    本周期查命中/缺失, 决定应答方式
+  //   IC_LOOKUP:    查命中/缺失并向 IFU 应答。命中且应答被接收时可同时
+  //                 接收下一条请求，令该请求在下一拍进入查找阶段。
   //   IC_REFILL_AR: 向 Arbiter 发 AR, 等握手
   //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
   //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
+  //   IC_RESP:      保存 refill 的 CPU 响应，等待 IFU 接收
+  //   IC_DISCARD_AR: fence.i 后补全一个已被仲裁器授权的 AR 请求
+  //   IC_DISCARD_R: fence.i 冲刷已发出的 AXI 读事务时，排空剩余 R beat
   // ===================================================================
-  localparam IC_IDLE      = 2'b00;
-  localparam IC_LOOKUP    = 2'b01;
-  localparam IC_REFILL_AR = 2'b10;
-  localparam IC_REFILL_R  = 2'b11;
+  localparam IC_IDLE      = 3'd0;
+  localparam IC_LOOKUP    = 3'd1;
+  localparam IC_REFILL_AR = 3'd2;
+  localparam IC_REFILL_R  = 3'd3;
+  localparam IC_RESP      = 3'd4;
+  localparam IC_DISCARD_R = 3'd5;
+  localparam IC_DISCARD_AR = 3'd6;
 
-  reg [1:0] state;
+  reg [2:0] state;
 
   // ===================================================================
   // 存储阵列 (触发器实现, 复位全部无效)
@@ -147,9 +154,6 @@ module ICache #(
   // ===================================================================
   reg [REFILL_CNT_BITS-1:0] refill_word;
 
-  // 进入 refill 时复位计数器
-  wire enter_refill = (state == IC_LOOKUP) && !(req_cacheable && hit);
-
   // ===================================================================
   // 总线侧 AR 通道
   //   Burst:   arlen = BURST_LEN,  addr = block_aligned_addr (所有 word 一次返回)
@@ -163,7 +167,7 @@ module ICache #(
     (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
     req_addr;
 
-  assign bus_arvalid = (state == IC_REFILL_AR) ? 1'b1 : 1'b0;
+  assign bus_arvalid = (state == IC_REFILL_AR) || (state == IC_DISCARD_AR);
   assign bus_araddr  = refill_araddr;
   assign bus_arid    = req_arid;
   assign bus_arlen   = is_burst ? (BURST_LEN) : 8'b0;
@@ -173,11 +177,11 @@ module ICache #(
   // ===================================================================
   // 总线侧 R 通道 (接收 Arbiter 返回数据)
   // ===================================================================
-  assign bus_rready = (state == IC_REFILL_R);
+  assign bus_rready = (state == IC_REFILL_R) || (state == IC_DISCARD_R);
 
   // 逐 word 写入数据: 在 IC_REFILL_R 每个 R 握手时, 将 bus_rdata 写入对应 word 位置
   // (Burst 模式: refill_word 由本块递增; 非 Burst 模式: refill_word 由状态机控制)
-  wire do_store_beat = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
+  wire do_store_beat = !flush && (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
                        req_cacheable && !bus_rresp[1];
 
   always @(posedge clk) begin
@@ -194,7 +198,7 @@ module ICache #(
                       req_cacheable ? (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) : 1'b1;
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
-  wire do_refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
+  wire do_refill_done = !flush && (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
                         req_cacheable && !bus_rresp[1] && is_last_word;
 
   always @(posedge clk) begin
@@ -207,12 +211,15 @@ module ICache #(
   // ===================================================================
   // CPU 侧 (IFU) AR 通道应答
   // ===================================================================
-  assign cpu_arready = (state == IC_IDLE) ? 1'b1 : 1'b0;
+  // A hit response consumes the lookup slot.  Allow the following request to
+  // replace it in that same cycle, which is the ICache's hit-path pipeline.
+  assign cpu_arready = !flush && ((state == IC_IDLE) ||
+                                  ((state == IC_LOOKUP) && req_cacheable && hit && cpu_rready));
 
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
   //   命中:  IC_LOOKUP 当拍直出 cache 数据 + OK resp + last
-  //   缺失:  IC_REFILL_R 最后一个 word 的 R 握手当拍应答
+  //   缺失:  IFU 就绪时由最后一个回填 beat 直通；否则保存至 IC_RESP
   // ===================================================================
   wire lookup_hit  = (state == IC_LOOKUP)   && req_cacheable &&  hit;
   wire refill_done = (state == IC_REFILL_R) && bus_rvalid && bus_rready && is_last_word;
@@ -230,23 +237,54 @@ module ICache #(
                                      : cache_data[req_index][(req_word_idx * 32) +: 32]) :
       bus_rdata;
 
-  assign cpu_rvalid = lookup_hit || refill_done;
-  assign cpu_rdata  = lookup_hit ? hit_word : refill_word_data;
-  assign cpu_rresp  = refill_done ? bus_rresp : 2'b00;
+  reg [31:0] resp_data;
+  reg [ 1:0] resp_resp;
+  reg [ 3:0] resp_id;
+
+  assign cpu_rvalid = !flush && (lookup_hit || refill_done || (state == IC_RESP));
+  assign cpu_rdata  = lookup_hit ? hit_word :
+                      refill_done ? refill_word_data : resp_data;
+  assign cpu_rresp  = lookup_hit ? 2'b00 :
+                      refill_done ? bus_rresp : resp_resp;
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
-  assign cpu_rid    = req_arid;
+  assign cpu_rid    = (lookup_hit || refill_done) ? req_arid : resp_id;
 
   // ===================================================================
   // 状态机
   // ===================================================================
-  reg [1:0] prev_state;
+  reg [2:0] prev_state;
   always @(posedge clk) begin
-    if (rst || flush) begin
+    if (rst) begin
       state       <= IC_IDLE;
       prev_state  <= IC_IDLE;
       req_addr    <= 32'b0;
       req_arid    <= 4'b0;
       refill_word <= {REFILL_CNT_BITS{1'b0}};
+      resp_data   <= 32'b0;
+      resp_resp   <= 2'b0;
+      resp_id     <= 4'b0;
+    end else if (flush) begin
+      // An already accepted AR must still be drained, otherwise AXIArbiter
+      // remains busy and the first post-fence.i request can deadlock.
+      if ((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready) begin
+        // AXIArbiter may have granted this request before its slave raises
+        // ARREADY. Keep ARVALID asserted so that granted transaction can
+        // complete, then discard its response below.
+        state <= IC_DISCARD_AR;
+      end else if (((state == IC_REFILL_AR || state == IC_DISCARD_AR) && bus_arready) ||
+                   ((state == IC_REFILL_R || state == IC_DISCARD_R) &&
+                    !(bus_rvalid && bus_rready && bus_rlast))) begin
+        state <= IC_DISCARD_R;
+      end else begin
+        state <= IC_IDLE;
+      end
+      prev_state  <= state;
+      if (!((state == IC_REFILL_AR || state == IC_DISCARD_AR) && !bus_arready)) begin
+        // Keep the address and ID stable while completing a discarded AR.
+        req_addr    <= 32'b0;
+        req_arid    <= 4'b0;
+        refill_word <= {REFILL_CNT_BITS{1'b0}};
+      end
     end else begin
       prev_state <= state;
       case (state)
@@ -260,8 +298,16 @@ module ICache #(
 
         IC_LOOKUP: begin
           if (req_cacheable && hit) begin
-            // 命中: 本拍已组合逻辑应答 IFU, 次拍回 IDLE
-            state <= IC_IDLE;
+            // 命中响应和下一条 AR 可在同一拍握手，查找槽直接换入新请求。
+            if (cpu_rready) begin
+              if (cpu_arvalid && cpu_arready) begin
+                req_addr <= cpu_araddr;
+                req_arid <= cpu_arid;
+                state    <= IC_LOOKUP;
+              end else begin
+                state <= IC_IDLE;
+              end
+            end
           end else begin
             // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
@@ -274,12 +320,23 @@ module ICache #(
           if (bus_arready) state <= IC_REFILL_R;
         end
 
+        IC_DISCARD_AR: begin
+          if (bus_arready) state <= IC_DISCARD_R;
+        end
+
         IC_REFILL_R: begin
           if (bus_rvalid && bus_rready) begin
             if (is_burst) begin
               // Burst 模式: 每个 R beat 递增 refill_word, rlast 时完成
               if (bus_rlast) begin
-                state <= IC_IDLE;
+                if (cpu_rready) begin
+                  state <= IC_IDLE;
+                end else begin
+                  resp_data <= refill_word_data;
+                  resp_resp <= bus_rresp;
+                  resp_id   <= req_arid;
+                  state     <= IC_RESP;
+                end
               end else begin
                 refill_word <= refill_word + 1'b1;
               end
@@ -288,8 +345,15 @@ module ICache #(
               //   不可缓存: 仅取一个 word (is_last_word=1), refill_done 触发, 回 IDLE
               //   可缓存:   逐 word 填充, 最后一个 word 完成回 IDLE
               if (!req_cacheable || refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) begin
-                // 最后一个 word 完成, 回 IDLE (refill_word 不需要再递增)
-                state <= IC_IDLE;
+                if (cpu_rready) begin
+                  state <= IC_IDLE;
+                end else begin
+                  // IFU 反压时，保存总线结果后再应答。
+                  resp_data <= refill_word_data;
+                  resp_resp <= bus_rresp;
+                  resp_id   <= req_arid;
+                  state     <= IC_RESP;
+                end
               end else begin
                 // 还有更多 word 需要取, 递增计数器, 发下一个 AR
                 refill_word <= refill_word + 1'b1;
@@ -297,6 +361,14 @@ module ICache #(
               end
             end
           end
+        end
+
+        IC_RESP: begin
+          if (cpu_rready) state <= IC_IDLE;
+        end
+
+        IC_DISCARD_R: begin
+          if (bus_rvalid && bus_rready && bus_rlast) state <= IC_IDLE;
         end
 
         default: state <= IC_IDLE;
@@ -307,10 +379,14 @@ module ICache #(
   // ===================================================================
   // 性能计数器观测信号
   // ===================================================================
-  assign icache_access     = (state == IC_LOOKUP) && !rst;
-  assign icache_hit        = (state == IC_LOOKUP) && req_cacheable &&  hit && !rst;
-  assign icache_miss       = (state == IC_LOOKUP) && req_cacheable && !hit && !rst;
-  assign icache_uncache    = (state == IC_LOOKUP) && !req_cacheable    && !rst;
+  // A hit can stay in IC_LOOKUP while CPU R is back-pressured.  Count the
+  // lookup once, when its response is actually consumed; misses leave this
+  // state immediately and therefore remain one-cycle events.
+  wire lookup_event = (state == IC_LOOKUP) && (!req_cacheable || !hit || cpu_rready);
+  assign icache_access     = lookup_event && !rst;
+  assign icache_hit        = lookup_event && req_cacheable &&  hit && !rst;
+  assign icache_miss       = lookup_event && req_cacheable && !hit && !rst;
+  assign icache_uncache    = lookup_event && !req_cacheable    && !rst;
   assign icache_refill_req       = (state == IC_REFILL_AR)                   && !rst;
   assign icache_refill_req_pulse = (state == IC_REFILL_AR) && (prev_state != IC_REFILL_AR) && !rst;
   assign icache_wait_ar          = (state == IC_REFILL_AR)                   && !rst;

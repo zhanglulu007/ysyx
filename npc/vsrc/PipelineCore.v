@@ -404,16 +404,23 @@ module PipelineCore(
   );
 
   // ---------------- Fetch engine ----------------
+  // Keep one request in flight.  A hit response and the following request may
+  // handshake in the same cycle, matching the ICache hit-path pipeline.
   localparam F_REQ = 1'b0, F_WAIT = 1'b1;
   reg fetch_state, fetch_discard;
   reg [31:0] fetch_pc, requested_pc;
-  assign if_arvalid = fetch_state == F_REQ && id_ready && !redirect && !rst;
+  wire fetch_response = (fetch_state == F_WAIT) && if_rvalid && if_rready;
+  wire fetch_flush = redirect || (wb_valid && wb_exception);
+  assign if_arvalid = !rst && !fetch_flush && !fetch_discard && id_ready &&
+                      ((fetch_state == F_REQ) || fetch_response);
   assign if_araddr = fetch_pc;
   assign if_arid = 0;
   assign if_arlen = 0;
   assign if_arsize = 3'b010;
   assign if_arburst = 2'b01;
-  assign if_rready = fetch_state == F_WAIT && !rst;
+  // Do not remove an ICache response until ID can accept it.  This backs up
+  // the ICache lookup slot on a RAW/LSU stall without dropping an instruction.
+  assign if_rready = (fetch_state == F_WAIT) && id_ready && !rst;
 
 `ifndef SYNTHESIS
   import "DPI-C" function void update_pc_value(input int pc_val);
@@ -518,17 +525,24 @@ module PipelineCore(
 
       if (fetch_state == F_REQ && if_arvalid && if_arready) begin
         requested_pc <= fetch_pc;
+        fetch_pc <= fetch_pc + 4;
         fetch_state <= F_WAIT;
       end
       if (fetch_state == F_WAIT && if_rvalid && if_rready) begin
-        fetch_state <= F_REQ;
-        if (fetch_discard || redirect) begin
+        if (fetch_discard || fetch_flush) begin
           fetch_discard <= 0;
+          fetch_state <= F_REQ;
         end else begin
           id_valid <= 1;
           id_pc <= requested_pc;
           id_inst <= if_rresp[1] ? 32'h00100073 : if_rdata;
-          fetch_pc <= requested_pc + 4;
+          if (if_arvalid && if_arready) begin
+            requested_pc <= fetch_pc;
+            fetch_pc <= fetch_pc + 4;
+            fetch_state <= F_WAIT;
+          end else begin
+            fetch_state <= F_REQ;
+          end
         end
       end
 
