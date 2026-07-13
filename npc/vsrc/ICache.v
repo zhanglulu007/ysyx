@@ -161,10 +161,14 @@ module ICache #(
   // ===================================================================
   wire [31:0] refill_word_addr;
   assign refill_word_addr = {{REFILL_ADDR_PAD{1'b0}}, refill_word, 2'b0};  // refill_word * 4, 扩展至 32 位
-  wire [31:0] refill_araddr;
-  assign refill_araddr = req_cacheable ?
-    (is_burst ? block_aligned_addr : (block_aligned_addr + refill_word_addr)) :
-    req_addr;
+  reg [31:0] refill_araddr;
+  always @(*) begin
+    case ({req_cacheable, is_burst})
+      2'b11: refill_araddr = block_aligned_addr;
+      2'b10: refill_araddr = block_aligned_addr + refill_word_addr;
+      default: refill_araddr = req_addr;
+    endcase
+  end
 
   assign bus_arvalid = (state == IC_REFILL_AR) || (state == IC_DISCARD_AR);
   assign bus_araddr  = refill_araddr;
@@ -193,8 +197,15 @@ module ICache #(
   //   Burst 模式: bus_rlast 指示
   //   非 Burst 可缓存: refill_word == NR_WORDS-1 时即为最后一个 word
   //   不可缓存: 单拍即最后一拍
-  wire is_last_word = is_burst ? bus_rlast :
-                      req_cacheable ? (refill_word == REFILL_CNT_BITS'(NR_WORDS-1)) : 1'b1;
+  reg is_last_word;
+  always @(*) begin
+    case ({is_burst, req_cacheable})
+      2'b10,
+      2'b11: is_last_word = bus_rlast;
+      2'b01: is_last_word = refill_word == REFILL_CNT_BITS'(NR_WORDS-1);
+      default: is_last_word = 1'b1;
+    endcase
+  end
 
   // 回填完成: 最后一个 word 的 R 握手时, 写 tag 和 valid
   wire do_refill_done = !flush && (state == IC_REFILL_R) && bus_rvalid && bus_rready &&
@@ -227,11 +238,13 @@ module ICache #(
   // refill_done 时, 最后一个 word 可能不是 CPU 请求的 word (当 BLOCK_SIZE>4).
   // 若最后一个 word 恰好是请求 word, 直接用 bus_rdata; 否则从已写入的 cache 中读取.
   // 不可缓存 (req_cacheable=0) 时 refill 仅取一个 word, 直通 bus_rdata.
-  wire [31:0] refill_word_data;
-  assign refill_word_data = req_cacheable ?
-      ((refill_word == req_word_idx) ? bus_rdata
-                                     : cache_data[req_index][(req_word_idx * 32) +: 32]) :
-      bus_rdata;
+  reg [31:0] refill_word_data;
+  always @(*) begin
+    case ({req_cacheable, (refill_word == req_word_idx)})
+      2'b10: refill_word_data = cache_data[req_index][(req_word_idx * 32) +: 32];
+      default: refill_word_data = bus_rdata;
+    endcase
+  end
 
   reg [31:0] resp_data;
   reg [ 1:0] resp_resp;
