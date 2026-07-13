@@ -92,7 +92,6 @@ module PipelineCore(
   reg [3:0] ex_excause;
 
   reg [31:0] ls_pc, ls_value, ls_aux;
-  reg [11:0] ls_csr_addr;
   reg [3:0] ls_rd;
   reg [2:0] ls_f3;
   reg ls_rs1_nonzero, ls_reg_write, ls_is_load, ls_is_store, ls_is_branch;
@@ -188,7 +187,7 @@ module PipelineCore(
   wire ls_csr_wen = ls_retire && ls_is_csr && !ls_commit_exception &&
                     (ls_f3 == 3'b001 || ls_rs1_nonzero);
   CSR u_csr(
-    .clk(clk), .rst(rst), .csr_addr(ls_retire && ls_is_csr ? ls_csr_addr : ex_csr_addr),
+    .clk(clk), .rst(rst), .csr_addr(ex_csr_addr),
     .csr_wdata(ls_aux), .csr_wen(ls_csr_wen), .csr_rdata(csr_rdata),
     .exception_en(ls_retire && ls_commit_exception),
     .exception_pc(ls_pc), .exception_cause({28'b0, ls_commit_excause}),
@@ -426,7 +425,6 @@ module PipelineCore(
                     (ex_is_branch ? (ex_branch_taken ? ex_branch_target : ex_pc + 4) :
                      ex_is_jal ? ex_pc + ex_imm : ex_is_jalr ? ex_jalr_target :
                      ex_is_ecall ? mtvec : ex_is_mret ? mepc : 0);
-          ls_csr_addr <= ex_csr_addr;
           ls_rd <= ex_rd; ls_f3 <= ex_f3; ls_rs1_nonzero <= ex_rs1_nonzero;
           ls_reg_write <= ex_reg_write; ls_is_load <= ex_is_load; ls_is_store <= ex_is_store;
           ls_is_branch <= ex_is_branch; ls_is_jal <= ex_is_jal; ls_is_jalr <= ex_is_jalr;
