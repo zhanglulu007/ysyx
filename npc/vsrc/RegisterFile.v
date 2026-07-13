@@ -13,7 +13,8 @@ module RegisterFile(
   output [31:0] a0_value      // a0寄存器的值（x10）
 );
   
-  reg [31:0] rf [0:15];
+  // x0 is architectural zero and has no physical storage.
+  reg [31:0] rf [0:14];
 
 `ifndef SYNTHESIS
   import "DPI-C" function void update_reg_value(input int idx, input int value);
@@ -22,7 +23,7 @@ module RegisterFile(
   // 写操作 - 时序逻辑
   always @(posedge clk) begin
     if (wen && waddr != 5'b0 && !waddr[4]) begin
-      rf[waddr[3:0]] <= wdata;
+      rf[waddr[3:0] - 1'b1] <= wdata;
 `ifndef SYNTHESIS
       // 通知C++侧更新（扩展到32位）
       update_reg_value({27'b0, waddr}, wdata);
@@ -30,10 +31,10 @@ module RegisterFile(
     end
   end
 
-  assign rdata1 = (raddr1 == 5'b0 || raddr1[4]) ? 32'b0 : rf[raddr1[3:0]];
-  assign rdata2 = (raddr2 == 5'b0 || raddr2[4]) ? 32'b0 : rf[raddr2[3:0]];
+  assign rdata1 = (raddr1 == 5'b0 || raddr1[4]) ? 32'b0 : rf[raddr1[3:0] - 1'b1];
+  assign rdata2 = (raddr2 == 5'b0 || raddr2[4]) ? 32'b0 : rf[raddr2[3:0] - 1'b1];
   
   // 读取a0寄存器（x10）的值
-  assign a0_value = rf[10];
+  assign a0_value = rf[9];
 
 endmodule

@@ -25,10 +25,10 @@ module CSR(
 );
 
   // ========== CSR寄存器定义 ==========
-  reg [31:0] mstatus;   // 0x300 
+  reg [3:0]  mstatus_fields; // {MPP[1:0], MPIE, MIE}
   reg [31:0] mtvec;     // 0x305 
-  reg [31:0] mepc;      // 0x341 
-  reg [31:0] mcause;    // 0x342 
+  reg [30:0] mepc_hi;   // mepc[31:1], bit 0 is always zero
+  reg [3:0]  mcause_code;
   reg [63:0] mcycle;    
   
   wire [31:0] mvendorid = 32'h79737978;  
@@ -46,10 +46,11 @@ module CSR(
   // ========== CSR读操作 ==========
   always @(*) begin
     case (csr_addr)
-      12'h300: csr_rdata = mstatus;           
+      12'h300: csr_rdata = {19'b0, mstatus_fields[3:2], 3'b0,
+                            mstatus_fields[1], 3'b0, mstatus_fields[0], 3'b0};
       12'h305: csr_rdata = mtvec;             
-      12'h341: csr_rdata = mepc;              
-      12'h342: csr_rdata = mcause;            
+      12'h341: csr_rdata = {mepc_hi, 1'b0};
+      12'h342: csr_rdata = {28'b0, mcause_code};
       12'hB00: csr_rdata = mcycle[31:0];      
       12'hB80: csr_rdata = mcycle[63:32];     
       12'hF11: csr_rdata = mvendorid;         
@@ -61,23 +62,23 @@ module CSR(
   // ========== CSR写操作 ==========
   always @(posedge clk) begin
     if (rst) begin
-      mstatus <= 32'h1800;  
+      mstatus_fields <= 4'b1100;
       mtvec   <= 32'b0;
-      mepc    <= 32'b0;
-      mcause  <= 32'b0;
+      mepc_hi <= 31'b0;
+      mcause_code <= 4'b0;
     end else begin
       // 异常处理优先级最高
       if (exception_en) begin
-        mepc   <= exception_pc;
-        mcause <= exception_cause;
+        mepc_hi <= exception_pc[31:1];
+        mcause_code <= exception_cause[3:0];
       end
       // CSR写操作
       else if (csr_wen) begin
         case (csr_addr)
-          12'h300: mstatus <= csr_wdata;  
+          12'h300: mstatus_fields <= {csr_wdata[12:11], csr_wdata[7], csr_wdata[3]};
           12'h305: mtvec   <= csr_wdata;  
-          12'h341: mepc    <= csr_wdata;  
-          12'h342: mcause  <= csr_wdata;  
+          12'h341: mepc_hi <= csr_wdata[31:1];
+          12'h342: mcause_code <= csr_wdata[3:0];
           default: ;
         endcase
       end
@@ -85,7 +86,7 @@ module CSR(
   end
   
   // ========== 输出信号 ==========
-  assign mepc_out  = mepc;
+  assign mepc_out  = {mepc_hi, 1'b0};
   assign mtvec_out = mtvec;
   assign mcycle_out = mcycle;
 

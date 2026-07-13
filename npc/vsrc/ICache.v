@@ -68,8 +68,7 @@ module ICache #(
   // ===================================================================
   // 状态机
   //   IC_IDLE:      等待 IFU 取指请求 (AR 阶段), 与 IFU 的 arready 握手
-  //   IC_LOOKUP:    查命中/缺失并向 IFU 应答。命中且应答被接收时可同时
-  //                 接收下一条请求，令该请求在下一拍进入查找阶段。
+  //   IC_LOOKUP:    查命中/缺失并向 IFU 应答。命中响应被接收后回到 IDLE。
   //   IC_REFILL_AR: 向 Arbiter 发 AR, 等握手
   //   IC_REFILL_R:  等 Arbiter R 握手; 逐 word 回填;
   //                 Burst 模式一次读完; 非 Burst 模式循环回 IC_REFILL_AR 取下一个 word
@@ -211,10 +210,7 @@ module ICache #(
   // ===================================================================
   // CPU 侧 (IFU) AR 通道应答
   // ===================================================================
-  // A hit response consumes the lookup slot.  Allow the following request to
-  // replace it in that same cycle, which is the ICache's hit-path pipeline.
-  assign cpu_arready = !flush && ((state == IC_IDLE) ||
-                                  ((state == IC_LOOKUP) && req_cacheable && hit && cpu_rready));
+  assign cpu_arready = !flush && (state == IC_IDLE);
 
   // ===================================================================
   // CPU 侧 (IFU) R 通道应答
@@ -298,16 +294,7 @@ module ICache #(
 
         IC_LOOKUP: begin
           if (req_cacheable && hit) begin
-            // 命中响应和下一条 AR 可在同一拍握手，查找槽直接换入新请求。
-            if (cpu_rready) begin
-              if (cpu_arvalid && cpu_arready) begin
-                req_addr <= cpu_araddr;
-                req_arid <= cpu_arid;
-                state    <= IC_LOOKUP;
-              end else begin
-                state <= IC_IDLE;
-              end
-            end
+            if (cpu_rready) state <= IC_IDLE;
           end else begin
             // 缺失或不可缓存: 进入 refill 流程, 复位 word 计数器
             refill_word <= {REFILL_CNT_BITS{1'b0}};
@@ -379,9 +366,8 @@ module ICache #(
   // ===================================================================
   // 性能计数器观测信号
   // ===================================================================
-  // A hit can stay in IC_LOOKUP while CPU R is back-pressured.  Count the
-  // lookup once, when its response is actually consumed; misses leave this
-  // state immediately and therefore remain one-cycle events.
+  // A hit can stay in IC_LOOKUP while CPU R is back-pressured. Count it once
+  // when the response is consumed; misses leave this state immediately.
   wire lookup_event = (state == IC_LOOKUP) && (!req_cacheable || !hit || cpu_rready);
   assign icache_access     = lookup_event && !rst;
   assign icache_hit        = lookup_event && req_cacheable &&  hit && !rst;
