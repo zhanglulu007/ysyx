@@ -11,7 +11,4 @@
 !*.cpp
 !.gitignore
 !README.md
-!branchsim/tests/
-!branchsim/tests/*.btrace
-!branchsim/tests/*.expected
 build/

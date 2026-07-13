@@ -1,8 +1,6 @@
 include $(AM_HOME)/scripts/isa/riscv.mk
 include $(AM_HOME)/scripts/platform/ysyxsoc.mk
 
-# Keep the generated workload ABI-identical to riscv32e-ysyxsoc.  The trace
-# is produced by NEMU, while branchsim only consumes the resulting btrace.
 COMMON_CFLAGS += -march=rv32e_zicsr -mabi=ilp32e
 LDFLAGS       += -melf32lriscv
 AM_SRCS += riscv/npc/libgcc/div.S \
@@ -11,7 +9,6 @@ AM_SRCS += riscv/npc/libgcc/div.S \
            riscv/npc/libgcc/ashldi3.c \
            riscv/npc/libgcc/unused.c
 
-# branchsim accepts all three lecture algorithms in one pass by default.
 BRANCHSIM_PREDICTOR          ?= all
 BRANCHSIM_MISPREDICT_PENALTY ?= 2
 BRANCHSIM_BTB_ENTRIES        ?= 8

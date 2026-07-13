@@ -95,9 +95,6 @@ static uint32_t rle_seg_cnt = 0;     /* 当前顺序段已累计的指令数 */
 static bool rle_have_seg = false;    /* 当前是否有未 flush 的段 */
 static vaddr_t rle_prev_snpc = 0;    /* 上一条指令的静态下一条 PC (用于判断顺序连续) */
 
-/* branchsim consumes a much smaller trace than cachesim: one record for each
- * retired RISC-V conditional branch.  Keep it separate from the RLE itrace,
- * which intentionally does not retain instruction bits or branch outcomes. */
 #ifdef CONFIG_ISA_riscv
 static FILE *btrace_fp = NULL;
 static bool  btrace_active = false;
@@ -164,9 +161,6 @@ void init_itracerle(const char *log_path) {
 }
 
 #ifdef CONFIG_ISA_riscv
-/* The btrace path follows the existing RLE trace convention:
- * <log-path-without-extension>.btrace.  A text format makes it easy to
- * inspect and lets branchsim remain a standalone C99 tool. */
 void init_btrace(const char *log_path) {
   btrace_fp = NULL;
   btrace_active = false;
@@ -228,9 +222,6 @@ static void btrace_step(const Decode *s) {
   uint32_t inst = s->isa.inst;
   if (!btrace_is_conditional_branch(inst)) return;
 
-  /* Use the branch condition instead of dnpc != snpc: an unusual but valid
-   * branch whose target is PC+4 is still semantically taken.  B instructions
-   * do not alter their source registers, so the values remain available here. */
   int taken = btrace_branch_taken(inst);
   fprintf(btrace_fp, "0x%08" PRIx32 " 0x%08" PRIx32 " %d\n",
           (uint32_t)s->pc, inst, taken);

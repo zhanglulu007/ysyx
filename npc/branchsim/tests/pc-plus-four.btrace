@@ -1,5 +1,0 @@
-# A semantically taken BEQ with target PC+4 has no fetch redirection.
-# It distinguishes direction accuracy from the BTB-relevant next-PC accuracy.
-# total-instructions=2
-0x00001000 0x00000263 1
-0x00001000 0x00000263 1

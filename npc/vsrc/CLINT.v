@@ -8,6 +8,7 @@
 module CLINT(
   input         clk,
   input         rst,
+  input  [63:0] mtime,
 
   // ===== AXI4 AR 通道 (读地址) =====
   input         clint_arvalid,
@@ -48,16 +49,6 @@ module CLINT(
   output [ 1:0] clint_bresp,
   output [ 3:0] clint_bid       // AXI4
 );
-
-  // ========== mtime 计时器 (64位，每周期+1) ==========
-  reg [63:0] mtime;
-
-  always @(posedge clk) begin
-    if (rst)
-      mtime <= 64'b0;
-    else
-      mtime <= mtime + 1;
-  end
 
   // ========== AXI4 读状态机 ==========
   localparam R_IDLE = 1'b0, R_WAIT = 1'b1;
