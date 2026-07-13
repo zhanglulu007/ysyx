@@ -236,14 +236,21 @@ module ICache #(
   reg [31:0] resp_data;
   reg [ 1:0] resp_resp;
   reg [ 3:0] resp_id;
+  reg [37:0] cpu_response;
 
   assign cpu_rvalid = !flush && (lookup_hit || refill_done || (state == IC_RESP));
-  assign cpu_rdata  = lookup_hit ? hit_word :
-                      refill_done ? refill_word_data : resp_data;
-  assign cpu_rresp  = lookup_hit ? 2'b00 :
-                      refill_done ? bus_rresp : resp_resp;
+  always @(*) begin
+    case ({lookup_hit, refill_done})
+      2'b10,
+      2'b11: cpu_response = {hit_word, 2'b00, req_arid};
+      2'b01: cpu_response = {refill_word_data, bus_rresp, req_arid};
+      default: cpu_response = {resp_data, resp_resp, resp_id};
+    endcase
+  end
+  assign cpu_rdata  = cpu_response[37:6];
+  assign cpu_rresp  = cpu_response[5:4];
   assign cpu_rlast  = 1'b1;    // CPU 侧始终单 beat 应答
-  assign cpu_rid    = (lookup_hit || refill_done) ? req_arid : resp_id;
+  assign cpu_rid    = cpu_response[3:0];
 
   // ===================================================================
   // 状态机

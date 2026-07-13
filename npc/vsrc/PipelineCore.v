@@ -72,10 +72,17 @@ module PipelineCore(
   wire [31:0] id_imm_u = {id_inst[31:12], 12'b0};
   wire [31:0] id_imm_j = {{11{id_inst[31]}}, id_inst[31], id_inst[19:12],
                            id_inst[20], id_inst[30:21], 1'b0};
-  wire [31:0] id_exec_imm = id_is_store ? id_imm_s :
-                            id_is_branch ? id_imm_b :
-                            id_is_jal ? id_imm_j :
-                            (id_is_lui || id_is_auipc) ? id_imm_u : id_imm_i;
+  reg [31:0] id_exec_imm;
+  always @(*) begin
+    case (id_op)
+      OP_STORE:  id_exec_imm = id_imm_s;
+      OP_BRANCH: id_exec_imm = id_imm_b;
+      OP_JAL:    id_exec_imm = id_imm_j;
+      OP_LUI,
+      OP_AUIPC:  id_exec_imm = id_imm_u;
+      default:   id_exec_imm = id_imm_i;
+    endcase
+  end
   wire [31:0] id_early_target = id_pc + (id_is_jal ? id_imm_j : id_imm_b);
 
   // ---------------- Compact pipeline state ----------------
@@ -172,14 +179,18 @@ module PipelineCore(
   wire [31:0] ex_mem_addr = ex_rs1 + ex_imm;
   wire [31:0] ex_jalr_target = (ex_rs1 + ex_imm) & ~32'h1;
   wire [31:0] ex_branch_target = ex_pc + ex_imm;
-  wire [31:0] ex_control_target = ex_is_jalr ? ex_jalr_target :
-                                  ex_is_ecall ? mtvec :
-                                  ex_is_mret ? mepc : ex_pc + 4;
   // Branch and JAL are predicted taken in ID. Only a not-taken branch needs correction.
   wire ex_redirect_kind = (ex_is_branch && !ex_branch_taken) || ex_is_jalr ||
                           ex_is_ecall || ex_is_mret || ex_is_fencei;
-  wire [31:0] ex_redirect_target = ex_is_branch ? ex_pc + 4 :
-                                   ex_is_fencei ? ex_pc + 4 : ex_control_target;
+  reg [31:0] ex_redirect_target;
+  always @(*) begin
+    case ({ex_is_branch, ex_is_jalr, ex_is_ecall, ex_is_mret, ex_is_fencei})
+      5'b01000: ex_redirect_target = ex_jalr_target;
+      5'b00100: ex_redirect_target = mtvec;
+      5'b00010: ex_redirect_target = mepc;
+      default:  ex_redirect_target = ex_pc + 4;
+    endcase
+  end
 
   wire [31:0] csr_rdata, mepc, mtvec;
   wire [63:0] core_time;
@@ -195,10 +206,16 @@ module PipelineCore(
     .mepc_out(mepc), .mtvec_out(mtvec), .mcycle_out(core_time)
   );
 
-  wire [31:0] ex_result = ex_is_csr ? csr_rdata :
-                          (ex_is_jal || ex_is_jalr) ? ex_pc + 4 :
-                          ex_is_lui ? ex_imm :
-                          ex_is_auipc ? ex_pc + ex_imm : ex_alu;
+  reg [31:0] ex_result;
+  always @(*) begin
+    case ({ex_is_csr, (ex_is_jal || ex_is_jalr), ex_is_lui, ex_is_auipc})
+      4'b1000: ex_result = csr_rdata;
+      4'b0100: ex_result = ex_pc + 4;
+      4'b0010: ex_result = ex_imm;
+      4'b0001: ex_result = ex_pc + ex_imm;
+      default: ex_result = ex_alu;
+    endcase
+  end
 
   // ---------------- LSU ----------------
   wire ls_is_mem = ls_is_load || ls_is_store;
@@ -249,12 +266,41 @@ module PipelineCore(
   wire rs1_ls_match = id_uses_rs1 && ls_valid && ls_reg_write && !id_rs1[4] && id_rs1[3:0] == ls_rd;
   wire rs2_ex_match = id_uses_rs2 && ex_valid && ex_reg_write && !id_rs2[4] && id_rs2[3:0] == ex_rd;
   wire rs2_ls_match = id_uses_rs2 && ls_valid && ls_reg_write && !id_rs2[4] && id_rs2[3:0] == ls_rd;
-  wire rs1_wait = rs1_ex_match ? !ex_fwd_ready : rs1_ls_match ? !ls_fwd_ready : 1'b0;
-  wire rs2_wait = rs2_ex_match ? !ex_fwd_ready : rs2_ls_match ? !ls_fwd_ready : 1'b0;
+  reg rs1_wait, rs2_wait;
   wire unresolved_raw = rs1_wait || rs2_wait;
   wire [31:0] ls_fwd_data = ls_is_load ? lsu_rdata : ls_value;
-  wire [31:0] id_rs1_value = rs1_ex_match ? ex_result : rs1_ls_match ? ls_fwd_data : rf_rs1;
-  wire [31:0] id_rs2_value = rs2_ex_match ? ex_result : rs2_ls_match ? ls_fwd_data : rf_rs2;
+  reg [31:0] id_rs1_value, id_rs2_value;
+  always @(*) begin
+    rs1_wait = 1'b0;
+    id_rs1_value = rf_rs1;
+    case ({rs1_ex_match, rs1_ls_match})
+      2'b01: begin
+        rs1_wait = !ls_fwd_ready;
+        id_rs1_value = ls_fwd_data;
+      end
+      2'b10,
+      2'b11: begin
+        rs1_wait = !ex_fwd_ready;
+        id_rs1_value = ex_result;
+      end
+      default: ;
+    endcase
+
+    rs2_wait = 1'b0;
+    id_rs2_value = rf_rs2;
+    case ({rs2_ex_match, rs2_ls_match})
+      2'b01: begin
+        rs2_wait = !ls_fwd_ready;
+        id_rs2_value = ls_fwd_data;
+      end
+      2'b10,
+      2'b11: begin
+        rs2_wait = !ex_fwd_ready;
+        id_rs2_value = ex_result;
+      end
+      default: ;
+    endcase
+  end
 
   wire serial_in_pipe = (ex_valid && (ex_is_csr || ex_is_ecall || ex_is_ebreak || ex_is_mret || ex_is_fencei)) ||
                         (ls_valid && (ls_is_csr || ls_is_ecall || ls_is_ebreak || ls_is_mret || ls_is_fencei));
@@ -421,10 +467,20 @@ module PipelineCore(
         if (ex_valid) begin
           ls_pc <= ex_pc;
           ls_value <= (ex_is_load || ex_is_store) ? ex_mem_addr : ex_result;
-          ls_aux <= ex_is_store ? ex_rs2 : ex_is_csr ? ex_csr_wdata :
-                    (ex_is_branch ? (ex_branch_taken ? ex_branch_target : ex_pc + 4) :
-                     ex_is_jal ? ex_pc + ex_imm : ex_is_jalr ? ex_jalr_target :
-                     ex_is_ecall ? mtvec : ex_is_mret ? mepc : 0);
+          case ({ex_is_store, ex_is_csr, ex_is_branch, ex_is_jal,
+                 ex_is_jalr, ex_is_ecall, ex_is_mret})
+            7'b1000000: ls_aux <= ex_rs2;
+            7'b0100000: ls_aux <= ex_csr_wdata;
+            7'b0010000: begin
+              if (ex_branch_taken) ls_aux <= ex_branch_target;
+              else ls_aux <= ex_pc + 4;
+            end
+            7'b0001000: ls_aux <= ex_pc + ex_imm;
+            7'b0000100: ls_aux <= ex_jalr_target;
+            7'b0000010: ls_aux <= mtvec;
+            7'b0000001: ls_aux <= mepc;
+            default:    ls_aux <= 32'b0;
+          endcase
           ls_rd <= ex_rd; ls_f3 <= ex_f3; ls_rs1_nonzero <= ex_rs1_nonzero;
           ls_reg_write <= ex_reg_write; ls_is_load <= ex_is_load; ls_is_store <= ex_is_store;
           ls_is_branch <= ex_is_branch; ls_is_jal <= ex_is_jal; ls_is_jalr <= ex_is_jalr;

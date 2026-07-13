@@ -24,12 +24,12 @@ module LSU(
   input [31:0] cpu_pc,        // 当前指令 PC (仅供 mtrace DPI 记录用, ENABLE_TRACE 时使用)
 
   // ===== AXI4 AR 通道 (读地址) =====
-  output        lsu_arvalid,
+  output reg    lsu_arvalid,
   input         lsu_arready,
-  output [31:0] lsu_araddr,
+  output reg [31:0] lsu_araddr,
   output [ 3:0] lsu_arid,     // AXI4: Transaction ID
   output [ 7:0] lsu_arlen,    // AXI4: Burst length
-  output [ 2:0] lsu_arsize,   // AXI4: Transfer size
+  output reg [ 2:0] lsu_arsize,   // AXI4: Transfer size
   output [ 1:0] lsu_arburst,  // AXI4: Burst type
 
   // ===== AXI4 R 通道 (读数据) =====
@@ -41,16 +41,16 @@ module LSU(
   input  [ 3:0] lsu_rid,      // AXI4: Transaction ID
 
   // ===== AXI4 AW 通道 (写地址) =====
-  output        lsu_awvalid,
+  output reg    lsu_awvalid,
   input         lsu_awready,
-  output [31:0] lsu_awaddr,
+  output reg [31:0] lsu_awaddr,
   output [ 3:0] lsu_awid,     // AXI4: Transaction ID
   output [ 7:0] lsu_awlen,    // AXI4: Burst length
-  output [ 2:0] lsu_awsize,   // AXI4: Transfer size
+  output reg [ 2:0] lsu_awsize,   // AXI4: Transfer size
   output [ 1:0] lsu_awburst,  // AXI4: Burst type
 
   // ===== AXI4 W 通道 (写数据) =====
-  output        lsu_wvalid,
+  output reg    lsu_wvalid,
   input         lsu_wready,
   output reg [31:0] lsu_wdata,
   output reg [ 3:0] lsu_wstrb,
@@ -120,35 +120,54 @@ module LSU(
   // word and select the requested lane locally below.
   wire flash_read = !mem_wen && (mem_addr[31:24] == 8'h30);
   wire latched_flash_read = !latched_wen && (latched_addr[31:24] == 8'h30);
-  wire [2:0] lsu_axi_size = ((lsu_state == L_IDLE) ? flash_read : latched_flash_read) ?
-                            3'b010 : {1'b0, funct3[1:0]};
+  // AR/AW/W outputs share one state decode. This keeps each state as one
+  // parallel selection point instead of rebuilding the same priority chain.
+  always @(*) begin
+    lsu_arvalid = 1'b0;
+    lsu_araddr = latched_flash_read ? {latched_addr[31:2], 2'b0} : latched_addr;
+    lsu_arsize = latched_flash_read ? 3'b010 : {1'b0, funct3[1:0]};
+    lsu_awvalid = 1'b0;
+    lsu_awaddr = latched_addr;
+    lsu_awsize = latched_flash_read ? 3'b010 : {1'b0, funct3[1:0]};
+    lsu_wvalid = 1'b0;
+    lsu_wdata = latched_wdata;
+    lsu_wstrb = latched_wstrb;
 
-  // AR 通道
-  assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
-                       (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
-  assign lsu_araddr = (lsu_state == L_IDLE) ?
-                      (flash_read ? {mem_addr[31:2], 2'b0} : mem_addr) :
-                      (latched_flash_read ? {latched_addr[31:2], 2'b0} : latched_addr);
+    case (lsu_state)
+      L_IDLE: begin
+        lsu_arvalid = mem_valid && !mem_wen && !rst;
+        if (flash_read) lsu_araddr = {mem_addr[31:2], 2'b0};
+        else lsu_araddr = mem_addr;
+        if (flash_read) lsu_arsize = 3'b010;
+        else lsu_arsize = {1'b0, funct3[1:0]};
+        lsu_awvalid = mem_valid && mem_wen && !rst;
+        lsu_awaddr = mem_addr;
+        if (flash_read) lsu_awsize = 3'b010;
+        else lsu_awsize = {1'b0, funct3[1:0]};
+        lsu_wvalid = mem_valid && mem_wen && !rst;
+        lsu_wdata = computed_wdata;
+        lsu_wstrb = computed_wstrb;
+      end
+      L_WAIT_AR: lsu_arvalid = 1'b1;
+      L_WAIT_AW_W: begin
+        lsu_awvalid = !aw_done;
+        lsu_wvalid = !w_done;
+      end
+      default: ;
+    endcase
+  end
+
   assign lsu_arid = 4'b0000;      // ID固定为0
   assign lsu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_arsize = lsu_axi_size; // 按 funct3 动态: 1/2/4字节
   assign lsu_arburst = 2'b01;     // INCR模式 (增量突发)
 
   // R 通道
   assign lsu_rready = (lsu_state == L_WAIT_R);
 
-  // AW 通道
-  assign lsu_awvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
-                       (lsu_state == L_WAIT_AW_W && !aw_done) ? 1'b1 : 1'b0;
-  assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
   assign lsu_awid = 4'b0000;      // ID固定为0
   assign lsu_awlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_awsize = lsu_axi_size; // 按 funct3 动态: 1/2/4字节
   assign lsu_awburst = 2'b01;     // INCR模式 (增量突发)
 
-  // W 通道
-  assign lsu_wvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
-                      (lsu_state == L_WAIT_AW_W && !w_done) ? 1'b1 : 1'b0;
   assign lsu_wlast = lsu_wvalid;  // 单次传输，wvalid时即为last beat
 
   // B 通道
@@ -221,17 +240,6 @@ module LSU(
         computed_wstrb = 4'b0000;
       end
     endcase
-  end
-
-  // 输出到 MEM 的最终 wdata/wstrb
-  always @(*) begin
-    if (lsu_state == L_IDLE) begin
-      lsu_wdata = computed_wdata;
-      lsu_wstrb = computed_wstrb;
-    end else begin
-      lsu_wdata = latched_wdata;
-      lsu_wstrb = latched_wstrb;
-    end
   end
 
   // ===================================================================
