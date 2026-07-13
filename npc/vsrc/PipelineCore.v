@@ -137,7 +137,10 @@ module PipelineCore(
         3'b010: ex_alu = {31'b0, $signed(ex_rs1) < $signed(ex_rs2)};
         3'b011: ex_alu = {31'b0, ex_rs1 < ex_rs2};
         3'b100: ex_alu = ex_rs1 ^ ex_rs2;
-        3'b101: ex_alu = ex_f7_bit5 ? $signed(ex_rs1) >>> ex_rs2[4:0] : ex_rs1 >> ex_rs2[4:0];
+        3'b101: begin
+          if (ex_f7_bit5) ex_alu = $signed(ex_rs1) >>> ex_rs2[4:0];
+          else ex_alu = ex_rs1 >> ex_rs2[4:0];
+        end
         3'b110: ex_alu = ex_rs1 | ex_rs2;
         3'b111: ex_alu = ex_rs1 & ex_rs2;
       endcase
@@ -148,7 +151,10 @@ module PipelineCore(
         3'b010: ex_alu = {31'b0, $signed(ex_rs1) < $signed(ex_imm)};
         3'b011: ex_alu = {31'b0, ex_rs1 < ex_imm};
         3'b100: ex_alu = ex_rs1 ^ ex_imm;
-        3'b101: ex_alu = ex_f7_bit5 ? $signed(ex_rs1) >>> ex_imm[4:0] : ex_rs1 >> ex_imm[4:0];
+        3'b101: begin
+          if (ex_f7_bit5) ex_alu = $signed(ex_rs1) >>> ex_imm[4:0];
+          else ex_alu = ex_rs1 >> ex_imm[4:0];
+        end
         3'b110: ex_alu = ex_rs1 | ex_imm;
         3'b111: ex_alu = ex_rs1 & ex_imm;
       endcase
