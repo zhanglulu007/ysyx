@@ -63,15 +63,7 @@ module PipelineCore(
                      id_is_branch || id_is_jalr || id_is_csr;
   wire id_uses_rs2 = id_is_rtype || id_is_store || id_is_branch;
   wire id_exception = id_valid && (id_is_ecall || id_is_ebreak || !id_known);
-  reg [3:0] id_excause;
-  always @(*) begin
-    case ({id_is_ecall, id_is_ebreak})
-      2'b10,
-      2'b11: id_excause = 4'd11;
-      2'b01: id_excause = 4'd3;
-      default: id_excause = 4'd2;
-    endcase
-  end
+  wire [3:0] id_excause = id_is_ecall ? 4'd11 : id_is_ebreak ? 4'd3 : 4'd2;
 
   wire [31:0] id_imm_i = {{20{id_inst[31]}}, id_inst[31:20]};
   wire [31:0] id_imm_s = {{20{id_inst[31]}}, id_inst[31:25], id_inst[11:7]};
@@ -125,19 +117,9 @@ module PipelineCore(
   wire [31:0] rf_rs1, rf_rs2, a0_value;
   wire ls_retire = ls_valid && ls_done;
   wire ls_commit_exception = ls_exception || ls_misaligned || (ls_is_mem && lsu_fault_rise);
-  reg [3:0] ls_commit_excause;
-  always @(*) begin
-    case ({ls_exception, ls_misaligned, ls_is_load})
-      3'b100,
-      3'b101,
-      3'b110,
-      3'b111: ls_commit_excause = ls_excause;
-      3'b011: ls_commit_excause = 4'd4;
-      3'b010: ls_commit_excause = 4'd6;
-      3'b001: ls_commit_excause = 4'd5;
-      default: ls_commit_excause = 4'd7;
-    endcase
-  end
+  wire [3:0] ls_commit_excause = ls_exception ? ls_excause : ls_misaligned ?
+                                   (ls_is_load ? 4'd4 : 4'd6) :
+                                   (ls_is_load ? 4'd5 : 4'd7);
   wire [31:0] ls_commit_data = ls_is_load ? lsu_rdata : ls_value;
   wire ls_reg_wen = ls_retire && ls_reg_write && !ls_commit_exception;
   RegisterFile u_rf(
