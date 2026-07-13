@@ -89,7 +89,7 @@ module ICache #(
     input [INDEX_BITS-1:0] set;
     input [WAY_BITS-1:0]   way;
     begin
-      flat_idx = set * WAYS + way;
+      flat_idx = set * WAYS + {{32-WAY_BITS{1'b0}}, way};
     end
   endfunction
 
@@ -114,10 +114,19 @@ module ICache #(
   wire [INDEX_BITS-1:0] req_index_raw;
   assign req_index_raw = req_addr[OFFSET_BITS + INDEX_BITS - 1 : OFFSET_BITS];
 
+  // 对于 2 次幂 NR_SETS, req_index_raw 位宽恰好覆盖 0..NR_SETS-1, 无需 wrap.
+  // 对于非 2 次幂 NR_SETS, req_index_raw 可能 >= NR_SETS, 需要 wrap 到 [0, NR_SETS-1].
   wire [INDEX_BITS-1:0] req_index;
-  assign req_index = (req_index_raw >= INDEX_BITS'(NR_SETS))
-                     ? (req_index_raw - INDEX_BITS'(NR_SETS))
-                     : req_index_raw;
+  localparam NR_SETS_IS_POW2 = (NR_SETS & (NR_SETS - 1)) == 0;
+  generate
+    if (NR_SETS_IS_POW2) begin : g_idx
+      assign req_index = req_index_raw;
+    end else begin : g_idx
+      assign req_index = (req_index_raw >= INDEX_BITS'(NR_SETS))
+                         ? (req_index_raw - INDEX_BITS'(NR_SETS))
+                         : req_index_raw;
+    end
+  endgenerate
 
   wire [OFFSET_BITS-1:0]   req_offset   = req_addr[OFFSET_BITS-1:0];
   wire [TAG_BITS-1:0]      req_tag      = req_addr[ADDR_WIDTH-1 : OFFSET_BITS + INDEX_BITS];
