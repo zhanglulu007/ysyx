@@ -79,7 +79,7 @@ module PipelineCore(
   wire [31:0] id_early_target = id_pc + (id_is_jal ? id_imm_j : id_imm_b);
 
   // ---------------- Compact pipeline state ----------------
-  reg ex_valid, ls_valid, wb_valid;
+  reg ex_valid, ls_valid;
   reg [31:0] ex_pc, ex_rs1, ex_rs2, ex_imm;
   reg [11:0] ex_csr_addr;
   reg [3:0] ex_rd;
@@ -101,27 +101,23 @@ module PipelineCore(
   reg ls_branch_taken, ls_exception;
   reg [3:0] ls_excause;
 
-  reg [31:0] wb_pc, wb_data, wb_aux;
-  reg [11:0] wb_csr_addr;
-  reg [3:0] wb_rd;
-  reg [2:0] wb_f3;
-  reg wb_rs1_nonzero, wb_reg_write, wb_is_load, wb_is_store, wb_is_branch;
-  reg wb_is_jal, wb_is_jalr, wb_is_csr, wb_is_ecall, wb_is_ebreak;
-  reg wb_is_mret, wb_is_fencei, wb_is_calc, wb_is_utype;
-  reg wb_branch_taken, wb_exception;
-  reg [3:0] wb_excause;
   reg prev_lsu_fault;
 
 `ifndef SYNTHESIS
-  reg [31:0] ex_inst_dbg, ls_inst_dbg, wb_inst_dbg;
-  reg [31:0] wb_mem_addr_dbg, wb_next_pc_dbg;
+  reg [31:0] ex_inst_dbg, ls_inst_dbg;
 `endif
 
   // ---------------- Register file and forwarding ----------------
   wire [31:0] rf_rs1, rf_rs2, a0_value;
-  wire wb_reg_wen = wb_valid && wb_reg_write && !wb_exception;
+  wire ls_retire = ls_valid && ls_done;
+  wire ls_commit_exception = ls_exception || ls_misaligned || (ls_is_mem && lsu_fault_rise);
+  wire [3:0] ls_commit_excause = ls_exception ? ls_excause : ls_misaligned ?
+                                   (ls_is_load ? 4'd4 : 4'd6) :
+                                   (ls_is_load ? 4'd5 : 4'd7);
+  wire [31:0] ls_commit_data = ls_is_load ? lsu_rdata : ls_value;
+  wire ls_reg_wen = ls_retire && ls_reg_write && !ls_commit_exception;
   RegisterFile u_rf(
-    .clk(clk), .wdata(wb_data), .waddr({1'b0, wb_rd}), .wen(wb_reg_wen),
+    .clk(clk), .wdata(ls_commit_data), .waddr({1'b0, ls_rd}), .wen(ls_reg_wen),
     .raddr1(id_rs1), .rdata1(rf_rs1), .raddr2(id_rs2), .rdata2(rf_rs2),
     .a0_value(a0_value)
   );
@@ -189,14 +185,14 @@ module PipelineCore(
   wire [31:0] csr_rdata, mepc, mtvec;
   wire [63:0] core_time;
   wire [31:0] ex_csr_wdata = ex_f3 == 3'b001 ? ex_rs1 : csr_rdata | ex_rs1;
-  wire wb_csr_wen = wb_valid && wb_is_csr && !wb_exception &&
-                    (wb_f3 == 3'b001 || wb_rs1_nonzero);
+  wire ls_csr_wen = ls_retire && ls_is_csr && !ls_commit_exception &&
+                    (ls_f3 == 3'b001 || ls_rs1_nonzero);
   CSR u_csr(
-    .clk(clk), .rst(rst), .csr_addr(wb_valid && wb_is_csr ? wb_csr_addr : ex_csr_addr),
-    .csr_wdata(wb_aux), .csr_wen(wb_csr_wen), .csr_rdata(csr_rdata),
-    .exception_en(wb_valid && wb_exception),
-    .exception_pc(wb_pc), .exception_cause({28'b0, wb_excause}),
-    .mret_en(wb_valid && wb_is_mret),
+    .clk(clk), .rst(rst), .csr_addr(ls_retire && ls_is_csr ? ls_csr_addr : ex_csr_addr),
+    .csr_wdata(ls_aux), .csr_wen(ls_csr_wen), .csr_rdata(csr_rdata),
+    .exception_en(ls_retire && ls_commit_exception),
+    .exception_pc(ls_pc), .exception_cause({28'b0, ls_commit_excause}),
+    .mret_en(ls_retire && ls_is_mret),
     .mepc_out(mepc), .mtvec_out(mtvec), .mcycle_out(core_time)
   );
 
@@ -252,23 +248,18 @@ module PipelineCore(
   wire ls_fwd_ready = ls_valid && ls_reg_write && (!ls_is_load || lsu_r_hs);
   wire rs1_ex_match = id_uses_rs1 && ex_valid && ex_reg_write && !id_rs1[4] && id_rs1[3:0] == ex_rd;
   wire rs1_ls_match = id_uses_rs1 && ls_valid && ls_reg_write && !id_rs1[4] && id_rs1[3:0] == ls_rd;
-  wire rs1_wb_match = id_uses_rs1 && wb_valid && wb_reg_write && !id_rs1[4] && id_rs1[3:0] == wb_rd;
   wire rs2_ex_match = id_uses_rs2 && ex_valid && ex_reg_write && !id_rs2[4] && id_rs2[3:0] == ex_rd;
   wire rs2_ls_match = id_uses_rs2 && ls_valid && ls_reg_write && !id_rs2[4] && id_rs2[3:0] == ls_rd;
-  wire rs2_wb_match = id_uses_rs2 && wb_valid && wb_reg_write && !id_rs2[4] && id_rs2[3:0] == wb_rd;
   wire rs1_wait = rs1_ex_match ? !ex_fwd_ready : rs1_ls_match ? !ls_fwd_ready : 1'b0;
   wire rs2_wait = rs2_ex_match ? !ex_fwd_ready : rs2_ls_match ? !ls_fwd_ready : 1'b0;
   wire unresolved_raw = rs1_wait || rs2_wait;
   wire [31:0] ls_fwd_data = ls_is_load ? lsu_rdata : ls_value;
-  wire [31:0] id_rs1_value = rs1_ex_match ? ex_result : rs1_ls_match ? ls_fwd_data :
-                              rs1_wb_match ? wb_data : rf_rs1;
-  wire [31:0] id_rs2_value = rs2_ex_match ? ex_result : rs2_ls_match ? ls_fwd_data :
-                              rs2_wb_match ? wb_data : rf_rs2;
+  wire [31:0] id_rs1_value = rs1_ex_match ? ex_result : rs1_ls_match ? ls_fwd_data : rf_rs1;
+  wire [31:0] id_rs2_value = rs2_ex_match ? ex_result : rs2_ls_match ? ls_fwd_data : rf_rs2;
 
   wire serial_in_pipe = (ex_valid && (ex_is_csr || ex_is_ecall || ex_is_ebreak || ex_is_mret || ex_is_fencei)) ||
-                        (ls_valid && (ls_is_csr || ls_is_ecall || ls_is_ebreak || ls_is_mret || ls_is_fencei)) ||
-                        (wb_valid && (wb_is_csr || wb_is_ecall || wb_is_ebreak || wb_is_mret || wb_is_fencei));
-  wire serial_hazard = (id_is_serial && (ex_valid || ls_valid || wb_valid)) || serial_in_pipe;
+                        (ls_valid && (ls_is_csr || ls_is_ecall || ls_is_ebreak || ls_is_mret || ls_is_fencei));
+  wire serial_hazard = (id_is_serial && (ex_valid || ls_valid)) || serial_in_pipe;
   wire id_hazard = id_valid && (unresolved_raw || serial_hazard);
   wire id_issue = id_valid && !id_hazard && ex_ready;
   wire id_ready = !id_valid || id_issue;
@@ -381,7 +372,8 @@ module PipelineCore(
   localparam F_REQ = 1'b0, F_WAIT = 1'b1;
   reg fetch_state, fetch_discard;
   reg [31:0] fetch_pc, requested_pc;
-  wire fetch_flush = ex_redirect || id_early_redirect || (wb_valid && wb_exception);
+  wire exception_redirect = ls_retire && ls_commit_exception;
+  wire fetch_flush = ex_redirect || id_early_redirect || exception_redirect;
   assign if_arvalid = !rst && !fetch_flush && !fetch_discard && id_ready && fetch_state == F_REQ;
   assign if_araddr = fetch_pc;
   assign if_arid = 0;
@@ -397,16 +389,18 @@ module PipelineCore(
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
   import "DPI-C" function void difftest_skip_ref();
-  wire wb_peripheral_dbg = (wb_is_load || wb_is_store) &&
-    ((wb_mem_addr_dbg >= 32'h02000000 && wb_mem_addr_dbg < 32'h02010000) ||
-     (wb_mem_addr_dbg >= 32'h10000000 && wb_mem_addr_dbg < 32'h10020000) ||
-     (wb_mem_addr_dbg >= 32'h21000000 && wb_mem_addr_dbg < 32'h21200000));
+  wire ls_peripheral_dbg = ls_is_mem &&
+    ((ls_value >= 32'h02000000 && ls_value < 32'h02010000) ||
+     (ls_value >= 32'h10000000 && ls_value < 32'h10020000) ||
+     (ls_value >= 32'h21000000 && ls_value < 32'h21200000));
+  wire [31:0] ls_next_pc_dbg = (ls_is_branch || ls_is_jal || ls_is_jalr ||
+                                ls_is_ecall || ls_is_mret) ? ls_aux : ls_pc + 4;
 `endif
 
   always @(posedge clk) begin
     if (rst) begin
-      id_valid <= 0; ex_valid <= 0; ls_valid <= 0; wb_valid <= 0;
-      ex_exception <= 0; ls_exception <= 0; wb_exception <= 0;
+      id_valid <= 0; ex_valid <= 0; ls_valid <= 0;
+      ex_exception <= 0; ls_exception <= 0;
       prev_lsu_fault <= 0;
       fetch_state <= F_REQ; fetch_discard <= 0;
 `ifdef SOC_MODE
@@ -423,33 +417,6 @@ module PipelineCore(
 `endif
 `endif
     end else begin
-      wb_valid <= ls_valid && ls_done;
-      if (ls_valid && ls_done) begin
-        wb_pc <= ls_pc;
-        wb_data <= ls_is_load ? lsu_rdata : ls_value;
-        wb_aux <= ls_aux;
-        wb_csr_addr <= ls_csr_addr;
-        wb_rd <= ls_rd; wb_f3 <= ls_f3;
-        wb_rs1_nonzero <= ls_rs1_nonzero;
-        wb_reg_write <= ls_reg_write;
-        wb_is_load <= ls_is_load; wb_is_store <= ls_is_store; wb_is_branch <= ls_is_branch;
-        wb_is_jal <= ls_is_jal; wb_is_jalr <= ls_is_jalr; wb_is_csr <= ls_is_csr;
-        wb_is_ecall <= ls_is_ecall; wb_is_ebreak <= ls_is_ebreak; wb_is_mret <= ls_is_mret;
-        wb_is_fencei <= ls_is_fencei; wb_is_calc <= ls_is_calc; wb_is_utype <= ls_is_utype;
-        wb_branch_taken <= ls_branch_taken;
-        wb_exception <= ls_exception || ls_misaligned || (ls_is_mem && lsu_fault_rise);
-        wb_excause <= ls_exception ? ls_excause : ls_misaligned ?
-                      (ls_is_load ? 4'd4 : 4'd6) : (ls_is_load ? 4'd5 : 4'd7);
-`ifndef SYNTHESIS
-        wb_inst_dbg <= ls_inst_dbg;
-        wb_mem_addr_dbg <= ls_value;
-        wb_next_pc_dbg <= (ls_is_branch || ls_is_jal || ls_is_jalr || ls_is_ecall || ls_is_mret) ?
-                          ls_aux : ls_pc + 4;
-`endif
-      end else begin
-        wb_exception <= 0;
-      end
-
       if (ls_ready) begin
         ls_valid <= ex_valid;
         if (ex_valid) begin
@@ -513,8 +480,8 @@ module PipelineCore(
         id_valid <= 0;
       end
 
-      if (wb_valid && wb_exception) begin
-        id_valid <= 0; ex_valid <= 0; ls_valid <= 0;
+      if (exception_redirect) begin
+        id_valid <= 0; ex_valid <= 0;
         fetch_pc <= mtvec;
         if (fetch_state == F_WAIT) fetch_discard <= 1;
       end
@@ -539,14 +506,14 @@ module PipelineCore(
       end
 
 `ifndef SYNTHESIS
-      if (wb_valid) begin
-        commit_instruction(wb_pc, wb_inst_dbg, wb_next_pc_dbg);
-        if (wb_peripheral_dbg) difftest_skip_ref();
-        if (wb_is_ebreak) ebreak_handler(a0_value);
-        if (wb_is_jal && wb_rd == 1) ftrace_call_handler(wb_pc, wb_next_pc_dbg);
-        if (wb_is_jalr && wb_rd == 1) ftrace_call_handler(wb_pc, wb_next_pc_dbg);
-        if (wb_is_jalr && wb_rd == 0 && wb_inst_dbg[19:15] == 1)
-          ftrace_ret_handler(wb_pc, wb_next_pc_dbg);
+      if (ls_retire) begin
+        commit_instruction(ls_pc, ls_inst_dbg, ls_next_pc_dbg);
+        if (ls_peripheral_dbg) difftest_skip_ref();
+        if (ls_is_ebreak) ebreak_handler(a0_value);
+        if (ls_is_jal && ls_rd == 1) ftrace_call_handler(ls_pc, ls_next_pc_dbg);
+        if (ls_is_jalr && ls_rd == 1) ftrace_call_handler(ls_pc, ls_next_pc_dbg);
+        if (ls_is_jalr && ls_rd == 0 && ls_inst_dbg[19:15] == 1)
+          ftrace_ret_handler(ls_pc, ls_next_pc_dbg);
       end
 `endif
     end
@@ -559,7 +526,7 @@ module PipelineCore(
 
 `ifdef ENABLE_PERF
   PerfCounter u_perf(
-    .clk(clk), .rst(rst), .pipe_retire(wb_valid),
+    .clk(clk), .rst(rst), .pipe_retire(ls_retire),
     .pipe_stall_raw(stall_raw), .pipe_stall_lsu(stall_lsu),
     .pipe_stall_fetch(stall_fetch), .pipe_flush(pipe_flush),
     .pipe_id_valid(id_valid), .pipe_ex_valid(ex_valid), .pipe_ls_valid(ls_valid),
@@ -567,14 +534,14 @@ module PipelineCore(
     .icache_uncache(icache_uncache), .icache_refill_req(icache_refill_req),
     .icache_refill_req_pulse(icache_refill_req_pulse), .icache_wait_ar(icache_wait_ar),
     .icache_wait_r(icache_wait_r), .lsu_r_handshake(lsu_r_hs), .lsu_b_handshake(lsu_b_hs),
-    .wb_is_calc(wb_is_calc), .wb_is_load(wb_is_load), .wb_is_store(wb_is_store),
-    .wb_is_branch(wb_is_branch), .wb_is_jump(wb_is_jal || wb_is_jalr),
-    .wb_is_utype(wb_is_utype), .wb_is_csr_op(wb_is_csr),
-    .wb_is_sys_op(wb_is_ecall || wb_is_ebreak || wb_is_mret || wb_is_fencei),
-    .pipe_branch_taken(wb_valid && wb_is_branch && wb_branch_taken),
+    .wb_is_calc(ls_is_calc), .wb_is_load(ls_is_load), .wb_is_store(ls_is_store),
+    .wb_is_branch(ls_is_branch), .wb_is_jump(ls_is_jal || ls_is_jalr),
+    .wb_is_utype(ls_is_utype), .wb_is_csr_op(ls_is_csr),
+    .wb_is_sys_op(ls_is_ecall || ls_is_ebreak || ls_is_mret || ls_is_fencei),
+    .pipe_branch_taken(ls_retire && ls_is_branch && ls_branch_taken),
     .pipe_branch_predict_resolved(ex_advance && ex_is_branch),
     .pipe_branch_predict_correct(ex_advance && ex_is_branch && ex_branch_taken),
-    .pipe_reg_wen(wb_reg_wen), .pipe_exception(wb_valid && wb_exception)
+    .pipe_reg_wen(ls_reg_wen), .pipe_exception(ls_retire && ls_commit_exception)
   );
 `endif
 
