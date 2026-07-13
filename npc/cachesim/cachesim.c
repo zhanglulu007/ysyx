@@ -216,18 +216,14 @@ static void parse_args(int argc, char *argv[], cache_config_t *cfg) {
     /* 派生字段 */
     cfg->offset_bits = log2_exact(cfg->block_size, "block");
     cfg->num_beats   = cfg->block_size / cfg->bus_width;
+    log2_exact(cfg->total_blocks, "total");  /* 仅校验 */
     if (cfg->total_blocks % cfg->ways != 0) {
         fprintf(stderr, "cachesim: --total(%d) 必须是 --ways(%d) 的整数倍\n", cfg->total_blocks, cfg->ways);
         exit(1);
     }
     cfg->num_sets = cfg->total_blocks / cfg->ways;
-    /* 允许非 2 次幂 num_sets: index_bits 存 log2 (用于报告),
-     * 实际 index 提取在 cache_access 中统一用 div/mod 计算 */
-    if ((cfg->num_sets & (cfg->num_sets - 1)) == 0)
-        cfg->index_bits = log2_exact(cfg->num_sets, "total/ways");
-    else
-        cfg->index_bits = -1;  /* 标记: 非 2 次幂, 用 mod/div */
-    cfg->tag_bits = (cfg->index_bits >= 0) ? (32 - cfg->offset_bits - cfg->index_bits) : 0;
+    cfg->index_bits = log2_exact(cfg->num_sets, "total/ways");
+    cfg->tag_bits = 32 - cfg->offset_bits - cfg->index_bits;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -299,17 +295,8 @@ static int cache_access(const cache_config_t *cfg, uint32_t addr) {
 
     uint32_t offset = addr & ((1u << cfg->offset_bits) - 1);
     (void)offset;  /* 模拟缺失次数不需要 offset */
-    uint32_t index, tag;
-    uint32_t block_addr = addr >> cfg->offset_bits;
-    if (cfg->index_bits >= 0) {
-        /* 2 的幂: 用位操作 (快速路径) */
-        index = block_addr & ((1u << cfg->index_bits) - 1);
-        tag   = addr >> (cfg->offset_bits + cfg->index_bits);
-    } else {
-        /* 非 2 的幂: 用 div/mod */
-        index = block_addr % cfg->num_sets;
-        tag   = block_addr / cfg->num_sets;
-    }
+    uint32_t index = (addr >> cfg->offset_bits) & ((1u << cfg->index_bits) - 1);
+    uint32_t tag   = addr >> (cfg->offset_bits + cfg->index_bits);
 
     cache_line_t *set = &cache[index * cfg->ways];
 
@@ -470,12 +457,8 @@ int main(int argc, char *argv[]) {
     printf("               块大小=%dB | 总线位宽=%dB | 块数=%d | 总容量=%dB | 替换=%s\n",
            cfg.block_size, cfg.bus_width, cfg.total_blocks,
            cfg.block_size * cfg.total_blocks, rep_str);
-    if (cfg.index_bits >= 0)
-        printf("               地址划分: tag=%d | index=%d | offset=%d (位)\n",
-               cfg.tag_bits, cfg.index_bits, cfg.offset_bits);
-    else
-        printf("               地址划分: tag/组号 混合 (num_sets=%d, 非2次幂) | offset=%d (位)\n",
-               cfg.num_sets, cfg.offset_bits);
+    printf("               地址划分: tag=%d | index=%d | offset=%d (位)\n",
+           cfg.tag_bits, cfg.index_bits, cfg.offset_bits);
     if (cfg.filter_uncache) {
         printf("               地址过滤: ON (仅 [%s]xxx_xxxx 可缓存, 其余不可缓存)\n", region_desc);
     } else {
