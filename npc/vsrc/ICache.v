@@ -1,6 +1,6 @@
 module ICache #(
-  parameter BLOCK_SIZE   = 8,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
-  parameter NR_CACHE_BLK = 16     // 缓存块数, 默认 4
+  parameter BLOCK_SIZE   = 16,   // 块大小 (字节), 默认 16B (= 4×总线位宽)
+  parameter NR_CACHE_BLK = 8     // 缓存块数, 默认 4
 )(
   input clk,
   input rst,
