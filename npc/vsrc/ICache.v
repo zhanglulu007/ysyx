@@ -1,6 +1,6 @@
 module ICache #(
-  parameter BLOCK_SIZE   = 16,      // 块大小 (字节)
-  parameter NR_CACHE_BLK = 8,     // 缓存块总数
+  parameter BLOCK_SIZE   = 8,      // 块大小 (字节)
+  parameter NR_CACHE_BLK = 12,     // 缓存块总数
   parameter WAYS          = 2      // 组相联路数 (1=直接映射)
 )(
   input clk,
