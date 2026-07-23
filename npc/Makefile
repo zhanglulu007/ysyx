@@ -65,13 +65,23 @@ TRACE   ?= 0
 PERF    ?= 0
 FFLASH  ?= 0
 DIFFTEST ?= 0
+SOC ?= 1
+RTL_STANDALONE ?= 0
+RTL_OLD ?= 0
+
+RTL_STANDALONE_DIR := $(abspath rtl-standalone)
+RTL_OLD_DIR := $(abspath rtl-old)
 
 # DIFFTEST=1: 自动选择对应的 NEMU REF .so 并构建
 # 用户可显式指定 DIFFTEST_SO 覆盖自动选择 (e.g. make run DIFFTEST=1 DIFFTEST_SO=/path/to/ref.so)
 NEMU_HOME ?= $(abspath ../nemu)
 ifeq ($(DIFFTEST), 1)
   ifndef DIFFTEST_SO
-    ifeq ($(SOC), 1)
+    ifeq ($(RTL_OLD), 1)
+      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
+    else ifeq ($(RTL_STANDALONE), 1)
+      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
+    else ifeq ($(SOC), 1)
       DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
     else
       DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
@@ -147,8 +157,6 @@ ELF   ?=
 BATCH ?= -b
 CXXFLAGS += -O3 -march=native
 
-SOC ?= 1
-
 # ysyxSoC paths
 YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
 YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
@@ -195,21 +203,33 @@ endif
 $(shell mkdir -p $(BUILD_DIR))
 
 # 打印当前功能开关状态
+ifeq ($(RTL_OLD),1)
 show-config:
-	@echo "SOC=$(SOC)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST=$(DIFFTEST)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
+	$(call RUN_RTL_OLD,show-config)
+else ifeq ($(RTL_STANDALONE),1)
+show-config:
+	$(call RUN_RTL_STANDALONE,show-config)
+else
+show-config:
+	@echo "SOC=$(SOC)  RTL_STANDALONE=$(RTL_STANDALONE)  RTL_OLD=$(RTL_OLD)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST=$(DIFFTEST)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
 	@echo "TOP_CLASS=$(TOP_CLASS)  CSRCS_DIR=$(CSRCS_DIR)"
 	@echo "Usage examples:"
 	@echo "  === 仿真环境 (SOC 开关) ==="
 	@echo "  make run SOC=1 PROG=...             # SoC 模式 (riscv32-ysyxsoc, 默认)"
 	@echo "  make run SOC=0 PROG=...             # 独立 NPC 模式 (riscv32e-npc, 快速功能测试)"
+	@echo "  make run RTL_STANDALONE=1 PROG=...  # 运行 rtl-standalone 子项目"
+	@echo "  make run RTL_OLD=1 PROG=...         # 运行 rtl-old 子项目"
 	@echo "  make run-soc PROG=...               # 同上, 显式指定 SoC"
 	@echo "  make run-npc PROG=...               # 同上, 显式指定独立 NPC"
+	@echo "  make run-rtl-standalone PROG=...    # 同上, 显式运行 rtl-standalone"
+	@echo "  make run-rtl-old PROG=...           # 同上, 显式运行 rtl-old"
 	@echo "  === 功能开关 ==="
 	@echo "  make build                          # 只编译 (全关, 最快)"
 	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
 	@echo "  make build FST=1                    # 开波形"
 	@echo "  make run PROG=... DIFFTEST=1        # 开启 Difftest (自动选择对应 REF .so)"
 	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (仅 SoC 模式)"
+endif
 
 define VERILATE_CMD
 	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
@@ -228,6 +248,24 @@ define VERILATE_CMD
 	--Mdir $(OBJ_DIR)
 endef
 
+define RUN_RTL_STANDALONE
+	$(MAKE) -C $(RTL_STANDALONE_DIR) $(1) \
+	  FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) \
+	  $(if $(filter command line,$(origin DIFFTEST_SO)),DIFFTEST_SO=$(DIFFTEST_SO)) \
+	  PROG=$(abspath $(PROG)) \
+	  $(if $(ELF),ELF=$(abspath $(ELF))) \
+	  BATCH="$(BATCH)"
+endef
+
+define RUN_RTL_OLD
+	$(MAKE) -C $(RTL_OLD_DIR) $(1) \
+	  FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) \
+	  $(if $(filter command line,$(origin DIFFTEST_SO)),DIFFTEST_SO=$(DIFFTEST_SO)) \
+	  PROG=$(abspath $(PROG)) \
+	  $(if $(ELF),ELF=$(abspath $(ELF))) \
+	  BATCH="$(BATCH)"
+endef
+
 # 编译 char-test: 用 riscv gcc 生成 ELF, 再 objcopy 抽取代码节为 binary
 char-test: test/char-test.c
 	riscv64-linux-gnu-gcc -O2 -march=rv32e_zicsr -mabi=ilp32e \
@@ -238,6 +276,19 @@ char-test: test/char-test.c
 	@echo "Built test/char-test.bin"
 
 # 只编译不运行
+ifeq ($(RTL_OLD),1)
+build:
+	$(call RUN_RTL_OLD,build)
+
+run:
+	$(call RUN_RTL_OLD,run)
+else ifeq ($(RTL_STANDALONE),1)
+build:
+	$(call RUN_RTL_STANDALONE,build)
+
+run:
+	$(call RUN_RTL_STANDALONE,run)
+else
 build: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF) DIFFTEST=$(DIFFTEST)] --------"
@@ -262,18 +313,43 @@ run: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@echo "Running: $(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
 	@$(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 	@echo "-- DONE --------------------"
+endif
 
 run-soc:
-	$(MAKE) run SOC=1
+	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=0
 
 run-npc:
-	$(MAKE) run SOC=0
+	$(MAKE) run SOC=0 RTL_STANDALONE=0 RTL_OLD=0
+
+run-rtl-standalone:
+	$(MAKE) run RTL_STANDALONE=1 RTL_OLD=0
+
+run-rtl-old:
+	$(MAKE) run RTL_STANDALONE=0 RTL_OLD=1
 
 build-soc:
-	$(MAKE) build SOC=1
+	$(MAKE) build SOC=1 RTL_STANDALONE=0 RTL_OLD=0
 
 build-npc:
-	$(MAKE) build SOC=0
+	$(MAKE) build SOC=0 RTL_STANDALONE=0 RTL_OLD=0
+
+build-rtl-standalone:
+	$(MAKE) build RTL_STANDALONE=1 RTL_OLD=0
+
+build-rtl-old:
+	$(MAKE) build RTL_STANDALONE=0 RTL_OLD=1
+
+lint-rtl-standalone:
+	$(MAKE) -C $(RTL_STANDALONE_DIR) lint
+
+clean-rtl-standalone:
+	$(MAKE) -C $(RTL_STANDALONE_DIR) clean
+
+lint-rtl-old:
+	$(MAKE) -C $(RTL_OLD_DIR) lint
+
+clean-rtl-old:
+	$(MAKE) -C $(RTL_OLD_DIR) clean
 
 # 构建 NEMU REF .so (供 difftest 使用)
 difftest-so:
@@ -286,4 +362,7 @@ $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
 $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
 	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
 
-.PHONY: build sim run run-soc run-npc build-soc build-npc clean char-test difftest-so
+.PHONY: build sim run run-soc run-npc run-rtl-standalone run-rtl-old \
+	build-soc build-npc build-rtl-standalone build-rtl-old \
+	lint-rtl-standalone lint-rtl-old clean-rtl-standalone clean-rtl-old \
+	clean char-test difftest-so
