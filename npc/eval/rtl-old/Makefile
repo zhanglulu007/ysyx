@@ -10,16 +10,16 @@ override CLK_PORT_NAME := clk
 override DEFINES := SYNTHESIS
 
 RTL_FILES := $(PROJ_PATH)/RTLOld_Synth.v \
-             $(RTL_DIR)/top.v \
-             $(RTL_DIR)/IFU.v \
+             $(PROJ_PATH)/IFU_Synth.v \
              $(RTL_DIR)/IDU.v \
-             $(RTL_DIR)/RegisterFile.v \
+             $(PROJ_PATH)/RegisterFile_Synth.v \
              $(RTL_DIR)/EXU.v \
              $(RTL_DIR)/CSR.v \
              $(RTL_DIR)/LSU.v \
-             $(RTL_DIR)/WBU.v
+             $(RTL_DIR)/WBU.v \
+             $(RTL_DIR)/AXIArbiter.v
 
-SDC_FILE ?= $(PROJ_PATH)/rtl-old.sdc
+SDC_FILE ?= $(YOSYS_STA_HOME)/scripts/default.sdc
 RESULT_DIR := $(PROJ_PATH)/result/$(DESIGN)-$(CLK_FREQ_MHZ)MHz
 NETLIST := $(RESULT_DIR)/$(DESIGN).netlist.v
 TIMING_RPT := $(RESULT_DIR)/$(DESIGN).rpt

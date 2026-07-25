@@ -47,7 +47,6 @@ VERILATOR_FLAGS := \
   --top-module $(TOP) \
   --x-assign fast --x-initial fast \
   --timescale "1ns/1ns" --no-timing --autoflush \
-  -Wno-fatal
 
 EXTRA_CFLAGS :=
 VERILATOR_TRACE_FLAGS :=
@@ -95,7 +94,7 @@ show-config:
 	@echo "PROG=$(PROG_ABS) ELF=$(ELF_ABS)"
 
 lint:
-	$(VERILATOR) --lint-only --top-module $(TOP) -Wall -Wno-fatal $(RTL_SRCS)
+	$(VERILATOR) --lint-only --top-module $(TOP) -Wall  $(RTL_SRCS)
 
 build:
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)

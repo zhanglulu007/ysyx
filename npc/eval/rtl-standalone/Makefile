@@ -10,6 +10,7 @@ TIMING_RPT := $(RESULT_DIR)/$(DESIGN).rpt
 AREA_RPT   := $(RESULT_DIR)/synth_stat.txt
 DESIGN := top
 RTL_FILES := $(NPC_VSRC)/top.v \
+             $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/IFU.v \
              $(NPC_VSRC)/IDU.v \
              $(NPC_VSRC)/RegisterFile.v \

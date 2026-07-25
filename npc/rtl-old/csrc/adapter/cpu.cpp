@@ -73,7 +73,7 @@ void reset_cpu() {
 }
 
 void exec_once() {
-    const uint32_t current_pc = top->pc;
+    const uint32_t current_pc = npc_get_pc();
 
     eval_half_cycle(0);
     eval_half_cycle(1);
@@ -81,12 +81,16 @@ void exec_once() {
     device_update();
 
 #ifdef ENABLE_TRACE
-    ftrace_flush(print_itrace);
-    itrace_log(current_pc, top->inst, print_itrace);
-    mtrace_flush(print_itrace);
+    if (top->insdone_out) {
+        ftrace_flush(print_itrace);
+        itrace_log(npc_get_pc(), npc_get_inst(), print_itrace);
+        mtrace_flush(print_itrace);
+    }
 #endif
 
-    difftest_step(current_pc, top->pc);    
+    if (top->insdone_out) {
+        difftest_step(current_pc, npc_get_pc());
+    }
 }
 
 void set_itrace_print(bool enable) {

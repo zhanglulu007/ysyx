@@ -165,7 +165,7 @@ YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
 ifeq ($(SOC),1)
   # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
   CSRCS_DIR := csrc
-  VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE -Wno-UNOPTFLAT
+  VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE #-Wno-UNOPTFLAT
   VERILATOR_FLAGS += --x-assign fast --x-initial fast \
   							--timescale "1ns/1ns" \
 		    					--no-timing \

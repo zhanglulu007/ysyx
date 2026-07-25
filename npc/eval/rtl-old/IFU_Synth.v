@@ -32,7 +32,7 @@ module IFU(
   output load_wb,              // -> top: load 写回触发
   output [4:0] load_rd,         // -> top: load 目的寄存器
 
-  output insdone
+  output reg insdone
 );
 
   wire insdone_comb;
@@ -48,10 +48,6 @@ module IFU(
     else
         insdone <= insdone_comb;
   end
-
-  // DPI-C函数：通知C++侧
-  import "DPI-C" function void update_pc_value(input int pc_val);
-  import "DPI-C" function void update_inst_value(input int pc_val, input int inst_val);
 
   localparam IDLE = 1'b0 , WAIT = 1'b1;
 
@@ -75,7 +71,6 @@ module IFU(
       is_load_pending <= 1'b0;
       load_rd_saved   <= 5'b0;
       pc              <= 32'h80000000;
-      update_pc_value(32'h80000000);
     end else begin
       case (state)
         IDLE: begin
@@ -89,13 +84,11 @@ module IFU(
           if (lsu_pending) begin
             if (lsu_rvalid || lsu_bvalid) begin
                 pc               <= pc_next;
-                update_pc_value(pc_next);
                 state            <= IDLE;
                 lsu_pending      <= 1'b0;
                 is_load_pending  <= 1'b0;
             end
           end else if (ifu_rvalid && ifu_rready) begin
-            update_inst_value(pc, ifu_rdata);
             if (mem_valid) begin
               // Load 或 Store: 需要等待 LSU 完成
               lsu_pending     <= 1'b1;
@@ -104,7 +97,6 @@ module IFU(
             end else begin
               // 非访存指令: 本周期完成执行, 写回寄存器 (由 top.v 处理)
               pc               <= pc_next;
-              update_pc_value(pc_next);
               state            <= IDLE;
             end
           end

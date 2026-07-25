@@ -4,7 +4,8 @@ module top(
   input [31:0] imem_rdata,
 
   output [31:0] pc,
-  output [31:0] inst
+  output [31:0] inst,
+  output [31:0] imem_addr
 );
 
   // ========== 模块间连接信号 ==========
@@ -49,6 +50,8 @@ module top(
   wire is_csr = is_csrrw || is_csrrs;
   // IDU输出 - 控制信号
   wire reg_wen, mem_valid, mem_wen;
+  wire reg_wen_commit = reg_wen && commit;
+  wire csr_wen_commit = csr_wen && commit;
   
   // RegisterFile输出
   wire [31:0] rs1_data, rs2_data;
@@ -60,17 +63,11 @@ module top(
   wire [31:0] branch_target;
   wire branch_taken;
   
-  // LSU输出
-  wire [31:0] mem_rdata;
-  
   // WBU输出
   wire [31:0] rd_data;
   wire [31:0] pc_next;
   
   // 访存地址计算
-  wire [31:0] mem_addr; // LSU计算的访存地址
-  wire [31:0] mem_wdata;
-  wire [7:0] mem_wmask;
   wire [31:0] addr = op_store ? (rs1_data + imm_s) : (rs1_data + imm_i);
   wire [31:0] rdata; 
 
@@ -80,7 +77,126 @@ module top(
   wire op_store;
   wire is_jump;
   wire [31:0] mepc, mtvec, csr_rdata;
-  wire [31:0] csr_wdata = is_csrrw ? rs1_data : (rs1_data | csr_rdata); 
+  wire [31:0] csr_wdata = is_csrrw ? rs1_data : (rs1_data | csr_rdata);
+
+  wire lsu_arvalid;
+  wire lsu_arready;
+  wire [31:0] lsu_araddr;
+  wire [3:0] lsu_arid;
+  wire [7:0] lsu_arlen;
+  wire [2:0] lsu_arsize;
+  wire [1:0] lsu_arburst;
+  wire lsu_rvalid;
+  wire lsu_rready;
+  wire [1:0] lsu_rresp;
+  wire [31:0] lsu_rdata;
+  wire lsu_rlast;
+  wire [3:0] lsu_rid;
+  wire lsu_awvalid;
+  wire lsu_awready;
+  wire [31:0] lsu_awaddr;
+  wire [3:0] lsu_awid;
+  wire [7:0] lsu_awlen;
+  wire [2:0] lsu_awsize;
+  wire [1:0] lsu_awburst;
+  wire lsu_wvalid;
+  wire lsu_wready;
+  wire [31:0] lsu_wdata;
+  wire [3:0] lsu_wstrb;
+  wire lsu_wlast;
+  wire lsu_bvalid;
+  wire lsu_bready;
+  wire [1:0] lsu_bresp;
+  wire [3:0] lsu_bid;
+  wire lsu_done;
+
+  wire ifu_arvalid;
+  wire ifu_arready;
+  wire [31:0] ifu_araddr;
+  wire [3:0] ifu_arid;
+  wire [7:0] ifu_arlen;
+  wire [2:0] ifu_arsize;
+  wire [1:0] ifu_arburst;
+  wire ifu_rvalid;
+  wire ifu_rready;
+  wire [1:0] ifu_rresp;
+  wire [31:0] ifu_rdata;
+  wire ifu_rlast;
+  wire [3:0] ifu_rid;
+  wire ifu_valid;
+
+  wire mem_arvalid;
+  wire mem_arready;
+  wire [31:0] mem_araddr;
+  wire [3:0] mem_arid;
+  wire [7:0] mem_arlen;
+  wire [2:0] mem_arsize;
+  wire [1:0] mem_arburst;
+  wire mem_rvalid;
+  wire mem_rready;
+  wire [1:0] mem_rresp;
+  wire [31:0] mem_rdata;
+  wire mem_rlast;
+  wire [3:0] mem_rid;
+  wire mem_awvalid;
+  wire mem_awready;
+  wire [31:0] mem_awaddr;
+  wire [3:0] mem_awid;
+  wire [7:0] mem_awlen;
+  wire [2:0] mem_awsize;
+  wire [1:0] mem_awburst;
+  wire mem_wvalid;
+  wire mem_wready;
+  wire [31:0] mem_wdata;
+  wire [3:0] mem_wstrb;
+  wire mem_wlast;
+  wire mem_bvalid;
+  wire mem_bready;
+  wire [1:0] mem_bresp;
+  wire [3:0] mem_bid;
+
+  wire commit = ifu_valid && (!mem_valid || lsu_done);
+
+  assign imem_addr = ifu_araddr;
+
+`ifdef SYNTHESIS
+  reg synth_rvalid;
+  reg [3:0] synth_rid;
+  reg [31:0] synth_rdata;
+
+  assign mem_arready = !synth_rvalid || mem_rready;
+  assign mem_rvalid = synth_rvalid;
+  assign mem_rresp = 2'b00;
+  assign mem_rdata = synth_rdata;
+  assign mem_rlast = 1'b1;
+  assign mem_rid = synth_rid;
+  assign mem_awready = 1'b1;
+  assign mem_wready = 1'b1;
+  assign mem_bvalid = 1'b1;
+  assign mem_bresp = 2'b00;
+  assign mem_bid = 4'b0010;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      synth_rvalid <= 1'b0;
+      synth_rid <= 4'b0;
+      synth_rdata <= 32'b0;
+    end else begin
+      if (mem_rvalid && mem_rready) begin
+        synth_rvalid <= 1'b0;
+      end
+      if (mem_arvalid && mem_arready) begin
+        synth_rvalid <= 1'b1;
+        synth_rid <= mem_arid;
+        if (mem_arid == 4'b0001) begin
+          synth_rdata <= imem_rdata;
+        end else begin
+          synth_rdata <= 32'b0;
+        end
+      end
+    end
+  end
+`endif
 
   // ========== 模块实例化 ==========
   
@@ -88,16 +204,30 @@ module top(
   IFU u_ifu(
     .clk(clk),
     .rst(rst),
+    .commit(commit),
     .pc_next(pc_next),
-    .imem_rdata(imem_rdata),
+    .ifu_arvalid(ifu_arvalid),
+    .ifu_arready(ifu_arready),
+    .ifu_araddr(ifu_araddr),
+    .ifu_arid(ifu_arid),
+    .ifu_arlen(ifu_arlen),
+    .ifu_arsize(ifu_arsize),
+    .ifu_arburst(ifu_arburst),
+    .ifu_rvalid(ifu_rvalid),
+    .ifu_rready(ifu_rready),
+    .ifu_rresp(ifu_rresp),
+    .ifu_rdata(ifu_rdata),
+    .ifu_rlast(ifu_rlast),
+    .ifu_rid(ifu_rid),
     .pc(pc),
-    .inst(inst)
+    .inst(inst),
+    .ifu_valid(ifu_valid)
   );
   
   // IDU - 译码单元
   IDU u_idu(
     .inst(inst),
-    .ifu_valid(!rst),
+    .ifu_valid(ifu_valid),
     .opcode(opcode),
     .rd(rd),
     .rs1(rs1),
@@ -181,7 +311,7 @@ module top(
     .rst(rst),
     .waddr(rd),
     .wdata(rd_data),
-    .wen(reg_wen),
+    .wen(reg_wen_commit),
     .raddr1(rs1),
     .rdata1(rs1_data),
     .raddr2(rs2),
@@ -256,25 +386,151 @@ module top(
     .is_sh(is_sh),
     .is_sw(is_sw),
     // 地址和数据
-    .mem_rdata(mem_rdata),
-    .addr(addr), 
+    .lsu_arvalid(lsu_arvalid),
+    .lsu_arready(lsu_arready),
+    .lsu_araddr(lsu_araddr),
+    .lsu_arid(lsu_arid),
+    .lsu_arlen(lsu_arlen),
+    .lsu_arsize(lsu_arsize),
+    .lsu_arburst(lsu_arburst),
+    .lsu_rvalid(lsu_rvalid),
+    .lsu_rready(lsu_rready),
+    .lsu_rresp(lsu_rresp),
+    .lsu_rdata(lsu_rdata),
+    .lsu_rlast(lsu_rlast),
+    .lsu_rid(lsu_rid),
+    .lsu_awvalid(lsu_awvalid),
+    .lsu_awready(lsu_awready),
+    .lsu_awaddr(lsu_awaddr),
+    .lsu_awid(lsu_awid),
+    .lsu_awlen(lsu_awlen),
+    .lsu_awsize(lsu_awsize),
+    .lsu_awburst(lsu_awburst),
+    .lsu_wvalid(lsu_wvalid),
+    .lsu_wready(lsu_wready),
+    .lsu_wdata(lsu_wdata),
+    .lsu_wstrb(lsu_wstrb),
+    .lsu_wlast(lsu_wlast),
+    .lsu_bvalid(lsu_bvalid),
+    .lsu_bready(lsu_bready),
+    .lsu_bresp(lsu_bresp),
+    .lsu_bid(lsu_bid),
+    .addr(addr),
     .wdata(rs2_data),
-    .mem_addr(mem_addr),
+    .rdata(rdata),
+    .lsu_done(lsu_done)
+  );
+
+  // Arbiter - IFU/LSU AXI请求仲裁
+  Arbiter u_arbiter(
+    .clk(clk),
+    .rst(rst),
+    .ifu_arvalid(ifu_arvalid),
+    .ifu_arready(ifu_arready),
+    .ifu_araddr(ifu_araddr),
+    .ifu_arid(ifu_arid),
+    .ifu_arlen(ifu_arlen),
+    .ifu_arsize(ifu_arsize),
+    .ifu_arburst(ifu_arburst),
+    .ifu_rvalid(ifu_rvalid),
+    .ifu_rready(ifu_rready),
+    .ifu_rresp(ifu_rresp),
+    .ifu_rdata(ifu_rdata),
+    .ifu_rlast(ifu_rlast),
+    .ifu_rid(ifu_rid),
+    .lsu_arvalid(lsu_arvalid),
+    .lsu_arready(lsu_arready),
+    .lsu_araddr(lsu_araddr),
+    .lsu_arid(lsu_arid),
+    .lsu_arlen(lsu_arlen),
+    .lsu_arsize(lsu_arsize),
+    .lsu_arburst(lsu_arburst),
+    .lsu_rvalid(lsu_rvalid),
+    .lsu_rready(lsu_rready),
+    .lsu_rresp(lsu_rresp),
+    .lsu_rdata(lsu_rdata),
+    .lsu_rlast(lsu_rlast),
+    .lsu_rid(lsu_rid),
+    .lsu_awvalid(lsu_awvalid),
+    .lsu_awready(lsu_awready),
+    .lsu_awaddr(lsu_awaddr),
+    .lsu_awid(lsu_awid),
+    .lsu_awlen(lsu_awlen),
+    .lsu_awsize(lsu_awsize),
+    .lsu_awburst(lsu_awburst),
+    .lsu_wvalid(lsu_wvalid),
+    .lsu_wready(lsu_wready),
+    .lsu_wdata(lsu_wdata),
+    .lsu_wstrb(lsu_wstrb),
+    .lsu_wlast(lsu_wlast),
+    .lsu_bvalid(lsu_bvalid),
+    .lsu_bready(lsu_bready),
+    .lsu_bresp(lsu_bresp),
+    .lsu_bid(lsu_bid),
+    .mem_arvalid(mem_arvalid),
+    .mem_arready(mem_arready),
+    .mem_araddr(mem_araddr),
+    .mem_arid(mem_arid),
+    .mem_arlen(mem_arlen),
+    .mem_arsize(mem_arsize),
+    .mem_arburst(mem_arburst),
+    .mem_rvalid(mem_rvalid),
+    .mem_rready(mem_rready),
+    .mem_rresp(mem_rresp),
+    .mem_rdata(mem_rdata),
+    .mem_rlast(mem_rlast),
+    .mem_rid(mem_rid),
+    .mem_awvalid(mem_awvalid),
+    .mem_awready(mem_awready),
+    .mem_awaddr(mem_awaddr),
+    .mem_awid(mem_awid),
+    .mem_awlen(mem_awlen),
+    .mem_awsize(mem_awsize),
+    .mem_awburst(mem_awburst),
+    .mem_wvalid(mem_wvalid),
+    .mem_wready(mem_wready),
     .mem_wdata(mem_wdata),
-    .mem_wmask(mem_wmask),
-    .rdata(rdata)
+    .mem_wstrb(mem_wstrb),
+    .mem_wlast(mem_wlast),
+    .mem_bvalid(mem_bvalid),
+    .mem_bready(mem_bready),
+    .mem_bresp(mem_bresp),
+    .mem_bid(mem_bid)
   );
 
 `ifndef SYNTHESIS
   PMEM u_pmem(
     .clk(clk),
     .rst(rst),
-    .mem_valid(mem_valid),
-    .mem_wen(mem_wen),
-    .mem_addr(mem_addr),
+    .mem_arvalid(mem_arvalid),
+    .mem_arready(mem_arready),
+    .mem_araddr(mem_araddr),
+    .mem_arid(mem_arid),
+    .mem_arlen(mem_arlen),
+    .mem_arsize(mem_arsize),
+    .mem_arburst(mem_arburst),
+    .mem_rvalid(mem_rvalid),
+    .mem_rready(mem_rready),
+    .mem_rresp(mem_rresp),
+    .mem_rdata(mem_rdata),
+    .mem_rlast(mem_rlast),
+    .mem_rid(mem_rid),
+    .mem_awvalid(mem_awvalid),
+    .mem_awready(mem_awready),
+    .mem_awaddr(mem_awaddr),
+    .mem_awid(mem_awid),
+    .mem_awlen(mem_awlen),
+    .mem_awsize(mem_awsize),
+    .mem_awburst(mem_awburst),
+    .mem_wvalid(mem_wvalid),
+    .mem_wready(mem_wready),
     .mem_wdata(mem_wdata),
-    .mem_wmask(mem_wmask),
-    .mem_rdata(mem_rdata)
+    .mem_wstrb(mem_wstrb),
+    .mem_wlast(mem_wlast),
+    .mem_bvalid(mem_bvalid),
+    .mem_bready(mem_bready),
+    .mem_bresp(mem_bresp),
+    .mem_bid(mem_bid)
   );
 `endif
 
@@ -284,7 +540,7 @@ module top(
     .rst(rst),
     .csr_addr(imm_i[11:0]),
     .csr_wdata(csr_wdata),
-    .csr_wen(csr_wen),
+    .csr_wen(csr_wen_commit),
     .csr_rdata(csr_rdata),
     .is_ecall(is_ecall),
     .pc(pc),

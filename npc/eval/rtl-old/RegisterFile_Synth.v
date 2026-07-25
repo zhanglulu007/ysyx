@@ -15,16 +15,11 @@ module RegisterFile(
   
   reg [31:0] rf [16:0];
   
-  // DPI-C导入函数：通知C++侧寄存器更新
-  import "DPI-C" function void update_reg_value(input int idx, input int value);
-  
   // 写操作 - 时序逻辑
   always @(posedge clk) begin
     if (wen && waddr != 5'b0) begin
       // x0寄存器恒为0，不可写
       rf[waddr] <= wdata;
-      // 通知C++侧更新（扩展到32位）
-      update_reg_value({27'b0, waddr}, wdata);
     end
   end
   

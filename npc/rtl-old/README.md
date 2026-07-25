@@ -1,22 +1,23 @@
 # rtl-old standalone simulator
 
 This project preserves the NPC RTL from Git commit
-`3af90a428bc25436f7be5992ed78bcf21d582184` and runs it with the current
+`7e02b8139d72d16b2edb135dbabba19b4a646c80` and runs it with the current
 `npc/csrc_standalone` Verilator environment.
 
-This revision includes the commit's CSR implementation and its
-`ecall`/`mret` exception path, including `mtvec`, `mepc`, and `mcause`.
+This revision is the AXI4-Lite multi-cycle NPC with IFU/LSU arbitration,
+address routing through Xbar, and the UART and MEM slave modules.
 
 The functional RTL is copied into `vsrc/`. The original top-level source is
 also retained as `vsrc/source-snapshot/top.v.bak`. Local changes are limited to
 the integration boundary:
 
-- expose `pc` and `inst` to the current C++ simulation adapter;
-- use direct DPI-C instruction and data memory during simulation;
-- expose only `imem_addr` and `imem_rdata` when `SYNTHESIS` is defined;
-- remove DPI-C calls and tie load data to zero during synthesis.
+- use the RTL's `insdone_out` signal to advance trace and difftest;
+- read PC and instruction values from the RTL's DPI-C update callbacks;
+- match the commit's two-argument ftrace return hook.
 
-There is no synthesized `PMEM` instance and no `dmem_*` top-level interface.
+The restored `MEM` keeps the original AXI4-Lite handshake state machine, but
+its LFSR-based random request and response delays are removed so simulation is
+deterministic.
 
 ## Commands
 

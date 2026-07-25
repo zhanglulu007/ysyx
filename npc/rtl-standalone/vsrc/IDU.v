@@ -90,7 +90,7 @@ module IDU(
   assign is_jump = is_jal || is_jalr;
 
   assign is_ebreak = (inst == 32'h00100073);
-  assign is_ecall = (inst == 32'h00000073);
+  assign is_ecall = ifu_valid && inst == 32'h00000073;
   assign is_mret = (inst == 32'h30200073);
   assign is_fencei = op_fence && (funct3 == 3'b001);
   assign is_csrrw = op_system && (funct3 == 3'b001);
