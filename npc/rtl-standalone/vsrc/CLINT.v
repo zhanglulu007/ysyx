@@ -1,7 +1,6 @@
 module CLINT(
   input clk,
   input rst,
-  input [63:0] mtime,
 
   // AXI4 AR
   input clint_arvalid,
@@ -43,14 +42,14 @@ module CLINT(
   output [3:0] clint_bid
 );
 
-  localparam IDLE = 1'b0;
-  localparam WAIT = 1'b1;
+  localparam IDLE = 1'b0, WAIT = 1'b1;
+
+  reg [63:0] mtime;
 
   reg read_state;
   reg write_state;
   reg aw_done;
   reg w_done;
-  reg [31:0] rdata_reg;
   reg [3:0] rid_reg;
   reg [3:0] bid_reg;
 
@@ -67,7 +66,7 @@ module CLINT(
   assign clint_arready = !rst && (read_state == IDLE);
   assign clint_rvalid = !rst && (read_state == WAIT);
   assign clint_rresp = 2'b00;
-  assign clint_rdata = rdata_reg;
+  assign clint_rdata = is_mtime_lo ? mtime[31:0] : mtime[63:32];
   assign clint_rlast = clint_rvalid;
   assign clint_rid = rid_reg;
 
@@ -79,22 +78,24 @@ module CLINT(
 
   always @(posedge clk) begin
     if (rst) begin
+      mtime <= 64'b0;
+    end else begin
+      mtime <= mtime + 1'b1;
+    end
+  end
+
+  always @(posedge clk) begin
+    if (rst) begin
       read_state <= IDLE;
       write_state <= IDLE;
       aw_done <= 1'b0;
       w_done <= 1'b0;
-      rdata_reg <= 32'b0;
       rid_reg <= 4'b0;
       bid_reg <= 4'b0;
     end else begin
       case (read_state)
         IDLE: begin
           if (ar_fire) begin
-            case (1'b1)
-              is_mtime_lo: rdata_reg <= mtime[31:0];
-              is_mtime_hi: rdata_reg <= mtime[63:32];
-              default: rdata_reg <= 32'b0;
-            endcase
             rid_reg <= clint_arid;
             read_state <= WAIT;
           end

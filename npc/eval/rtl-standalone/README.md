@@ -1,11 +1,11 @@
 # rtl-standalone synthesis evaluation
 
-This project synthesizes the copied single-cycle RV32E core in
+This project evaluates the current multi-cycle AXI4 core in
 `../../rtl-standalone/vsrc` with the repository's existing `yosys-sta` flow.
-`RTLStandalone_Synth.v` is the evaluation wrapper. Instruction memory is an
-external interface and is not counted in the core area.
-The DPI-C `PMEM` module is not read or instantiated by the synthesis flow;
-the synthesis top has no data-memory interface and ties load data to zero.
+`RTLStandalone_Synth.v` is the synthesis boundary. The current `top` is read
+with `SYNTHESIS`, so the simulation-only DPI-C `PMEM` and trace callbacks are
+excluded while the internal AXI request/response logic remains in the area
+and timing scope.
 
 ```bash
 make check
@@ -14,12 +14,10 @@ make sta
 make sta CLK_FREQ_MHZ=800
 ```
 
-`check` only parses and elaborates the RTL. `synth` performs technology-mapped
-synthesis and produces the area report. `sta` additionally runs timing and
-power analysis. Results are written under
+`check` parses and elaborates the complete current hierarchy. `synth` performs
+technology-mapped synthesis and produces the area report. `sta` additionally
+runs timing and power analysis. Results are written under
 `result/RTLStandalone_Synth-<frequency>MHz/`.
 
-The local `rtl-standalone.sdc` constrains the external instruction-memory ports
-with input and output delays equal to 20% of the clock period. Override
-it with `SDC_FILE=/path/to/design.sdc` when evaluating a concrete memory
-interface.
+The default clock constraint is supplied by `yosys-sta`. Override it with
+`SDC_FILE=/path/to/design.sdc` when evaluating a concrete interface.

@@ -25,6 +25,7 @@ module LSU(
   output        lsu_arvalid,
   input         lsu_arready,
   output [31:0] lsu_araddr,
+  output [2:0] lsu_arsize,
 
   // ===== AXI4-Lite R 通道 (读数据) =====
   input         lsu_rvalid,
@@ -36,6 +37,7 @@ module LSU(
   output        lsu_awvalid,
   input         lsu_awready,
   output [31:0] lsu_awaddr,
+  output [2:0] lsu_awsize,
 
   // ===== AXI4-Lite W 通道 (写数据) =====
   output        lsu_wvalid,
@@ -77,6 +79,7 @@ module LSU(
 
   wire [1:0] mem_offset;
   assign mem_offset = mem_addr[1:0];
+  wire [2:0] active_funct3 = (lsu_state == L_IDLE) ? funct3 : saved_funct3;
 
   // ===================================================================
   // AXI4-Lite 输出信号
@@ -85,7 +88,10 @@ module LSU(
   assign lsu_arvalid = (lsu_state == L_IDLE) ? (mem_valid && !mem_wen && !rst) :
                        (lsu_state == L_WAIT_AR) ? 1'b1 : 1'b0;
 
-  assign lsu_araddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+  wire [31:0] active_addr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+
+  assign lsu_araddr = active_addr;
+  assign lsu_arsize = {1'b0, active_funct3[1:0]};
 
   assign lsu_rready = (lsu_state == L_WAIT_R);
 
@@ -93,6 +99,7 @@ module LSU(
                        (lsu_state == L_WAIT_AW_W && !aw_done) ? 1'b1 : 1'b0;
 
   assign lsu_awaddr = (lsu_state == L_IDLE) ? mem_addr : latched_addr;
+  assign lsu_awsize = {1'b0, active_funct3[1:0]};
 
   assign lsu_wvalid = (lsu_state == L_IDLE) ? (mem_valid && mem_wen && !rst) :
                       (lsu_state == L_WAIT_AW_W && !w_done) ? 1'b1 : 1'b0;
@@ -185,10 +192,10 @@ module LSU(
             latched_wen   <= mem_wen;
             latched_wdata <= computed_wdata;
             latched_wstrb <= computed_wstrb;
+            saved_funct3  <= funct3;
 
             if (!mem_wen) begin
               // ===== 读操作 (AR → R) =====
-              saved_funct3     <= funct3;
               saved_mem_offset <= mem_offset;
 
               if (lsu_arready) begin

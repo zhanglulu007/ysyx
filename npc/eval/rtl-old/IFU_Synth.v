@@ -14,6 +14,7 @@ module IFU(
   input  ifu_arready,          
   output ifu_arvalid,          
   output [31:0] ifu_araddr,    
+  output [2:0] ifu_arsize,
 
   // ===== AXI4-Lite R 通道 (读数据) =====
   input  ifu_rvalid,           
@@ -57,6 +58,7 @@ module IFU(
   reg [4:0] load_rd_saved;  // load 指令的目的寄存器
 
   assign ifu_araddr = pc;
+  assign ifu_arsize = 3'b010;
   assign ifu_arvalid = (state == IDLE) && !rst;
   assign ifu_rready = (state == WAIT) && !lsu_pending && !rst;
   assign ifu_valid = (state == WAIT) && ifu_rvalid && ifu_rready && !lsu_pending && !rst;

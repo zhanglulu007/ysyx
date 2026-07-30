@@ -188,7 +188,7 @@ module top(
   wire [1:0] clint_bresp;
   wire [3:0] clint_bid;
 
-  reg [63:0] core_time;
+
 
 `ifndef SOC_MODE
   wire mem_arvalid;
@@ -225,14 +225,6 @@ module top(
   wire commit = ifu_valid && (!mem_valid || lsu_done);
 
   assign imem_addr = ifu_araddr;
-
-  always @(posedge clk) begin
-    if (rst) begin
-      core_time <= 64'b0;
-    end else begin
-      core_time <= core_time + 1'b1;
-    end
-  end
 
 `ifndef SOC_MODE
 `ifdef SYNTHESIS
@@ -607,7 +599,6 @@ module top(
   CLINT u_clint(
     .clk(clk),
     .rst(rst),
-    .mtime(core_time),
     .clint_arvalid(clint_arvalid),
     .clint_arready(clint_arready),
     .clint_araddr(clint_araddr),

@@ -13,6 +13,7 @@ module RTLOld_Synth(
   output mem_arvalid,
   input mem_arready,
   output [31:0] mem_araddr,
+  output [2:0] mem_arsize,
 
   // AXI4-Lite R
   input mem_rvalid,
@@ -24,6 +25,7 @@ module RTLOld_Synth(
   output mem_awvalid,
   input mem_awready,
   output [31:0] mem_awaddr,
+  output [2:0] mem_awsize,
 
   // AXI4-Lite W
   output mem_wvalid,
@@ -125,6 +127,7 @@ module RTLOld_Synth(
   wire        ifu_arvalid;
   wire        ifu_arready;
   wire [31:0] ifu_araddr;
+  wire [ 2:0] ifu_arsize;
   wire        ifu_rvalid;
   wire        ifu_rready;
   wire [31:0] ifu_rdata;
@@ -135,6 +138,7 @@ module RTLOld_Synth(
   wire        lsu_arvalid;
   wire        lsu_arready;
   wire [31:0] lsu_araddr;
+  wire [ 2:0] lsu_arsize;
   // R
   wire        lsu_rvalid;
   wire        lsu_rready;
@@ -144,6 +148,7 @@ module RTLOld_Synth(
   wire        lsu_awvalid;
   wire        lsu_awready;
   wire [31:0] lsu_awaddr;
+  wire [ 2:0] lsu_awsize;
   // W
   wire        lsu_wvalid;
   wire        lsu_wready;
@@ -185,6 +190,7 @@ module RTLOld_Synth(
     .ifu_arready(ifu_arready),
     .ifu_arvalid(ifu_arvalid),
     .ifu_araddr(ifu_araddr),
+    .ifu_arsize(ifu_arsize),
     // AXI4-Lite R 通道 (连接 Arbiter)
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
@@ -373,6 +379,7 @@ module RTLOld_Synth(
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
+    .lsu_arsize(lsu_arsize),
     // AXI4-Lite R 通道 (连接 Arbiter)
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
@@ -382,6 +389,7 @@ module RTLOld_Synth(
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
+    .lsu_awsize(lsu_awsize),
     // AXI4-Lite W 通道 (连接 Arbiter)
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
@@ -403,6 +411,7 @@ module RTLOld_Synth(
     .ifu_arvalid(ifu_arvalid),
     .ifu_arready(ifu_arready),
     .ifu_araddr(ifu_araddr),
+    .ifu_arsize(ifu_arsize),
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
@@ -411,6 +420,7 @@ module RTLOld_Synth(
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
+    .lsu_arsize(lsu_arsize),
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
     .lsu_rdata(lsu_rdata),
@@ -418,6 +428,7 @@ module RTLOld_Synth(
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
+    .lsu_awsize(lsu_awsize),
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
     .lsu_wdata(lsu_wdata),
@@ -429,6 +440,7 @@ module RTLOld_Synth(
     .mem_arvalid(mem_arvalid),
     .mem_arready(mem_arready),
     .mem_araddr(mem_araddr),
+    .mem_arsize(mem_arsize),
     .mem_rvalid(mem_rvalid),
     .mem_rready(mem_rready),
     .mem_rdata(mem_rdata),
@@ -436,6 +448,7 @@ module RTLOld_Synth(
     .mem_awvalid(mem_awvalid),
     .mem_awready(mem_awready),
     .mem_awaddr(mem_awaddr),
+    .mem_awsize(mem_awsize),
     .mem_wvalid(mem_wvalid),
     .mem_wready(mem_wready),
     .mem_wdata(mem_wdata),

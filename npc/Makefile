@@ -223,6 +223,7 @@ show-config:
 	@echo "  make run-npc PROG=...               # 同上, 显式指定独立 NPC"
 	@echo "  make run-rtl-standalone PROG=...    # 同上, 显式运行 rtl-standalone"
 	@echo "  make run-rtl-old PROG=...           # 同上, 显式运行 rtl-old"
+	@echo "  make compare-rtl-soc PROG=...       # 同一 SoC 镜像对比 rtl-old/rtl-standalone"
 	@echo "  === 功能开关 ==="
 	@echo "  make build                          # 只编译 (全关, 最快)"
 	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
@@ -260,7 +261,8 @@ endef
 
 define RUN_RTL_OLD
 	$(MAKE) -C $(RTL_OLD_DIR) $(1) \
-	  FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) \
+	  SOC=$(if $(filter command line,$(origin SOC)),$(SOC),0) \
+	  FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH) DIFFTEST=$(DIFFTEST) \
 	  $(if $(filter command line,$(origin DIFFTEST_SO)),DIFFTEST_SO=$(DIFFTEST_SO)) \
 	  PROG=$(abspath $(PROG)) \
 	  $(if $(ELF),ELF=$(abspath $(ELF))) \
@@ -331,6 +333,9 @@ run-rtl-standalone-soc:
 run-rtl-old:
 	$(MAKE) run RTL_STANDALONE=0 RTL_OLD=1
 
+run-rtl-old-soc:
+	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=1
+
 build-soc:
 	$(MAKE) build SOC=1 RTL_STANDALONE=0 RTL_OLD=0
 
@@ -345,6 +350,13 @@ build-rtl-standalone-soc:
 
 build-rtl-old:
 	$(MAKE) build RTL_STANDALONE=0 RTL_OLD=1
+
+build-rtl-old-soc:
+	$(MAKE) build SOC=1 RTL_STANDALONE=0 RTL_OLD=1
+
+compare-rtl-soc:
+	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=1 PROG=$(PROG) $(if $(ELF),ELF=$(ELF))
+	$(MAKE) run SOC=1 RTL_STANDALONE=1 RTL_OLD=0 PROG=$(PROG) $(if $(ELF),ELF=$(ELF))
 
 lint-rtl-standalone:
 	$(MAKE) -C $(RTL_STANDALONE_DIR) lint
@@ -369,7 +381,8 @@ $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
 $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
 	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
 
-.PHONY: build sim run run-soc run-npc run-rtl-standalone run-rtl-standalone-soc run-rtl-old \
-	build-soc build-npc build-rtl-standalone build-rtl-standalone-soc build-rtl-old \
+.PHONY: build sim run run-soc run-npc run-rtl-standalone run-rtl-standalone-soc run-rtl-old run-rtl-old-soc \
+	build-soc build-npc build-rtl-standalone build-rtl-standalone-soc build-rtl-old build-rtl-old-soc \
+	compare-rtl-soc \
 	lint-rtl-standalone lint-rtl-old clean-rtl-standalone clean-rtl-old \
 	clean char-test difftest-so
