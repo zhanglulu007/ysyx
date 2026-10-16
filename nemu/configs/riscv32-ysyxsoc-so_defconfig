@@ -1,6 +1,6 @@
 CONFIG_ISA_riscv=y
 # CONFIG_RV64 is not set
-# CONFIG_RVE is not set
+CONFIG_RVE=y
 CONFIG_TARGET_SHARE=y
 CONFIG_CC_OPT="-O2"
 # CONFIG_TRACE is not set

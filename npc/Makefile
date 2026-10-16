@@ -1,17 +1,10 @@
-######################################################################
-#
-# DESCRIPTION: Verilator Example: Small Makefile
-#
-# This calls the object directory makefile.  That allows the objects to
-# be placed in the "current directory" which simplifies the Makefile.
-#
-# This file ONLY is placed under the Creative Commons Public Domain, for
-# any use, without warranty, 2020 by Wilson Snyder.
-# SPDX-License-Identifier: CC0-1.0
-#
-######################################################################
-# Check for sanity to avoid later confusion
-
+PROJECT_DIR := $(abspath $(CURDIR))
+WORKBENCH_ROOT := $(abspath $(PROJECT_DIR)/..)
+SRC_ROOT := $(PROJECT_DIR)/csrc
+NEMU_HOME ?= $(WORKBENCH_ROOT)/nemu
+YSYXSOC_ROOT ?= $(WORKBENCH_ROOT)/ysyxSoC
+YSYXSOC_BUILD := $(YSYXSOC_ROOT)/build
+YSYXSOC_PERIP := $(YSYXSOC_ROOT)/perip
 
 include ../Makefile
 
@@ -19,93 +12,123 @@ ifneq ($(words $(CURDIR)),1)
   $(error Unsupported: GNU Make cannot build in directories containing spaces, build elsewhere: '$(CURDIR)')
 endif
 
-######################################################################
-
-# This is intended to be a minimal example.  Before copying this to start a
-# real project, it is better to start with a more complete example,
-# e.g. examples/make_tracing_c.
-
-# If $VERILATOR_ROOT isn't in the environment, we assume it is part of a
-# package install, and verilator is in your path. Otherwise find the
-# binary relative to $VERILATOR_ROOT (such as when inside the git sources).
 ifeq ($(VERILATOR_ROOT),)
-  VERILATOR = verilator
+  VERILATOR := verilator
 else
   export VERILATOR_ROOT
-  VERILATOR = $(VERILATOR_ROOT)/bin/verilator
+  VERILATOR := $(VERILATOR_ROOT)/bin/verilator
 endif
 
-#default:
-#	@echo "-- Verilator hello-world simple example"
-#	@echo "-- VERILATE & BUILD --------"
-#	$(VERILATOR) -cc --exe --build -j top.v sim_main.cpp
-#	@echo "-- RUN ---------------------"
-#	obj_dir/Vtop
-#	@echo "-- DONE --------------------"
-#	@echo "Note: Once this example is understood, see examples/make_tracing_c."
-#	@echo "Note: See also https://verilator.org/guide/latest/examples.html"
-
-######################################################################
-
-maintainer-copy::
-clean mostlyclean distclean maintainer-clean::
-	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
-
-all:
-	@echo "Write this Makefile by your self."
-
-WAVE_DIR = wave
-WAVE_FILE = $(WAVE_DIR)/dump.fst
-
-BUILD_DIR = ./build
-OBJ_DIR = $(BUILD_DIR)/obj_dir
-
-FST     ?= 0
-TRACE   ?= 0
-PERF    ?= 0
-FFLASH  ?= 0
+SOC ?= 0
+FST ?= 0
+TRACE ?= 0
 DIFFTEST ?= 0
-SOC ?= 1
-RTL_STANDALONE ?= 0
-RTL_OLD ?= 0
+FFLASH  ?= 0
+NVBOARD ?= 0
+PERF    ?= 0
+F       ?= 0
 
-RTL_STANDALONE_DIR := $(abspath rtl-standalone)
-RTL_OLD_DIR := $(abspath rtl-old)
+BUILD_DIR := $(PROJECT_DIR)/build
+WAVE_DIR := $(PROJECT_DIR)/wave
+$(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
-# DIFFTEST=1: 自动选择对应的 NEMU REF .so 并构建
-# 用户可显式指定 DIFFTEST_SO 覆盖自动选择 (e.g. make run DIFFTEST=1 DIFFTEST_SO=/path/to/ref.so)
-NEMU_HOME ?= $(abspath ../nemu)
-ifeq ($(DIFFTEST), 1)
-  ifndef DIFFTEST_SO
-    ifeq ($(RTL_OLD), 1)
-      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
-    else ifeq ($(RTL_STANDALONE), 1)
-      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
-    else ifeq ($(SOC), 1)
-      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
-    else
-      DIFFTEST_SO := $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
-    endif
-  endif
+CORE_RTL_SRCS := $(sort \
+  $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
+  $(wildcard $(PROJECT_DIR)/vsrc/*.sv))
+SIM_SRCS := \
+  $(SRC_ROOT)/main.cpp \
+  $(wildcard $(SRC_ROOT)/core/*.cpp) \
+  $(wildcard $(SRC_ROOT)/sdb/*.cpp) \
+  $(wildcard $(SRC_ROOT)/utils/*.cpp) \
+  $(wildcard $(SRC_ROOT)/trace/*.cpp)
+
+EXTRA_CFLAGS :=
+VERILATOR_TRACE_FLAGS :=
+
+ifeq ($(SOC),1)
+  MODE := soc
+  TOP := ysyxSoCFull
+  TOP_CLASS := VysyxSoCFull
+  OBJ_DIR := $(BUILD_DIR)/obj_dir_soc
+  PROG ?= /dev/null
+  DIFFTEST_SO ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
+  SOC_RTL_SRCS := \
+    $(YSYXSOC_BUILD)/ysyxSoCFull.v \
+    $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/sdram/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/psram/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/vga/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/ps2/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/gpio/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/flash/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
+  RTL_SRCS := $(SOC_RTL_SRCS) $(CORE_RTL_SRCS)
+  EXTRA_CFLAGS += -DSOC_MODE
+  VERILATOR_MODE_FLAGS := \
+    -DSOC_MODE \
+    -I$(YSYXSOC_PERIP)/uart16550/rtl \
+    -I$(YSYXSOC_PERIP)/spi/rtl \
+	  --autoflush
+  MODE_PREREQUISITE := check-soc
 else
-  DIFFTEST_SO ?=
+  MODE := standalone
+  TOP := top
+  TOP_CLASS := Vtop
+  OBJ_DIR := $(BUILD_DIR)/obj_dir
+  PROG ?= test/mem.bin
+  DIFFTEST_SO ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
+  RTL_SRCS := $(CORE_RTL_SRCS)
 endif
 
-# FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
-ifeq ($(FST), 1)
-  VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs
+ifeq ($(NVBOARD), 1)
+  EXTRA_CFLAGS += -DENABLE_NVBOARD
+  NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
+  NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
+  NVBOARD_HOME ?= /home/zhangshenlu/ysyx-workbench/nvboard
+  NXDC_FILES = $(PROJECT_DIR)/constr/soc.nxdc
+  SRC_AUTO_BIND = $(BUILD_DIR)/auto_bind.cpp
+
+$(SRC_AUTO_BIND): $(NXDC_FILES)
+	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+
+include $(NVBOARD_HOME)/scripts/nvboard.mk
+else
+  NVBOARD_PREREQ =
+  NVBOARD_CSRCS  =
+  NVBOARD_LDFLAGS =
+endif
+
+PROG_ABS := $(abspath $(PROG))
+ELF ?=
+ELF_ABS := $(if $(ELF),$(abspath $(ELF)))
+BATCH ?= -b
+
+VERILATOR_FLAGS := \
+  --top-module $(TOP) \
+  --x-assign fast --x-initial fast \
+  --timescale "1ns/1ns" --no-timing \
+  $(VERILATOR_MODE_FLAGS)
+
+ifeq ($(FST),1)
+  VERILATOR_TRACE_FLAGS += --trace-fst --trace-structs
   EXTRA_CFLAGS += -DENABLE_FST
-else
-  VERILATOR_TRACE_FLAGS =
 endif
 
-ifeq ($(TRACE), 1)
+ifeq ($(TRACE),1)
   EXTRA_CFLAGS += -DENABLE_TRACE
-  VERILATOR_FLAGS += -DENABLE_TRACE
 endif
 
-ifeq ($(PERF), 1)
-  VERILATOR_FLAGS += -DENABLE_PERF
+ifneq ($(ELF),)
+  ELF_ARG := -e $(ELF_ABS)
+endif
+
+ifeq ($(DIFFTEST),1)
+  DIFFTEST_ARG := -d $(DIFFTEST_SO)
 endif
 
 ifeq ($(FFLASH), 1)
@@ -113,262 +136,77 @@ ifeq ($(FFLASH), 1)
   EXTRA_CFLAGS += -DFAST_FLASH
 endif
 
-NVBOARD ?= 0
-
-ifeq ($(NVBOARD), 1)
-  EXTRA_CFLAGS += -DENABLE_NVBOARD
-  ifeq ($(SOC), 1)	
-  	NXDC_FILES = constr/soc.nxdc
-  else
-  	NXDC_FILES = constr/standalone.nxdc
-  endif
-  SRC_AUTO_BIND = $(abspath $(BUILD_DIR)/auto_bind.cpp)
-
-  $(SRC_AUTO_BIND): $(NXDC_FILES)
-	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
-
-  include $(NVBOARD_HOME)/scripts/nvboard.mk
-
-  NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
-  NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
-  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
-else
-  NVBOARD_PREREQ =
-  NVBOARD_CSRCS  =
-  NVBOARD_LDFLAGS =
+ifeq ($(PERF), 1)
+  VERILATOR_FLAGS += -DENABLE_PERF
+  EXTRA_CFLAGS += -DENABLE_PERF
 endif
 
-# DiffTest：非空则拼成 -d <path> 传给可执行文件
-ifneq ($(DIFFTEST_SO),)
-  DIFFTEST_ARG = -d $(DIFFTEST_SO)
-else
-  DIFFTEST_ARG =
+ifneq ($(F),0)
+  EXTRA_CFLAGS += -DF=$(F)
 endif
 
-# ELF：非空则拼成 -e <path> 传给可执行文件（ftrace 需要）
-ifneq ($(ELF),)
-  ELF_ARG = -e $(ELF)
-else
-  ELF_ARG =
-endif
-
-PROG  ?= test/mem.bin
-ELF   ?=
-BATCH ?= -b
-CXXFLAGS += -O3 -march=native
-
-# ysyxSoC paths
-YSYXSOC_ROOT ?= $(YSYX_HOME)/ysyxSoC
-YSYXSOC_BUILD = $(YSYXSOC_ROOT)/build
-YSYXSOC_PERIP = $(YSYXSOC_ROOT)/perip
-
-ifeq ($(SOC),1)
-  # ===== SoC 模式 (riscv32-ysyxsoc): 顶层 ysyxSoCFull, csrc/, 接 SoC 外设 =====
-  CSRCS_DIR := csrc
-  VERILATOR_FLAGS += --top-module ysyxSoCFull -DSOC_MODE #-Wno-UNOPTFLAT
-  VERILATOR_FLAGS += --x-assign fast --x-initial fast \
-  							--timescale "1ns/1ns" \
-		    					--no-timing \
-		    					-I$(YSYXSOC_PERIP)/uart16550/rtl \
-		    					-I$(YSYXSOC_PERIP)/spi/rtl \
-								--autoflush
-  # Verilog files: ysyxSoC top + peripherals + core RTL
-  VERILOG_FILES += $(YSYXSOC_BUILD)/ysyxSoCFull.v
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/sdram/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/psram/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/vga/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/ps2/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/gpio/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/flash/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v)
-  VERILOG_FILES += $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
-  VERILOG_FILES += $(wildcard vsrc/*.v)
-  TOP_CLASS := VysyxSoCFull
-else
-  CSRCS_DIR := csrc_standalone
-  VERILATOR_FLAGS += --top-module top
-  VERILATOR_FLAGS += --x-assign fast --x-initial fast \
-  							--timescale "1ns/1ns" \
-		    					--no-timing --autoflush
-  # Verilog files: core RTL + 独立顶层 (pmem/uart 后端)
-  VERILOG_FILES += $(wildcard vsrc/*.v)
-  VERILOG_FILES += $(wildcard vsrc/standalone/*.v)
-  TOP_CLASS := Vtop
-endif
-
-$(shell mkdir -p $(BUILD_DIR))
-
-# 打印当前功能开关状态
-ifeq ($(RTL_OLD),1)
-show-config:
-	$(call RUN_RTL_OLD,show-config)
-else ifeq ($(RTL_STANDALONE),1)
-show-config:
-	$(call RUN_RTL_STANDALONE,show-config)
-else
-show-config:
-	@echo "SOC=$(SOC)  RTL_STANDALONE=$(RTL_STANDALONE)  RTL_OLD=$(RTL_OLD)  FST=$(FST)  TRACE=$(TRACE)  PERF=$(PERF)  NVBOARD=$(NVBOARD)  DIFFTEST=$(DIFFTEST)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
-	@echo "TOP_CLASS=$(TOP_CLASS)  CSRCS_DIR=$(CSRCS_DIR)"
-	@echo "Usage examples:"
-	@echo "  === 仿真环境 (SOC 开关) ==="
-	@echo "  make run SOC=1 PROG=...             # SoC 模式 (riscv32-ysyxsoc, 默认)"
-	@echo "  make run SOC=0 PROG=...             # 独立 NPC 模式 (riscv32e-npc, 快速功能测试)"
-	@echo "  make run RTL_STANDALONE=1 PROG=...  # 运行 rtl-standalone 子项目"
-	@echo "  make run RTL_OLD=1 PROG=...         # 运行 rtl-old 子项目"
-	@echo "  make run-soc PROG=...               # 同上, 显式指定 SoC"
-	@echo "  make run-npc PROG=...               # 同上, 显式指定独立 NPC"
-	@echo "  make run-rtl-standalone PROG=...    # 同上, 显式运行 rtl-standalone"
-	@echo "  make run-rtl-old PROG=...           # 同上, 显式运行 rtl-old"
-	@echo "  make compare-rtl-soc PROG=...       # 同一 SoC 镜像对比 rtl-old/rtl-standalone"
-	@echo "  === 功能开关 ==="
-	@echo "  make build                          # 只编译 (全关, 最快)"
-	@echo "  make build TRACE=1                  # 开 itrace/mtrace/ftrace"
-	@echo "  make build FST=1                    # 开波形"
-	@echo "  make run PROG=... DIFFTEST=1        # 开启 Difftest (自动选择对应 REF .so)"
-	@echo "  make run NVBOARD=1 PROG=...         # 开 NVBoard (仅 SoC 模式)"
-endif
+SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_LIBS := $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf
 
 define VERILATE_CMD
-	$(VERILATOR) $(VERILATOR_FLAGS) -cc --exe --build -j \
-	$(VERILATOR_TRACE_FLAGS) \
-	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/$(CSRCS_DIR) \
-	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
-	  -I$(shell pwd)/../nemu/include \
-	  -I$(NVBOARD_HOME)/usr/include \
-	  $(shell sdl2-config --cflags) \
-	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(NVBOARD_LDFLAGS) $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf" \
-	$(CSRCS_DIR)/main.cpp $(CSRCS_DIR)/core/*.cpp $(CSRCS_DIR)/sdb/*.cpp \
-	$(CSRCS_DIR)/utils/*.cpp $(CSRCS_DIR)/trace/*.cpp \
-	$(NVBOARD_CSRCS) \
-	$(VERILOG_FILES) \
-	--Mdir $(OBJ_DIR)
+	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_TRACE_FLAGS) \
+	  -cc --exe --build -j \
+	  -CFLAGS "-std=c++14 -O3 \
+	    -I$(SRC_ROOT) \
+	    -I$(NEMU_HOME)/tools/capstone/repo/include \
+	    -I$(NEMU_HOME)/include \
+      -I$(NVBOARD_HOME)/usr/include \
+	    $(SDL_CFLAGS) $(EXTRA_CFLAGS)" \
+	  -LDFLAGS "$(NVBOARD_LDFLAGS) -lreadline -ldl $(SDL_LIBS)" \
+	  $(RTL_SRCS) $(SIM_SRCS) \
+	  --Mdir $(OBJ_DIR) \
+    $(NVBOARD_CSRCS)
 endef
 
-define RUN_RTL_STANDALONE
-	$(MAKE) -C $(RTL_STANDALONE_DIR) $(1) \
-	  SOC=$(if $(filter command line,$(origin SOC)),$(SOC),0) \
-	  FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH) DIFFTEST=$(DIFFTEST) \
-	  $(if $(filter command line,$(origin DIFFTEST_SO)),DIFFTEST_SO=$(DIFFTEST_SO)) \
-	  PROG=$(abspath $(PROG)) \
-	  $(if $(ELF),ELF=$(abspath $(ELF))) \
-	  BATCH="$(BATCH)"
-endef
+all: build
 
-define RUN_RTL_OLD
-	$(MAKE) -C $(RTL_OLD_DIR) $(1) \
-	  SOC=$(if $(filter command line,$(origin SOC)),$(SOC),0) \
-	  FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH) DIFFTEST=$(DIFFTEST) \
-	  $(if $(filter command line,$(origin DIFFTEST_SO)),DIFFTEST_SO=$(DIFFTEST_SO)) \
-	  PROG=$(abspath $(PROG)) \
-	  $(if $(ELF),ELF=$(abspath $(ELF))) \
-	  BATCH="$(BATCH)"
-endef
+show-config:
+	@echo "MODE=$(MODE) SOC=$(SOC) TOP=$(TOP) TOP_CLASS=$(TOP_CLASS)"
+	@echo "OBJ_DIR=$(OBJ_DIR)"
+	@echo "FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH)"
+	@echo "PERF=$(PERF) NVBOARD=$(NVBOARD) F=$(F)"
+	@echo "PROG=$(PROG_ABS) ELF=$(ELF_ABS)"
+	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 
-# 编译 char-test: 用 riscv gcc 生成 ELF, 再 objcopy 抽取代码节为 binary
-char-test: test/char-test.c
-	riscv64-linux-gnu-gcc -O2 -march=rv32e_zicsr -mabi=ilp32e \
-	  -fno-pic -mcmodel=medany -nostdlib -nostartfiles -ffreestanding -static \
-	  -Wl,-e,_start -o test/char-test.elf test/char-test.c
-	riscv64-linux-gnu-objcopy -O binary -j .text -j .text.startup -j .rodata \
-	  test/char-test.elf test/char-test.bin
-	@echo "Built test/char-test.bin"
+check-soc:
+	@test -f "$(YSYXSOC_BUILD)/ysyxSoCFull.v" || { \
+	  echo "Error: missing $(YSYXSOC_BUILD)/ysyxSoCFull.v; run 'make -C $(YSYXSOC_ROOT) verilog'."; \
+	  exit 1; \
+	}
+	@grep -q 'ysyx_26020070' "$(YSYXSOC_BUILD)/ysyxSoCFull.v" || { \
+	  echo "Error: ysyxSoCFull.v does not instantiate ysyx_26020070."; \
+	  exit 1; \
+	}
 
-# 只编译不运行
-ifeq ($(RTL_OLD),1)
-build:
-	$(call RUN_RTL_OLD,build)
+lint: $(MODE_PREREQUISITE)
+	$(VERILATOR) --lint-only -Wno-fatal $(VERILATOR_FLAGS) $(RTL_SRCS)
 
-run:
-	$(call RUN_RTL_OLD,run)
-else ifeq ($(RTL_STANDALONE),1)
-build:
-	$(call RUN_RTL_STANDALONE,build)
-
-run:
-	$(call RUN_RTL_STANDALONE,run)
-else
-build: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF) DIFFTEST=$(DIFFTEST)] --------"
-	@mkdir -p $(WAVE_DIR)
+build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
+	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
+	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH)] --"
 	$(VERILATE_CMD)
-	@echo "-- BUILD DONE --------------"
 
-# 编译并运行 (默认使用当前 SOC 设置)
-run: $(NVBOARD_PREREQ) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
+run: build
+	@if [ ! -r "$(PROG_ABS)" ]; then \
+	  echo "Error: program '$(PROG_ABS)' not found."; exit 1; \
+	fi
+	@if [ "$(DIFFTEST)" = "1" ] && [ ! -f "$(DIFFTEST_SO)" ]; then \
+	  echo "Error: DiffTest REF '$(DIFFTEST_SO)' not found."; exit 1; \
+	fi
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) PERF=$(PERF) DIFFTEST=$(DIFFTEST)] --------"
-	@mkdir -p $(WAVE_DIR)
-	$(VERILATE_CMD)
-	@echo "-- BUILD DONE --------------"
-	@if [ ! -f $(OBJ_DIR)/$(TOP_CLASS) ]; then \
-		echo "Error: $(TOP_CLASS) not found after build."; exit 1; \
-	fi
-	@if [ ! -f "$(PROG)" ]; then \
-		echo "Error: Program file '$(PROG)' not found."; exit 1; \
-	fi
-	@echo "-- RUN [SOC=$(SOC) DIFFTEST=$(if $(filter 1,$(DIFFTEST)),ON,OFF)] -----------"
-	@echo "Running: $(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
-	@$(OBJ_DIR)/$(TOP_CLASS) $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
-	@echo "-- DONE --------------------"
-endif
+	@echo "-- RUN NPC [MODE=$(MODE) DIFFTEST=$(DIFFTEST)] --"
+	@cd $(PROJECT_DIR) && \
+	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
+	  -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
-run-soc:
-	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=0
+clean:
+	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
-run-npc:
-	$(MAKE) run SOC=0 RTL_STANDALONE=0 RTL_OLD=0
-
-run-rtl-standalone:
-	$(MAKE) run RTL_STANDALONE=1 RTL_OLD=0
-
-run-rtl-standalone-soc:
-	$(MAKE) run SOC=1 RTL_STANDALONE=1 RTL_OLD=0
-
-run-rtl-old:
-	$(MAKE) run RTL_STANDALONE=0 RTL_OLD=1
-
-run-rtl-old-soc:
-	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=1
-
-build-soc:
-	$(MAKE) build SOC=1 RTL_STANDALONE=0 RTL_OLD=0
-
-build-npc:
-	$(MAKE) build SOC=0 RTL_STANDALONE=0 RTL_OLD=0
-
-build-rtl-standalone:
-	$(MAKE) build RTL_STANDALONE=1 RTL_OLD=0
-
-build-rtl-standalone-soc:
-	$(MAKE) build SOC=1 RTL_STANDALONE=1 RTL_OLD=0
-
-build-rtl-old:
-	$(MAKE) build RTL_STANDALONE=0 RTL_OLD=1
-
-build-rtl-old-soc:
-	$(MAKE) build SOC=1 RTL_STANDALONE=0 RTL_OLD=1
-
-compare-rtl-soc:
-	$(MAKE) run SOC=1 RTL_STANDALONE=0 RTL_OLD=1 PROG=$(PROG) $(if $(ELF),ELF=$(ELF))
-	$(MAKE) run SOC=1 RTL_STANDALONE=1 RTL_OLD=0 PROG=$(PROG) $(if $(ELF),ELF=$(ELF))
-
-lint-rtl-standalone:
-	$(MAKE) -C $(RTL_STANDALONE_DIR) lint
-
-clean-rtl-standalone:
-	$(MAKE) -C $(RTL_STANDALONE_DIR) clean
-
-lint-rtl-old:
-	$(MAKE) -C $(RTL_OLD_DIR) lint
-
-clean-rtl-old:
-	$(MAKE) -C $(RTL_OLD_DIR) clean
 
 # 构建 NEMU REF .so (供 difftest 使用)
 difftest-so:
@@ -381,8 +219,5 @@ $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
 $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
 	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
 
-.PHONY: build sim run run-soc run-npc run-rtl-standalone run-rtl-standalone-soc run-rtl-old run-rtl-old-soc \
-	build-soc build-npc build-rtl-standalone build-rtl-standalone-soc build-rtl-old build-rtl-old-soc \
-	compare-rtl-soc \
-	lint-rtl-standalone lint-rtl-old clean-rtl-standalone clean-rtl-old \
-	clean char-test difftest-so
+.PHONY: all show-config check-soc lint build run \
+	build-standalone run-standalone build-soc run-soc clean difftest-so

@@ -16,7 +16,7 @@ enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
 
 // CPU 状态结构
 typedef struct {
-  uint32_t gpr[32];  // 16个通用寄存器
+  uint32_t gpr[16];  // 16个通用寄存器
   uint32_t pc;       // 程序计数器
 } DiffTestState;
 
@@ -30,7 +30,7 @@ extern void (*ref_difftest_init)(int port);
 // DiffTest 初始化和控制函数
 void init_difftest(const char *ref_so_file, long img_size);
 void difftest_step(uint32_t pc, uint32_t npc);
-// extern "C": 同时作为 Verilator DPI-C 入口 (供 ysyx_26020070.v 的 import "DPI-C" 调用)
+// extern "C": ysyx_26020070.v 通过 DPI-C 调用此函数 (UART 访问时自动 skip difftest)
 extern "C" void difftest_skip_ref();
 
 // 辅助函数

@@ -9,11 +9,9 @@ AM_SRCS := riscv/npc/start.S \
            platform/dummy/vme.c \
            platform/dummy/mpe.c
 
-PADDING_SIZE ?= 0
-
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/linker.ld
-LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0 --defsym=PADDING_SIZE=$(PADDING_SIZE)
+LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
 LDFLAGS   += --gc-sections -e _start
 
 MAINARGS_MAX_LEN = 64
@@ -29,7 +27,7 @@ image: image-dep
 	@$(OBJCOPY) -S --set-section-flags .bss=alloc,contents -O binary $(IMAGE).elf $(IMAGE).bin
 
 run: insert-arg
-	@echo "Running on NPC (standalone, SOC=0)..."
-	$(MAKE) -C $(NPC_HOME) run SOC=0 PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
+	@echo "Running on NPC..."
+	$(MAKE) -C $(NPC_HOME) run PROG=$(IMAGE).bin  ELF=$(abspath $(IMAGE).elf)
 
 .PHONY: insert-arg

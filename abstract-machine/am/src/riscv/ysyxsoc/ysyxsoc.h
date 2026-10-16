@@ -4,22 +4,23 @@
 #include <klib-macros.h>
 #include <riscv/riscv.h>
 
-// ysyxSoC 设备地址空间
-#define UART_BASE     0x10000000   // UART16550 基地址
-#define UART_TX       0x0          // 发送保持寄存器 (THR) / 除数低字节 (DLAB=1)
-#define UART_IE       0x1          // 中断使能寄存器 (IER) / 除数高字节 (DLAB=1)
-#define UART_FCR      0x2          // FIFO 控制寄存器 (FCR)
-#define UART_LCR      0x3          // 线路控制寄存器 (LCR)
-#define UART_LSR      0x5          // 线路状态寄存器 (LSR) 偏移
+#define UART_BASE     0x10000000  
+#define UART_TX       0x0          
+#define UART_IE       0x1          
+#define UART_FCR      0x2          
+#define UART_LCR      0x3          
+#define UART_LSR      0x5          
 #define UART_LSR_THRE 0x20         // 发送保持寄存器空 (THRE, bit 5)
 #define UART_LSR_DR   0x01         // 数据就绪 (DR, bit 0)
 #define UART_LCR_DLAB 0x80         // 除数访问位 (LCR bit 7)
 #define UART_LCR_8N1  0x03         // 8 数据位, 无校验, 1 停止位
-#define UART_DIVISOR  0x08         // 波特率除数 (必须非零: dl=0 时 enable 永远为 0, block_cnt 无法递减, THRE 锁死)
+#define UART_DIVISOR  0x08         // 波特率除数 
 
-#define PS2_BASE      0x10011000   // PS/2 键盘控制器基地址
+#define CPU_FREQ_MHZ 500
 
-#define VGA_FB_BASE   0x21000000   // VGA 帧缓冲基地址 (2MB, 每像素 32 位 ARGB)
+#define PS2_BASE      0x10011000   
+
+#define VGA_FB_BASE   0x21000000   
 #define VGA_WIDTH     640
 #define VGA_HEIGHT    480
 
@@ -34,6 +35,9 @@
 
 #define SDRAM_BASE    0xa0000000
 #define SDRAM_SIZE    0x2000000    // 32MB
+
+#define FLASH_BASE    0x30000000
+#define FLASH_SIZE    0x1000000    // 16MB
 
 #define npc_trap(code) asm volatile("mv a0, %0; ebreak" : :"r"(code))
 

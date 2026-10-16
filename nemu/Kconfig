@@ -235,6 +235,7 @@ config YSYXSOC
     minimal CLINT (mtime) and UART16550 device models.
     Leaves the default riscv32-nemu behavior unchanged when disabled.
 
+
 if MODE_SYSTEM
 source "src/memory/Kconfig"
 source "src/device/Kconfig"

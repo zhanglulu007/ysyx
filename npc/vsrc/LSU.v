@@ -1,417 +1,248 @@
-// LSU - Load-Store Unit
-// 访存单元：通过 AXI4 与 MEM 模块交互
-//   L_IDLE:      等待 IDU 发出访存请求 (mem_valid)
-//   L_WAIT_AR:   等待 arready 握手 (读地址)
-//   L_WAIT_R:    等待 rvalid 握手 (读数据), rready=1
-//   L_WAIT_AW_W: 等待 awready + wready 握手 (写地址+写数据)
-//   L_WAIT_B:    等待 bvalid 握手 (写回复), bready=1
-// AXI4 扩展: 添加 id, len, size, burst, last 等信号
-
 module LSU(
   input clk,
   input rst,
 
-  // 控制信号
-  input mem_valid,            // 访存有效 (来自 IDU)
-  input mem_wen,              // 写使能 (来自 IDU)
+  input mem_valid,
+  input mem_wen,
 
-  // 指令类型
-  input [2:0] funct3,         // IDU 输出的 funct3
+  input is_lb,
+  input is_lh,
+  input is_lw,
+  input is_lbu,
+  input is_lhu,
 
-  // 地址和数据
-  input [31:0] mem_addr,      // 访存地址
-  input [31:0] wdata,         // 写入数据（来自rs2）
-  input [31:0] cpu_pc,        // 当前指令 PC (仅供 mtrace DPI 记录用, ENABLE_TRACE 时使用)
+  input is_sb,
+  input is_sh,
+  input is_sw,
 
-  // ===== AXI4 AR 通道 (读地址) =====
-  output reg    lsu_arvalid,
-  input         lsu_arready,
-  output reg [31:0] lsu_araddr,
-  output [ 3:0] lsu_arid,     // AXI4: Transaction ID
-  output [ 7:0] lsu_arlen,    // AXI4: Burst length
-  output reg [ 2:0] lsu_arsize,   // AXI4: Transfer size
-  output [ 1:0] lsu_arburst,  // AXI4: Burst type
+  // AXI4 AR
+  output lsu_arvalid,
+  input lsu_arready,
+  output [31:0] lsu_araddr,
+  output [3:0] lsu_arid,
+  output [7:0] lsu_arlen,
+  output reg [2:0] lsu_arsize,
+  output [1:0] lsu_arburst,
 
-  // ===== AXI4 R 通道 (读数据) =====
-  input         lsu_rvalid,
-  output        lsu_rready,
-  input  [31:0] lsu_rdata,
-  input  [ 1:0] lsu_rresp,
-  input         lsu_rlast,    // AXI4: Last beat
-  input  [ 3:0] lsu_rid,      // AXI4: Transaction ID
+  // AXI4 R
+  input lsu_rvalid,
+  output lsu_rready,
+  input [1:0] lsu_rresp,
+  input [31:0] lsu_rdata,
+  input lsu_rlast,
+  input [3:0] lsu_rid,
 
-  // ===== AXI4 AW 通道 (写地址) =====
-  output reg    lsu_awvalid,
-  input         lsu_awready,
-  output reg [31:0] lsu_awaddr,
-  output [ 3:0] lsu_awid,     // AXI4: Transaction ID
-  output [ 7:0] lsu_awlen,    // AXI4: Burst length
-  output reg [ 2:0] lsu_awsize,   // AXI4: Transfer size
-  output [ 1:0] lsu_awburst,  // AXI4: Burst type
+  // AXI4 AW
+  output lsu_awvalid,
+  input lsu_awready,
+  output [31:0] lsu_awaddr,
+  output [3:0] lsu_awid,
+  output [7:0] lsu_awlen,
+  output reg [2:0] lsu_awsize,
+  output [1:0] lsu_awburst,
 
-  // ===== AXI4 W 通道 (写数据) =====
-  output reg    lsu_wvalid,
-  input         lsu_wready,
+  // AXI4 W
+  output lsu_wvalid,
+  input lsu_wready,
   output reg [31:0] lsu_wdata,
-  output reg [ 3:0] lsu_wstrb,
-  output        lsu_wlast,    // AXI4: Last beat
+  output reg [3:0] lsu_wstrb,
+  output lsu_wlast,
 
-  // ===== AXI4 B 通道 (写回复) =====
-  input         lsu_bvalid,
-  output        lsu_bready,
-  input  [ 1:0] lsu_bresp,
-  input  [ 3:0] lsu_bid,      // AXI4: Transaction ID
+  // AXI4 B
+  input lsu_bvalid,
+  output lsu_bready,
+  input [1:0] lsu_bresp,
+  input [3:0] lsu_bid,
 
-  // ===== 输出 =====
-  output reg [31:0] rdata,    // 字节/半字选择后的数据
-  output reg lsu_access_fault, // 访问异常 (load rresp / store bresp 返回错误)
+  input [31:0] addr,
+  input [31:0] wdata,
 
-  // ===== 性能计数器观测端口 (仅仿真用, 由 ENABLE_PERF 实例化的 PerfCounter 使用) =====
-  output [2:0] lsu_state_o,   // LSU 状态机状态
-  output lsu_load_req,        // load  请求 (IDLE 时 mem_valid && !mem_wen)
-  output lsu_store_req,       // store 请求 (IDLE 时 mem_valid &&  mem_wen)
-  output lsu_r_handshake,     // load  完成 (WAIT_R 时 rvalid 握手)
-  output lsu_b_handshake,     // store 完成 (WAIT_B 时 bvalid 握手)
-  output lsu_wait_ar,         // 处于等待 AR 握手状态
-  output lsu_wait_r,          // 处于等待 R  握手状态
-  output lsu_wait_aw_w,       // 处于等待 AW/W 握手状态
-  output lsu_wait_b           // 处于等待 B  握手状态
+  output reg [31:0] rdata,
+  output lsu_done
 );
 
-  // ========== 状态机定义 ==========
-  localparam L_IDLE      = 3'b000;  // 等待访存请求
-  localparam L_WAIT_AR   = 3'b001;  // 等待 arready 握手 (读)
-  localparam L_WAIT_R    = 3'b010;  // 等待 rvalid 握手 (读)
-  localparam L_WAIT_AW_W = 3'b011;  // 等待 awready + wready 握手 (写)
-  localparam L_WAIT_B    = 3'b100;  // 等待 bvalid 握手 (写)
+  localparam IDLE_R = 1'b0, IDLE_W = 1'b0;
+  localparam WAIT_R = 1'b1, WAIT_W = 1'b1;
+  reg state_r, state_w;
 
-  reg [2:0] lsu_state;
-
-  // ========== 锁存请求信号 (在 mem_valid 周期捕获) ==========
-  reg [31:0] latched_addr;
-  reg        latched_wen;
-  reg [31:0] latched_wdata;
-  reg [ 3:0] latched_wstrb;
-
-  // ========== 保存 load 类型信息 (用于响应周期的字节/半字选择) ==========
-  reg [2:0] saved_funct3;
-  reg [1:0] saved_mem_offset;
-
-  // ========== 写通道握手追踪 (AW 和 W 可独立完成) ==========
-  reg aw_done;  // AW 握手已完成
-  reg w_done;   // W  握手已完成
-
-  wire [1:0] mem_offset;
-  assign mem_offset = mem_addr[1:0];
-
-  // ===================================================================
-  // AXI4 输出信号
-  // ===================================================================
-
-  // AXI4 size: 按 funct3 动态设置传输粒度, 使总线不对地址做越界的字节对齐.
-  //   funct3=000(LB/LBU/SB) -> size=000 (1字节)
-  //   funct3=001/101(LH/LHU/SH) -> size=001 (2字节)
-  //   funct3=010(LW/SW) -> size=010 (4字节)
-  // 否则 size 固定为 4 字节时, AXI Xbar 会把地址强制对齐到 4 字节边界
-  // (addr & ~0x3), 导致 UART16550 等字节粒度设备的寄存器地址低位丢失.
-  // 注: IFU 取指期间指令未变, funct3 在整个 LSU 事务期间稳定, 可直接组合使用.
-  // The ysyxSoC SPI flash XIP path only provides reliable word reads.  Keep
-  // byte/halfword transfers for MMIO devices, but read flash as an aligned
-  // word and select the requested lane locally below.
-  wire flash_read = !mem_wen && (mem_addr[31:24] == 8'h30);
-  wire latched_flash_read = !latched_wen && (latched_addr[31:24] == 8'h30);
-  // AR/AW/W outputs share one state decode. This keeps each state as one
-  // parallel selection point instead of rebuilding the same priority chain.
-  always @(*) begin
-    lsu_arvalid = 1'b0;
-    lsu_araddr = latched_flash_read ? {latched_addr[31:2], 2'b0} : latched_addr;
-    lsu_arsize = latched_flash_read ? 3'b010 : {1'b0, funct3[1:0]};
-    lsu_awvalid = 1'b0;
-    lsu_awaddr = latched_addr;
-    lsu_awsize = latched_flash_read ? 3'b010 : {1'b0, funct3[1:0]};
-    lsu_wvalid = 1'b0;
-    lsu_wdata = latched_wdata;
-    lsu_wstrb = latched_wstrb;
-
-    case (lsu_state)
-      L_IDLE: begin
-        lsu_arvalid = mem_valid && !mem_wen && !rst;
-        if (flash_read) lsu_araddr = {mem_addr[31:2], 2'b0};
-        else lsu_araddr = mem_addr;
-        if (flash_read) lsu_arsize = 3'b010;
-        else lsu_arsize = {1'b0, funct3[1:0]};
-        lsu_awvalid = mem_valid && mem_wen && !rst;
-        lsu_awaddr = mem_addr;
-        if (flash_read) lsu_awsize = 3'b010;
-        else lsu_awsize = {1'b0, funct3[1:0]};
-        lsu_wvalid = mem_valid && mem_wen && !rst;
-        lsu_wdata = computed_wdata;
-        lsu_wstrb = computed_wstrb;
-      end
-      L_WAIT_AR: lsu_arvalid = 1'b1;
-      L_WAIT_AW_W: begin
-        lsu_awvalid = !aw_done;
-        lsu_wvalid = !w_done;
-      end
-      default: ;
-    endcase
-  end
-
-  assign lsu_arid = 4'b0000;      // ID固定为0
-  assign lsu_arlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_arburst = 2'b01;     // INCR模式 (增量突发)
-
-  // R 通道
-  assign lsu_rready = (lsu_state == L_WAIT_R);
-
-  assign lsu_awid = 4'b0000;      // ID固定为0
-  assign lsu_awlen = 8'b00000000; // 单次传输 (len=0表示1个beat)
-  assign lsu_awburst = 2'b01;     // INCR模式 (增量突发)
-
-  assign lsu_wlast = lsu_wvalid;  // 单次传输，wvalid时即为last beat
-
-  // B 通道
-  assign lsu_bready = (lsu_state == L_WAIT_B);
-
-  // ===== 性能计数器观测信号 =====
-  assign lsu_state_o     = lsu_state;
-  assign lsu_load_req    = (lsu_state == L_IDLE) && mem_valid && !mem_wen && !rst;
-  assign lsu_store_req   = (lsu_state == L_IDLE) && mem_valid &&  mem_wen && !rst;
-  assign lsu_r_handshake = (lsu_state == L_WAIT_R) && lsu_rvalid && !rst;
-  assign lsu_b_handshake = (lsu_state == L_WAIT_B) && lsu_bvalid && !rst;
-  assign lsu_wait_ar     = (lsu_state == L_WAIT_AR)   && !rst;
-  assign lsu_wait_r      = (lsu_state == L_WAIT_R)    && !rst;
-  assign lsu_wait_aw_w   = (lsu_state == L_WAIT_AW_W) && !rst;
-  assign lsu_wait_b      = (lsu_state == L_WAIT_B)    && !rst;
-
-  // ===== mtrace DPI 接口 (仅仿真用, TRACE 开启时记录真实 AXI 访存事务) =====
-`ifdef ENABLE_TRACE
-  import "DPI-C" function void mtrace_read_handler(input int addr, input int data, input int pc);
-  import "DPI-C" function void mtrace_write_handler(input int addr, input int data, input int wstrb, input int pc);
-`endif
-
-  // ===================================================================
-  // 写数据和写掩码 (组合逻辑)
-  // ===================================================================
-  // IDLE 时根据当前 funct3 生成, 其他状态使用锁存值
-  reg [31:0] computed_wdata;
-  reg [ 3:0] computed_wstrb;
-
-  always @(*) begin
-    case (funct3)
-      3'b010: begin  // SW
-        computed_wdata = wdata;
-        computed_wstrb = 4'b1111;
-      end
-      3'b001: begin  // SH
-        case (mem_offset[1])
-          1'b0: begin
-            computed_wdata = wdata;
-            computed_wstrb = 4'b0011;
-          end
-          1'b1: begin
-            computed_wdata = wdata << 16;
-            computed_wstrb = 4'b1100;
-          end
-        endcase
-      end
-      3'b000: begin  // SB
-        case (mem_offset)
-          2'b00: begin
-            computed_wdata = wdata;
-            computed_wstrb = 4'b0001;
-          end
-          2'b01: begin
-            computed_wdata = wdata << 8;
-            computed_wstrb = 4'b0010;
-          end
-          2'b10: begin
-            computed_wdata = wdata << 16;
-            computed_wstrb = 4'b0100;
-          end
-          2'b11: begin
-            computed_wdata = wdata << 24;
-            computed_wstrb = 4'b1000;
-          end
-        endcase
-      end
-      default: begin
-        computed_wdata = wdata;
-        computed_wstrb = 4'b0000;
-      end
-    endcase
-  end
-
-  // ===================================================================
-  // 状态机
-  // ===================================================================
   always @(posedge clk) begin
     if (rst) begin
-      lsu_state        <= L_IDLE;
-      saved_funct3     <= 3'b0;
-      saved_mem_offset <= 2'b0;
-      latched_addr     <= 32'b0;
-      latched_wen      <= 1'b0;
-      latched_wdata    <= 32'b0;
-      latched_wstrb    <= 4'b0;
-      aw_done          <= 1'b0;
-      w_done           <= 1'b0;
-      lsu_access_fault <= 1'b0;
+      state_r <= IDLE_R;
+      state_w <= IDLE_W;
     end else begin
-      case (lsu_state)
-        L_IDLE: begin
-          if (mem_valid) begin
-            // 锁存所有请求信息
-            latched_addr  <= mem_addr;
-            latched_wen   <= mem_wen;
-            latched_wdata <= computed_wdata;
-            latched_wstrb <= computed_wstrb;
-
-            if (!mem_wen) begin
-              // ===== 读操作 (AR → R) =====
-              saved_funct3     <= funct3;
-              saved_mem_offset <= mem_offset;
-
-              if (lsu_arready) begin
-                // AR 握手立即成功, 直接进入等待读数据
-                lsu_state <= L_WAIT_R;
-              end else begin
-                // 需要等待 arready
-                lsu_state <= L_WAIT_AR;
-              end
-            end else begin
-              // ===== 写操作 (AW + W → B) =====
-              aw_done <= 1'b0;
-              w_done  <= 1'b0;
-
-              // 检查 AW 和 W 是否在本周期握手成功
-              if (lsu_awready && lsu_wready) begin
-                // 两个通道同时握手成功, 直接进入等待写回复
-                lsu_state <= L_WAIT_B;
-              end else if (lsu_awready && !lsu_wready) begin
-                // AW 握手成功, W 还需要等待
-                aw_done   <= 1'b1;
-                lsu_state <= L_WAIT_AW_W;
-              end else if (!lsu_awready && lsu_wready) begin
-                // W 握手成功, AW 还需要等待
-                w_done    <= 1'b1;
-                lsu_state <= L_WAIT_AW_W;
-              end else begin
-                // 两个通道都需要等待
-                lsu_state <= L_WAIT_AW_W;
-              end
-            end
+      case (state_r)
+        IDLE_R: begin
+          if (lsu_arvalid && lsu_arready) begin
+            state_r <= WAIT_R;
           end
         end
-
-        L_WAIT_AR: begin
-          // 保持 arvalid=1, 等待 arready 握手
-          // AXI 规则: valid 一旦置位必须保持直到握手完成
-          if (lsu_arready) begin
-            lsu_state <= L_WAIT_R;
+        WAIT_R: begin
+          if (lsu_rvalid && lsu_rready && lsu_rlast) begin
+            state_r <= IDLE_R;
           end
-        end
-
-        L_WAIT_R: begin
-          // rready=1, 等待 rvalid 握手
-          if (lsu_rvalid) begin
-            // 握手完成: rvalid && rready
-            // 检查读访问异常 (rresp[1]=1 表示设备返回错误)
-            if (lsu_rresp[1]) lsu_access_fault <= 1'b1;
-`ifdef ENABLE_TRACE
-            // mtrace: 记录一次 load 访存事务完成 (R 通道握手)
-            mtrace_read_handler(latched_addr, lsu_rdata, cpu_pc);
-`endif
-            lsu_state <= L_IDLE;
-          end
-        end
-
-        L_WAIT_AW_W: begin
-          // 保持 awvalid/wvalid, 等待两个通道握手完成
-          // AXI 规则: valid 一旦置位必须保持直到各自握手完成
-          // AW 和 W 可以独立完成握手 (不同周期)
-
-          // 追踪 AW 握手
-          if (lsu_awready && !aw_done) begin
-            aw_done <= 1'b1;
-          end
-
-          // 追踪 W 握手
-          if (lsu_wready && !w_done) begin
-            w_done <= 1'b1;
-          end
-
-          // 两个通道都握手完成后, 进入等待写回复
-          // (aw_done || lsu_awready): AW 本周期或之前已完成
-          // (w_done  || lsu_wready):  W  本周期或之前已完成
-          if ((aw_done || lsu_awready) && (w_done || lsu_wready)) begin
-            lsu_state <= L_WAIT_B;
-            aw_done   <= 1'b0;
-            w_done    <= 1'b0;
-          end
-        end
-
-        L_WAIT_B: begin
-          // bready=1, 等待 bvalid 握手
-          if (lsu_bvalid) begin
-            // 握手完成: bvalid && bready
-            // 检查写访问异常 (bresp[1]=1 表示设备返回错误)
-            if (lsu_bresp[1]) lsu_access_fault <= 1'b1;
-`ifdef ENABLE_TRACE
-            // mtrace: 记录一次 store 访存事务完成 (B 通道握手)
-            // latched_wstrb 为 4 位, 零扩展为 32 位传给 DPI (C 侧用低 4 位算 popcount)
-            mtrace_write_handler(latched_addr, latched_wdata, {28'b0, latched_wstrb}, cpu_pc);
-`endif
-            lsu_state <= L_IDLE;
-          end
-        end
-
-        default: lsu_state <= L_IDLE;
+        end 
+        default: state_r <= IDLE_R;        
       endcase
+
+      case (state_w)
+        IDLE_W: begin
+          if (lsu_awvalid && lsu_awready) begin
+            state_w <= WAIT_W;
+          end
+        end
+        WAIT_W: begin
+          if (lsu_bvalid && lsu_bready) begin
+            state_w <= IDLE_W;
+          end
+        end 
+        default: state_w <= IDLE_W;
+      endcase
+
     end
   end
 
-  // ===================================================================
-  // 字节/半字选择 (组合逻辑)
-  // ===================================================================
-  // 使用保存的 load 类型 + MEM 返回的数据
+  assign lsu_arvalid = mem_valid && !mem_wen && !lsu_rvalid && (state_r == IDLE_R);
+  assign lsu_araddr = addr;
+  assign lsu_arid = 4'b0010;
+  assign lsu_arlen = 8'b0;
+  assign lsu_arburst = 2'b01;
+  
+  assign lsu_rready = mem_valid && !mem_wen;
+
+  assign lsu_awvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
+  assign lsu_awaddr = addr;
+  assign lsu_awid = 4'b0010;
+  assign lsu_awlen = 8'b0;
+  assign lsu_awburst = 2'b01;
+
+  assign lsu_wvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
+  assign lsu_wlast = lsu_wvalid;
+
+  assign lsu_bready = mem_valid && mem_wen;
+
+
+  assign lsu_done = !rst && mem_valid &&
+                    ((!mem_wen && lsu_rvalid && lsu_rready && lsu_rlast) ||
+                     (mem_wen && lsu_bvalid && lsu_bready));
+
   always @(*) begin
-    case (saved_funct3)
-      3'b010: begin  // LW
-        rdata = lsu_rdata;
+
+    case (1'b1)
+
+      // LHU：根据地址低1位选择半字并零扩展
+      is_lhu: begin
+      case (addr[1])
+        1'b0: rdata = {16'b0, lsu_rdata[15:0]};
+        1'b1: rdata = {16'b0, lsu_rdata[31:16]};
+      endcase
+      lsu_arsize = 3'b001;
+      lsu_awsize = 3'b001;
+    end
+
+      // LBU：根据地址低2位选择字节并零扩展
+      is_lbu: begin
+      case (addr[1:0])
+        2'b00: rdata = {24'b0, lsu_rdata[7:0]};
+        2'b01: rdata = {24'b0, lsu_rdata[15:8]};
+        2'b10: rdata = {24'b0, lsu_rdata[23:16]};
+        2'b11: rdata = {24'b0, lsu_rdata[31:24]};
+      endcase
+      lsu_arsize = 3'b000;
+      lsu_awsize = 3'b000;
+    end
+
+      is_lw: begin 
+        rdata = lsu_rdata; // LW
+        lsu_arsize = 3'b010;
+        lsu_awsize = 3'b010;
       end
-      3'b001: begin  // LH
-        case (saved_mem_offset[1])
-          1'b0: rdata = {{16{lsu_rdata[15]}}, lsu_rdata[15:0]};
-          1'b1: rdata = {{16{lsu_rdata[31]}}, lsu_rdata[31:16]};
-        endcase
-      end
-      3'b101: begin  // LHU
-        case (saved_mem_offset[1])
-          1'b0: rdata = {16'b0, lsu_rdata[15:0]};
-          1'b1: rdata = {16'b0, lsu_rdata[31:16]};
-        endcase
-      end
-      3'b000: begin  // LB
-        case (saved_mem_offset)
-          2'b00: rdata = {{24{lsu_rdata[7]}},  lsu_rdata[7:0]};
-          2'b01: rdata = {{24{lsu_rdata[15]}}, lsu_rdata[15:8]};
-          2'b10: rdata = {{24{lsu_rdata[23]}}, lsu_rdata[23:16]};
-          2'b11: rdata = {{24{lsu_rdata[31]}}, lsu_rdata[31:24]};
-        endcase
-      end
-      3'b100: begin  // LBU
-        case (saved_mem_offset)
-          2'b00: rdata = {24'b0, lsu_rdata[7:0]};
-          2'b01: rdata = {24'b0, lsu_rdata[15:8]};
-          2'b10: rdata = {24'b0, lsu_rdata[23:16]};
-          2'b11: rdata = {24'b0, lsu_rdata[31:24]};
-        endcase
-      end
-      default: begin
-        rdata = 32'b0;
-      end
+
+      is_lh:begin
+      // LH：根据地址低1位选择半字并符号扩展
+      case (addr[1])
+        1'b0: rdata = {{16{lsu_rdata[15]}}, lsu_rdata[15:0]};
+        1'b1: rdata = {{16{lsu_rdata[31]}}, lsu_rdata[31:16]};
+      endcase
+      lsu_arsize = 3'b001;
+      lsu_awsize = 3'b001;
+    end
+
+      is_lb: begin
+      // LB：根据地址低2位选择字节并符号扩展
+      case (addr[1:0])
+        2'b00: rdata = {{24{lsu_rdata[7]}},  lsu_rdata[7:0]};
+        2'b01: rdata = {{24{lsu_rdata[15]}}, lsu_rdata[15:8]};
+        2'b10: rdata = {{24{lsu_rdata[23]}}, lsu_rdata[23:16]};
+        2'b11: rdata = {{24{lsu_rdata[31]}}, lsu_rdata[31:24]};
+      endcase
+      lsu_arsize = 3'b000;
+      lsu_awsize = 3'b000;
+    end
+
+      default:  rdata = 32'b0;
+
     endcase
+  end
+
+  always @(*) begin
+
+    case (1'b1)
+
+        // SW：写入4字节，写掩码全1
+      is_sw: begin
+        lsu_wstrb = 4'b1111;
+        lsu_wdata = wdata;
+        lsu_arsize = 3'b010;
+        lsu_awsize = 3'b010;
+      end
+
+        // SH：根据地址低1位写入2字节
+      is_sh: begin
+        case (addr[1])
+          1'b0: begin
+            lsu_wstrb = 4'b0011;  // 写入低半字
+            lsu_wdata = wdata;
+          end
+          1'b1: begin
+            lsu_wstrb = 4'b1100;  // 写入高半字
+            lsu_wdata = wdata << 16;
+          end
+        endcase
+        lsu_arsize = 3'b001;
+        lsu_awsize = 3'b001;
+      end
+
+        // SB：根据地址低2位写入1字节
+      is_sb: begin
+        case (addr[1:0])
+          2'b00: begin
+            lsu_wstrb = 4'b0001;
+            lsu_wdata = wdata;
+          end
+          2'b01: begin
+            lsu_wstrb = 4'b0010;
+            lsu_wdata = wdata << 8;
+          end
+          2'b10: begin
+            lsu_wstrb = 4'b0100;
+            lsu_wdata = wdata << 16;
+          end
+          2'b11: begin
+            lsu_wstrb = 4'b1000;
+            lsu_wdata = wdata << 24;
+          end
+        endcase
+        lsu_arsize = 3'b000;
+        lsu_awsize = 3'b000;
+      end
+
+      default: begin
+        lsu_wstrb = 4'b0;
+        lsu_wdata = 32'b0;
+      end
+
+    endcase
+
   end
 
 endmodule

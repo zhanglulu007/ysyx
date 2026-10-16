@@ -6,7 +6,6 @@
 #define PS2_F0 0xF0   // break code 前缀
 #define PS2_E0 0xE0   // extended 前缀
 
-// 状态
 enum { ST_NORMAL = 0, ST_F0, ST_E0, ST_E0_F0 };
 static int kbd_state = ST_NORMAL;
 
@@ -79,15 +78,12 @@ static int map_normal(uint8_t sc) {
     case 0x4A: return 65;  // SLASH
     case 0x59: return 66;  // RSHIFT
     case 0x14: return 67;  // LCTRL
-    // APPLICATION 为扩展键 0xE0 0x2F
     case 0x11: return 69;  // LALT
     case 0x29: return 70;  // SPACE
-    // RALT / RCTRL 为扩展键
-    default:   return 0;   // 未识别 / 长序列 / NumLock 等, 忽略
+    default:   return 0;   
   }
 }
 
-// 扩展扫描码 (0xE0 后的单字节) -> AM 键码
 static int map_extended(uint8_t sc) {
   switch (sc) {
     case 0x75: return 73;  // UP
@@ -103,18 +99,15 @@ static int map_extended(uint8_t sc) {
     case 0x2F: return 68;  // APPLICATION
     case 0x11: return 71;  // RALT
     case 0x14: return 72;  // RCTRL
-    // PrintScreen / Pause 等长序列忽略
     default:   return 0;
   }
 }
 
 void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
-  // 默认无按键
+  
   kbd->keydown = false;
   kbd->keycode = AM_KEY_NONE;
 
-  // 一次最多消费若干字节, 把状态机推进到产生一个按键事件为止
-  // (PS2 FIFO 可能在短时间内积累多个扫描码字节)
   for (int i = 0; i < 16; i++) {
     uint8_t byte = PS2_DATA_REG;
     if (byte == 0) break;  // 无数据
@@ -126,7 +119,6 @@ void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
         } else if (byte == PS2_F0) {
           kbd_state = ST_F0;
         } else {
-          // 普通键 make
           int key = map_normal(byte);
           if (key) {
             kbd->keydown = true;
@@ -134,7 +126,6 @@ void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
             kbd_state = ST_NORMAL;
             return;
           }
-          // 其它未知字节保持 NORMAL
         }
         break;
 
@@ -150,7 +141,7 @@ void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
         }
         break;
 
-      case ST_E0:  // 扩展前缀后
+      case ST_E0:  
         if (byte == PS2_F0) {
           kbd_state = ST_E0_F0;
         } else {
@@ -161,7 +152,7 @@ void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
             kbd_state = ST_NORMAL;
             return;
           }
-          kbd_state = ST_NORMAL;  // 未识别, 丢弃并回到正常态
+          kbd_state = ST_NORMAL;
         }
         break;
 

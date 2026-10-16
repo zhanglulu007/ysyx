@@ -24,9 +24,15 @@ const char *regs[] = {
 };
 
 void isa_reg_display() {
+#ifdef CONFIG_RVE
+  for (int i = 0; i < 16; i++) {
+    printf("%-4s  0x%08x\n", regs[i], cpu.gpr[i]);
+  }
+#else
   for (int i = 0; i < 32; i++) {
     printf("%-4s  0x%08x\n", regs[i], cpu.gpr[i]);
   }
+#endif
   printf("%-4s  0x%08x\n", "pc", cpu.pc);
 }
 

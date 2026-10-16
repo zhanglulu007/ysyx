@@ -77,16 +77,18 @@ difftest-so: difftest-so-standalone difftest-so-ysyxsoc
 
 difftest-so-standalone:
 	@echo "=== Building NEMU REF .so (standalone) ==="
-	@if [ -f $(NEMU_HOME)/.config ]; then cp $(NEMU_HOME)/.config $(NEMU_HOME)/.config.bak; fi
-	cp $(NEMU_HOME)/configs/riscv32-standalone_defconfig $(NEMU_HOME)/.config
-	$(MAKE) -C $(NEMU_HOME) SHARE=1 NAME=riscv32-nemu-interpreter-standalone app
-	@if [ -f $(NEMU_HOME)/.config.bak ]; then mv $(NEMU_HOME)/.config.bak $(NEMU_HOME)/.config; fi
+	$(MAKE) -C $(NEMU_HOME) riscv32-standalone_defconfig
+	$(MAKE) -C $(NEMU_HOME) \
+	  NAME=riscv32-nemu-interpreter-standalone \
+	  app
+	@test -f "$(DIFFTEST_SO_STANDALONE)"
 	@echo "=== Standalone REF .so done: $(DIFFTEST_SO_STANDALONE) ==="
 
 difftest-so-ysyxsoc:
 	@echo "=== Building NEMU REF .so (ysyxsoc) ==="
-	@if [ -f $(NEMU_HOME)/.config ]; then cp $(NEMU_HOME)/.config $(NEMU_HOME)/.config.bak; fi
-	cp $(NEMU_HOME)/configs/riscv32-ysyxsoc-so_defconfig $(NEMU_HOME)/.config
-	$(MAKE) -C $(NEMU_HOME) SHARE=1 NAME=riscv32-nemu-interpreter-ysyxsoc app
-	@if [ -f $(NEMU_HOME)/.config.bak ]; then mv $(NEMU_HOME)/.config.bak $(NEMU_HOME)/.config; fi
+	$(MAKE) -C $(NEMU_HOME) riscv32-ysyxsoc-so_defconfig
+	$(MAKE) -C $(NEMU_HOME) \
+	  NAME=riscv32-nemu-interpreter-ysyxsoc \
+	  app
+	@test -f "$(DIFFTEST_SO_YSYXSOC)"
 	@echo "=== YSYXSOC REF .so done: $(DIFFTEST_SO_YSYXSOC) ==="

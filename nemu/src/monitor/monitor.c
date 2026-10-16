@@ -23,12 +23,6 @@ void init_difftest(char *ref_so_file, long img_size, int port);
 void init_device();
 void init_sdb();
 void init_disasm();
-#ifdef CONFIG_ITRACE
-void init_itracerle(const char *log_path); /* 初始化二进制 RLE itrace 输出 (派生 .bin 文件) */
-#ifdef CONFIG_ISA_riscv
-void init_btrace(const char *log_path);    /* branchsim 的条件分支轨迹 (派生 .btrace 文件) */
-#endif
-#endif
 
 static void welcome() {
   Log("Trace: %s", MUXDEF(CONFIG_TRACE, ANSI_FMT("ON", ANSI_FG_GREEN), ANSI_FMT("OFF", ANSI_FG_RED)));
@@ -118,18 +112,6 @@ void init_monitor(int argc, char *argv[]) {
 
   /* Open the log file. */
   init_log(log_file);
-
-#ifdef CONFIG_ITRACE
-  /* 二进制 RLE itrace 写到独立 .bin 文件 (讲义 B4.md "压缩 trace"):
-   * 由 -l 指定的 log 文件路径派生 .bin 路径 (如 x.log -> x.bin).
-   * 未指定 -l 时不生成 itrace. */
-  if (log_file != NULL) {
-    init_itracerle(log_file);
-#ifdef CONFIG_ISA_riscv
-    init_btrace(log_file);
-#endif
-  }
-#endif
 
   /* Initialize memory. */
   init_mem();

@@ -1,12 +1,10 @@
 *.*
 *
 !*/
-!constr/*
 !Makefile
 !*.mk
 !*.[cSh]
 !*.v
-!*.bak
 !*.cc
 !*.cpp
 !.gitignore

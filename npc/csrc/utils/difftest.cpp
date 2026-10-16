@@ -64,18 +64,22 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  if (img_size < 0 || img_size > FLASH_SIZE) {
-    Log("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)", img_size, FLASH_SIZE);
-    printf("ERROR: invalid image size for difftest: %ld (FLASH_SIZE=%d)\n", img_size, FLASH_SIZE);
+  if (img_size < 0 || img_size > MAX_IMG_SIZE) {
+    Log("ERROR: invalid image size for difftest: %ld (MAX_IMG_SIZE=%d)", img_size, MAX_IMG_SIZE);
+    printf("ERROR: invalid image size for difftest: %ld (MAX_IMG_SIZE=%d)\n", img_size, MAX_IMG_SIZE);
     return;
   }
 
-  // 同步内存: 将 NPC 侧 flash 镜像内容拷贝到 NEMU 的 flash 区域 (0x3000_0000)
   uint32_t sync_size = (uint32_t)img_size;
+#ifdef SOC_MODE
   ref_difftest_memcpy(FLASH_BASE, get_flash_buffer(), sync_size, DIFFTEST_TO_REF);
-  
+#else
+  ref_difftest_memcpy(PMEM_BASE, get_pmem_buffer(), sync_size, DIFFTEST_TO_REF);
+#endif
+
   // 同步寄存器
   DiffTestState dut_state;
+  memset(&dut_state, 0, sizeof(dut_state));
   const int gpr_num = sizeof(dut_state.gpr) / sizeof(dut_state.gpr[0]);
   for (int i = 0; i < gpr_num; i++) {
     dut_state.gpr[i] = npc_get_reg(i);
@@ -95,9 +99,7 @@ void init_difftest(const char *ref_so_file, long img_size) {
   printf("\n");
 }
 
-// 跳过 REF 的执行
-// extern "C": 兼具 C 链接, 供 Verilator DPI-C (ysyx_26020070.v 中 import "DPI-C")
-// 与 C++ 代码 (memory.cpp/cpu.cpp) 共同调用.
+// 跳过 REF 的执行 (extern "C": 供 ysyx_26020070.v 的 DPI-C 直接调用)
 extern "C" void difftest_skip_ref() {
   if (!is_difftest_enabled) return;
   is_skip_ref = true;
