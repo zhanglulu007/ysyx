@@ -57,12 +57,12 @@ bool init_cpu(int argc, char** argv) {
 #else
     printf("Trace: OFF\n");
 #endif
-    printf("Mode: direct DPI-C memory, one instruction per cycle\n");
+    printf("Mode: AXI4-Lite local bus, multi-cycle core\n");
     return true;
 }
 
 void reset_cpu() {
-    Log("Resetting single-cycle NPC...");
+    Log("Resetting rtl-old multi-cycle NPC...");
     top->rst = 1;
     for (int i = 0; i < 10; i++) {
         eval_half_cycle(0);
@@ -75,22 +75,21 @@ void reset_cpu() {
 void exec_once() {
     const uint32_t current_pc = npc_get_pc();
 
-    eval_half_cycle(0);
-    eval_half_cycle(1);
-    npc_inc_cycle();
-    device_update();
+    do {
+        eval_half_cycle(0);
+        eval_half_cycle(1);
+        npc_inc_cycle();
+        device_update();
+        if (npc_get_state()->state == NPC_END) break;
+    } while (!top->insdone_out);
 
 #ifdef ENABLE_TRACE
-    if (top->insdone_out) {
-        ftrace_flush(print_itrace);
-        itrace_log(npc_get_pc(), npc_get_inst(), print_itrace);
-        mtrace_flush(print_itrace);
-    }
+    ftrace_flush(print_itrace);
+    itrace_log(npc_get_pc(), npc_get_inst(), print_itrace);
+    mtrace_flush(print_itrace);
 #endif
 
-    if (top->insdone_out) {
-        difftest_step(current_pc, npc_get_pc());
-    }
+    difftest_step(current_pc, npc_get_pc());
 }
 
 void set_itrace_print(bool enable) {

@@ -14,6 +14,7 @@ module AXIArbiter(
   input         ifu_arvalid,
   output        ifu_arready,
   input  [31:0] ifu_araddr,
+  input  [ 2:0] ifu_arsize,
   // R 通道
   output        ifu_rvalid,
   input         ifu_rready,
@@ -25,6 +26,7 @@ module AXIArbiter(
   input         lsu_arvalid,
   output        lsu_arready,
   input  [31:0] lsu_araddr,
+  input  [ 2:0] lsu_arsize,
   // R 通道
   output        lsu_rvalid,
   input         lsu_rready,
@@ -34,6 +36,7 @@ module AXIArbiter(
   input         lsu_awvalid,
   output        lsu_awready,
   input  [31:0] lsu_awaddr,
+  input  [ 2:0] lsu_awsize,
   // W 通道
   input         lsu_wvalid,
   output        lsu_wready,
@@ -49,6 +52,7 @@ module AXIArbiter(
   output        mem_arvalid,
   input         mem_arready,
   output [31:0] mem_araddr,
+  output [ 2:0] mem_arsize,
   // R 通道
   input         mem_rvalid,
   output        mem_rready,
@@ -58,6 +62,7 @@ module AXIArbiter(
   output        mem_awvalid,
   input         mem_awready,
   output [31:0] mem_awaddr,
+  output [ 2:0] mem_awsize,
   // W 通道
   output        mem_wvalid,
   input         mem_wready,
@@ -90,6 +95,7 @@ module AXIArbiter(
   assign mem_arvalid = ifu_granted ? ifu_arvalid :
                        lsu_granted ? lsu_arvalid : 1'b0;
   assign mem_araddr  = ifu_granted ? ifu_araddr  : lsu_araddr;
+  assign mem_arsize  = ifu_granted ? ifu_arsize  : lsu_arsize;
 
   // Slave → Master (阻塞未授权 master: ready = 0)
   assign ifu_arready = ifu_granted ? mem_arready : 1'b0;
@@ -111,6 +117,7 @@ module AXIArbiter(
   // ========== AW , W , B 通道转发 (仅 LSU) ==========
   assign mem_awvalid = lsu_granted ? lsu_awvalid : 1'b0;
   assign mem_awaddr  = lsu_awaddr;
+  assign mem_awsize  = lsu_awsize;
   assign lsu_awready = lsu_granted ? mem_awready : 1'b0;
 
   assign mem_wvalid = lsu_granted ? lsu_wvalid : 1'b0;

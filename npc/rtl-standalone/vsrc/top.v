@@ -6,6 +6,39 @@ module top(
   output [31:0] pc,
   output [31:0] inst,
   output [31:0] imem_addr
+
+`ifdef SOC_MODE
+  ,
+  output mem_arvalid,
+  input mem_arready,
+  output [31:0] mem_araddr,
+  output [3:0] mem_arid,
+  output [7:0] mem_arlen,
+  output [2:0] mem_arsize,
+  output [1:0] mem_arburst,
+  input mem_rvalid,
+  output mem_rready,
+  input [1:0] mem_rresp,
+  input [31:0] mem_rdata,
+  input mem_rlast,
+  input [3:0] mem_rid,
+  output mem_awvalid,
+  input mem_awready,
+  output [31:0] mem_awaddr,
+  output [3:0] mem_awid,
+  output [7:0] mem_awlen,
+  output [2:0] mem_awsize,
+  output [1:0] mem_awburst,
+  output mem_wvalid,
+  input mem_wready,
+  output [31:0] mem_wdata,
+  output [3:0] mem_wstrb,
+  output mem_wlast,
+  input mem_bvalid,
+  output mem_bready,
+  input [1:0] mem_bresp,
+  input [3:0] mem_bid
+`endif
 );
 
   // ========== 模块间连接信号 ==========
@@ -125,6 +158,39 @@ module top(
   wire [3:0] ifu_rid;
   wire ifu_valid;
 
+  wire clint_arvalid;
+  wire clint_arready;
+  wire [31:0] clint_araddr;
+  wire [3:0] clint_arid;
+  wire [7:0] clint_arlen;
+  wire [2:0] clint_arsize;
+  wire [1:0] clint_arburst;
+  wire clint_rvalid;
+  wire clint_rready;
+  wire [1:0] clint_rresp;
+  wire [31:0] clint_rdata;
+  wire clint_rlast;
+  wire [3:0] clint_rid;
+  wire clint_awvalid;
+  wire clint_awready;
+  wire [31:0] clint_awaddr;
+  wire [3:0] clint_awid;
+  wire [7:0] clint_awlen;
+  wire [2:0] clint_awsize;
+  wire [1:0] clint_awburst;
+  wire clint_wvalid;
+  wire clint_wready;
+  wire [31:0] clint_wdata;
+  wire [3:0] clint_wstrb;
+  wire clint_wlast;
+  wire clint_bvalid;
+  wire clint_bready;
+  wire [1:0] clint_bresp;
+  wire [3:0] clint_bid;
+
+
+
+`ifndef SOC_MODE
   wire mem_arvalid;
   wire mem_arready;
   wire [31:0] mem_araddr;
@@ -154,11 +220,13 @@ module top(
   wire mem_bready;
   wire [1:0] mem_bresp;
   wire [3:0] mem_bid;
+`endif
 
   wire commit = ifu_valid && (!mem_valid || lsu_done);
 
   assign imem_addr = ifu_araddr;
 
+`ifndef SOC_MODE
 `ifdef SYNTHESIS
   reg synth_rvalid;
   reg [3:0] synth_rid;
@@ -196,6 +264,7 @@ module top(
       end
     end
   end
+`endif
 `endif
 
   // ========== 模块实例化 ==========
@@ -467,6 +536,35 @@ module top(
     .lsu_bready(lsu_bready),
     .lsu_bresp(lsu_bresp),
     .lsu_bid(lsu_bid),
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen),
+    .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rresp(clint_rresp),
+    .clint_rdata(clint_rdata),
+    .clint_rlast(clint_rlast),
+    .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen),
+    .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst),
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp),
+    .clint_bid(clint_bid),
     .mem_arvalid(mem_arvalid),
     .mem_arready(mem_arready),
     .mem_araddr(mem_araddr),
@@ -498,6 +596,41 @@ module top(
     .mem_bid(mem_bid)
   );
 
+  CLINT u_clint(
+    .clk(clk),
+    .rst(rst),
+    .clint_arvalid(clint_arvalid),
+    .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr),
+    .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen),
+    .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready),
+    .clint_rresp(clint_rresp),
+    .clint_rdata(clint_rdata),
+    .clint_rlast(clint_rlast),
+    .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid),
+    .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr),
+    .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen),
+    .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst),
+    .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb),
+    .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid),
+    .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp),
+    .clint_bid(clint_bid)
+  );
+
+`ifndef SOC_MODE
 `ifndef SYNTHESIS
   PMEM u_pmem(
     .clk(clk),
@@ -532,6 +665,7 @@ module top(
     .mem_bresp(mem_bresp),
     .mem_bid(mem_bid)
   );
+`endif
 `endif
 
   // CSR - 控制状态寄存器
@@ -597,30 +731,51 @@ module top(
 `ifndef SYNTHESIS
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
-  import "DPI-C" function void ftrace_ret_handler(input int pc_val);
+  import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
+  import "DPI-C" function void commit_instruction(input int pc_val, input int inst_val, input int next_pc_val);
+  import "DPI-C" function void difftest_skip_ref();
+  import "DPI-C" function void update_pc_value(input int pc_val);
+
+  wire peripheral_access = mem_valid &&
+    ((addr >= 32'h02000000 && addr < 32'h02010000) ||
+     (addr >= 32'h10000000 && addr < 32'h10020000) ||
+     (addr >= 32'h21000000 && addr < 32'h21200000));
 
   always @(posedge clk) begin
-    if (!rst) begin
+    if (rst) begin
+`ifdef SOC_MODE
+      update_pc_value(32'h30000000);
+`else
+      update_pc_value(32'h80000000);
+`endif
+    end else begin
+      if (commit) begin
+        commit_instruction(pc, inst, pc_next);
+        if (peripheral_access) begin
+          difftest_skip_ref();
+        end
+      end
+
       // ebreak处理
-      if (is_ebreak) begin
+      if (is_ebreak && commit) begin
         $display("EBREAK detected at PC=0x%08x, a0=0x%08x", pc, a0_value);
         ebreak_handler(a0_value);
       end
       
       // ftrace检测
-      if (is_jalr) begin
+      if (is_jalr && commit) begin
         // jalr ra, rs1, offset (rd == 1) 是函数调用
         if (rd == 5'd1) begin
           ftrace_call_handler(pc, jump_target);
         end
         // jalr zero, ra, 0 (rd == 0 && rs1 == 1) 是函数返回
         else if (rd == 5'd0 && rs1 == 5'd1) begin
-          ftrace_ret_handler(pc);
+          ftrace_ret_handler(pc, jump_target);
         end
       end
       
       // jal也可能是函数调用
-      if (is_jal && rd == 5'd1) begin
+      if (is_jal && rd == 5'd1 && commit) begin
         ftrace_call_handler(pc, branch_target);
       end
       

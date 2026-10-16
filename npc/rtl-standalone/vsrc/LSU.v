@@ -61,29 +61,85 @@ module LSU(
   output lsu_done
 );
 
-  assign lsu_arvalid = mem_valid && !mem_wen && !lsu_rvalid;
-  assign lsu_araddr = addr;
+  localparam IDLE = 2'b00, WAIT_R = 2'b01, WAIT_W = 2'b10;
+
+  reg [1:0] state;
+  reg aw_done;
+  reg w_done;
+
+  wire ar_fire = lsu_arvalid && lsu_arready;
+  wire r_fire = lsu_rvalid && lsu_rready && lsu_rlast;
+  wire aw_fire = lsu_awvalid && lsu_awready;
+  wire w_fire = lsu_wvalid && lsu_wready;
+  wire aw_complete = aw_done || aw_fire;
+  wire w_complete = w_done || w_fire;
+  wire b_fire = lsu_bvalid && lsu_bready;
+
+  assign lsu_arvalid = !rst && mem_valid && !mem_wen && (state == IDLE);
+  wire flash_read = !mem_wen && (addr[31:24] == 8'h30);
+
+  assign lsu_araddr = flash_read ? {addr[31:2], 2'b0} : addr;
   assign lsu_arid = 4'b0010;
   assign lsu_arlen = 8'b0;
   assign lsu_arburst = 2'b01;
   
-  assign lsu_rready = mem_valid && !mem_wen;
+  assign lsu_rready = !rst && (state == WAIT_R);
 
-  assign lsu_awvalid = mem_valid && mem_wen;
+  assign lsu_awvalid = !rst && mem_valid && mem_wen &&
+                       (state == IDLE) && !aw_done;
   assign lsu_awaddr = addr;
   assign lsu_awid = 4'b0010;
   assign lsu_awlen = 8'b0;
   assign lsu_awburst = 2'b01;
 
-  assign lsu_wvalid = mem_valid && mem_wen;
+  assign lsu_wvalid = !rst && mem_valid && mem_wen &&
+                      (state == IDLE) && !w_done;
   assign lsu_wlast = lsu_wvalid;
 
-  assign lsu_bready = mem_valid && mem_wen;
+  assign lsu_bready = !rst && (state == WAIT_W);
 
 
   assign lsu_done = !rst && mem_valid &&
-                    ((!mem_wen && lsu_rvalid && lsu_rready && lsu_rlast) ||
-                     (mem_wen && lsu_bvalid && lsu_bready));
+                    ((!mem_wen && r_fire) || (mem_wen && b_fire));
+
+  always @(posedge clk) begin
+    if (rst) begin
+      state <= IDLE;
+      aw_done <= 1'b0;
+      w_done <= 1'b0;
+    end else begin
+      case (state)
+        IDLE: begin
+          if (ar_fire) begin
+            state <= WAIT_R;
+          end else if (mem_valid && mem_wen) begin
+            if (aw_fire) begin
+              aw_done <= 1'b1;
+            end
+            if (w_fire) begin
+              w_done <= 1'b1;
+            end
+            if (aw_complete && w_complete) begin
+              aw_done <= 1'b0;
+              w_done <= 1'b0;
+              state <= WAIT_W;
+            end
+          end
+        end
+        WAIT_R: begin
+          if (r_fire) begin
+            state <= IDLE;
+          end
+        end
+        WAIT_W: begin
+          if (b_fire) begin
+            state <= IDLE;
+          end
+        end
+        default: state <= IDLE;
+      endcase
+    end
+  end
 
   always @(*) begin
 
@@ -95,7 +151,7 @@ module LSU(
         1'b0: rdata = {16'b0, lsu_rdata[15:0]};
         1'b1: rdata = {16'b0, lsu_rdata[31:16]};
       endcase
-      lsu_arsize = 3'b001;
+      lsu_arsize = flash_read ? 3'b010 : 3'b001;
       lsu_awsize = 3'b001;
     end
 
@@ -107,7 +163,7 @@ module LSU(
         2'b10: rdata = {24'b0, lsu_rdata[23:16]};
         2'b11: rdata = {24'b0, lsu_rdata[31:24]};
       endcase
-      lsu_arsize = 3'b000;
+      lsu_arsize = flash_read ? 3'b010 : 3'b000;
       lsu_awsize = 3'b000;
     end
 
@@ -123,7 +179,7 @@ module LSU(
         1'b0: rdata = {{16{lsu_rdata[15]}}, lsu_rdata[15:0]};
         1'b1: rdata = {{16{lsu_rdata[31]}}, lsu_rdata[31:16]};
       endcase
-      lsu_arsize = 3'b001;
+      lsu_arsize = flash_read ? 3'b010 : 3'b001;
       lsu_awsize = 3'b001;
     end
 
@@ -135,7 +191,7 @@ module LSU(
         2'b10: rdata = {{24{lsu_rdata[23]}}, lsu_rdata[23:16]};
         2'b11: rdata = {{24{lsu_rdata[31]}}, lsu_rdata[31:24]};
       endcase
-      lsu_arsize = 3'b000;
+      lsu_arsize = flash_read ? 3'b010 : 3'b000;
       lsu_awsize = 3'b000;
     end
 

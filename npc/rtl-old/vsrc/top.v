@@ -11,6 +11,38 @@ module top(
   input clk,
   input rst,
   output insdone_out
+`ifdef SOC_MODE
+  ,
+  output mem_axi_arvalid,
+  input mem_axi_arready,
+  output [31:0] mem_axi_araddr,
+  output [3:0] mem_axi_arid,
+  output [7:0] mem_axi_arlen,
+  output [2:0] mem_axi_arsize,
+  output [1:0] mem_axi_arburst,
+  input mem_axi_rvalid,
+  output mem_axi_rready,
+  input [31:0] mem_axi_rdata,
+  input [1:0] mem_axi_rresp,
+  input mem_axi_rlast,
+  input [3:0] mem_axi_rid,
+  output mem_axi_awvalid,
+  input mem_axi_awready,
+  output [31:0] mem_axi_awaddr,
+  output [3:0] mem_axi_awid,
+  output [7:0] mem_axi_awlen,
+  output [2:0] mem_axi_awsize,
+  output [1:0] mem_axi_awburst,
+  output mem_axi_wvalid,
+  input mem_axi_wready,
+  output [31:0] mem_axi_wdata,
+  output [3:0] mem_axi_wstrb,
+  output mem_axi_wlast,
+  input mem_axi_bvalid,
+  output mem_axi_bready,
+  input [1:0] mem_axi_bresp,
+  input [3:0] mem_axi_bid
+`endif
 );
 
   // ========== 模块间连接信号 ==========
@@ -101,6 +133,7 @@ module top(
   wire        ifu_arvalid;
   wire        ifu_arready;
   wire [31:0] ifu_araddr;
+  wire [ 2:0] ifu_arsize;
   wire        ifu_rvalid;
   wire        ifu_rready;
   wire [31:0] ifu_rdata;
@@ -111,6 +144,7 @@ module top(
   wire        lsu_arvalid;
   wire        lsu_arready;
   wire [31:0] lsu_araddr;
+  wire [ 2:0] lsu_arsize;
   // R
   wire        lsu_rvalid;
   wire        lsu_rready;
@@ -120,6 +154,7 @@ module top(
   wire        lsu_awvalid;
   wire        lsu_awready;
   wire [31:0] lsu_awaddr;
+  wire [ 2:0] lsu_awsize;
   // W
   wire        lsu_wvalid;
   wire        lsu_wready;
@@ -135,6 +170,7 @@ module top(
   wire        xbar_m_arvalid;
   wire        xbar_m_arready;
   wire [31:0] xbar_m_araddr;
+  wire [ 2:0] xbar_m_arsize;
   // R
   wire        xbar_m_rvalid;
   wire        xbar_m_rready;
@@ -144,6 +180,7 @@ module top(
   wire        xbar_m_awvalid;
   wire        xbar_m_awready;
   wire [31:0] xbar_m_awaddr;
+  wire [ 2:0] xbar_m_awsize;
   // W
   wire        xbar_m_wvalid;
   wire        xbar_m_wready;
@@ -219,6 +256,48 @@ module top(
   wire [4:0] waddr_final = load_wb ? load_rd : rd;
   wire [31:0] wdata_final = load_wb ? lsu_mem_rdata : rd_data;
 
+`ifdef SOC_MODE
+`ifndef SYNTHESIS
+  reg [31:0] commit_pc;
+  reg [31:0] commit_inst;
+  reg [31:0] commit_next_pc;
+  reg commit_peripheral;
+
+  import "DPI-C" function void commit_instruction(input int pc_val, input int inst_val, input int next_pc_val);
+  import "DPI-C" function void difftest_skip_ref();
+  import "DPI-C" function void ebreak_handler(input int a0_value);
+
+  always @(posedge clk) begin
+    if (rst) begin
+      commit_pc <= 32'b0;
+      commit_inst <= 32'h00000013;
+      commit_next_pc <= 32'b0;
+      commit_peripheral <= 1'b0;
+    end else begin
+      if (ifu_valid) begin
+        commit_pc <= pc;
+        commit_inst <= inst;
+        commit_next_pc <= pc_next;
+        commit_peripheral <= mem_valid &&
+          ((mem_addr >= 32'h02000000 && mem_addr < 32'h02010000) ||
+           (mem_addr >= 32'h10000000 && mem_addr < 32'h10020000) ||
+           (mem_addr >= 32'h21000000 && mem_addr < 32'h21200000));
+      end
+      if (insdone) begin
+        commit_instruction(commit_pc, commit_inst, commit_next_pc);
+        if (commit_peripheral) begin
+          difftest_skip_ref();
+        end
+        if (commit_inst == 32'h00100073) begin
+          $display("EBREAK detected at PC=0x%08x, a0=0x%08x, mcycle=%0d", commit_pc, a0_value, mcycle_out);
+          ebreak_handler(a0_value);
+        end
+      end
+    end
+  end
+`endif
+`endif
+
   // ========== 模块实例化 ==========
 
   // IFU - 取指单元 (AXI4-Lite: AR + R 通道)
@@ -233,6 +312,7 @@ module top(
     .ifu_arready(ifu_arready),
     .ifu_arvalid(ifu_arvalid),
     .ifu_araddr(ifu_araddr),
+    .ifu_arsize(ifu_arsize),
     // AXI4-Lite R 通道 (连接 Arbiter)
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
@@ -421,6 +501,7 @@ module top(
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
+    .lsu_arsize(lsu_arsize),
     // AXI4-Lite R 通道 (连接 Arbiter)
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
@@ -430,6 +511,7 @@ module top(
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
+    .lsu_awsize(lsu_awsize),
     // AXI4-Lite W 通道 (连接 Arbiter)
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
@@ -451,6 +533,7 @@ module top(
     .ifu_arvalid(ifu_arvalid),
     .ifu_arready(ifu_arready),
     .ifu_araddr(ifu_araddr),
+    .ifu_arsize(ifu_arsize),
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
     .ifu_rdata(ifu_rdata),
@@ -459,6 +542,7 @@ module top(
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
+    .lsu_arsize(lsu_arsize),
     .lsu_rvalid(lsu_rvalid),
     .lsu_rready(lsu_rready),
     .lsu_rdata(lsu_rdata),
@@ -466,6 +550,7 @@ module top(
     .lsu_awvalid(lsu_awvalid),
     .lsu_awready(lsu_awready),
     .lsu_awaddr(lsu_awaddr),
+    .lsu_awsize(lsu_awsize),
     .lsu_wvalid(lsu_wvalid),
     .lsu_wready(lsu_wready),
     .lsu_wdata(lsu_wdata),
@@ -477,6 +562,7 @@ module top(
     .mem_arvalid(xbar_m_arvalid),
     .mem_arready(xbar_m_arready),
     .mem_araddr(xbar_m_araddr),
+    .mem_arsize(xbar_m_arsize),
     .mem_rvalid(xbar_m_rvalid),
     .mem_rready(xbar_m_rready),
     .mem_rdata(xbar_m_rdata),
@@ -484,6 +570,7 @@ module top(
     .mem_awvalid(xbar_m_awvalid),
     .mem_awready(xbar_m_awready),
     .mem_awaddr(xbar_m_awaddr),
+    .mem_awsize(xbar_m_awsize),
     .mem_wvalid(xbar_m_wvalid),
     .mem_wready(xbar_m_wready),
     .mem_wdata(xbar_m_wdata),
@@ -493,6 +580,7 @@ module top(
     .mem_bresp(xbar_m_bresp)
   );
 
+`ifndef SOC_MODE
   // Xbar - AXI4-Lite 交叉开关 (根据地址路由: UART 或 MEM)
   Xbar u_xbar(
     .clk(clk),
@@ -608,6 +696,98 @@ module top(
     .mem_bready(mem_bready),
     .mem_bresp(mem_bresp)
   );
+`else
+  wire clint_arvalid;
+  wire clint_arready;
+  wire [31:0] clint_araddr;
+  wire [3:0] clint_arid;
+  wire [7:0] clint_arlen;
+  wire [2:0] clint_arsize;
+  wire [1:0] clint_arburst;
+  wire clint_rvalid;
+  wire clint_rready;
+  wire [31:0] clint_rdata;
+  wire [1:0] clint_rresp;
+  wire clint_rlast;
+  wire [3:0] clint_rid;
+  wire clint_awvalid;
+  wire clint_awready;
+  wire [31:0] clint_awaddr;
+  wire [3:0] clint_awid;
+  wire [7:0] clint_awlen;
+  wire [2:0] clint_awsize;
+  wire [1:0] clint_awburst;
+  wire clint_wvalid;
+  wire clint_wready;
+  wire [31:0] clint_wdata;
+  wire [3:0] clint_wstrb;
+  wire clint_wlast;
+  wire clint_bvalid;
+  wire clint_bready;
+  wire [1:0] clint_bresp;
+  wire [3:0] clint_bid;
+
+  CLINT u_clint(
+    .clk(clk), .rst(rst), .mtime(mcycle_out),
+    .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr), .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst), .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready), .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp), .clint_rlast(clint_rlast), .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid), .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr), .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen), .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst), .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready), .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb), .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid), .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp), .clint_bid(clint_bid)
+  );
+
+  AXI4SoCBridge u_soc_bridge(
+    .clk(clk),
+    .rst(rst),
+    .lite_arvalid(xbar_m_arvalid), .lite_arready(xbar_m_arready),
+    .lite_araddr(xbar_m_araddr), .lite_arsize(xbar_m_arsize),
+    .lite_rvalid(xbar_m_rvalid), .lite_rready(xbar_m_rready),
+    .lite_rdata(xbar_m_rdata), .lite_rresp(xbar_m_rresp),
+    .lite_awvalid(xbar_m_awvalid), .lite_awready(xbar_m_awready),
+    .lite_awaddr(xbar_m_awaddr), .lite_awsize(xbar_m_awsize),
+    .lite_wvalid(xbar_m_wvalid), .lite_wready(xbar_m_wready),
+    .lite_wdata(xbar_m_wdata), .lite_wstrb(xbar_m_wstrb),
+    .lite_bvalid(xbar_m_bvalid), .lite_bready(xbar_m_bready),
+    .lite_bresp(xbar_m_bresp),
+    .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr), .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst), .clint_rvalid(clint_rvalid),
+    .clint_rready(clint_rready), .clint_rdata(clint_rdata),
+    .clint_rresp(clint_rresp), .clint_rlast(clint_rlast), .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid), .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr), .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen), .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst), .clint_wvalid(clint_wvalid),
+    .clint_wready(clint_wready), .clint_wdata(clint_wdata),
+    .clint_wstrb(clint_wstrb), .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid), .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp), .clint_bid(clint_bid),
+    .mem_arvalid(mem_axi_arvalid), .mem_arready(mem_axi_arready),
+    .mem_araddr(mem_axi_araddr), .mem_arid(mem_axi_arid),
+    .mem_arlen(mem_axi_arlen), .mem_arsize(mem_axi_arsize),
+    .mem_arburst(mem_axi_arburst), .mem_rvalid(mem_axi_rvalid),
+    .mem_rready(mem_axi_rready), .mem_rdata(mem_axi_rdata),
+    .mem_rresp(mem_axi_rresp), .mem_rlast(mem_axi_rlast), .mem_rid(mem_axi_rid),
+    .mem_awvalid(mem_axi_awvalid), .mem_awready(mem_axi_awready),
+    .mem_awaddr(mem_axi_awaddr), .mem_awid(mem_axi_awid),
+    .mem_awlen(mem_axi_awlen), .mem_awsize(mem_axi_awsize),
+    .mem_awburst(mem_axi_awburst), .mem_wvalid(mem_axi_wvalid),
+    .mem_wready(mem_axi_wready), .mem_wdata(mem_axi_wdata),
+    .mem_wstrb(mem_axi_wstrb), .mem_wlast(mem_axi_wlast),
+    .mem_bvalid(mem_axi_bvalid), .mem_bready(mem_axi_bready),
+    .mem_bresp(mem_axi_bresp), .mem_bid(mem_axi_bid)
+  );
+`endif
 
   // WBU - 写回单元
   WBU u_wbu(
@@ -659,6 +839,7 @@ module top(
 
   // ========== ebreak处理和trace ==========
 
+`ifndef SOC_MODE
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val, input int target_val);
@@ -689,5 +870,6 @@ module top(
       end
     end
   end
+`endif
 
 endmodule

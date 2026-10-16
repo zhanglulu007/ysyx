@@ -70,7 +70,6 @@ void init_difftest(const char *ref_so_file, long img_size) {
     return;
   }
 
-  // 同步内存: 将 NPC 侧 flash 镜像内容拷贝到 NEMU 的 flash 区域 (0x3000_0000)
   uint32_t sync_size = (uint32_t)img_size;
   ref_difftest_memcpy(FLASH_BASE, get_flash_buffer(), sync_size, DIFFTEST_TO_REF);
   

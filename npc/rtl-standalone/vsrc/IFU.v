@@ -46,7 +46,11 @@ module IFU(
   always @(posedge clk) begin
     if (rst) begin
       state <= IDLE;
+`ifdef SOC_MODE
+      pc <= 32'h30000000;
+`else
       pc <= 32'h80000000;
+`endif
       inst_reg <= 32'h00000013;
       inst_valid <= 1'b0;
     end else begin
