@@ -19,12 +19,11 @@
 #include <isa.h>
 
 #ifdef YSYXSOC_REF
-/* ysyxsoc REF: 地址空间为 FLASH/SRAM/SDRAM (见 paddr.h), 不存在 pmem */
+
 static uint8_t flash[FLASH_SIZE] PG_ALIGN = {};
 static uint8_t sram[SRAM_SIZE] PG_ALIGN = {};
 static uint8_t sdram[SDRAM_SIZE] PG_ALIGN = {};
 
-/* SoC 中复位向量/内置镜像位于 FLASH, 该接口映射到 FLASH (供 ISA 初始化/监视器等复用) */
 uint8_t* guest_to_host(paddr_t paddr) { assert(in_flash(paddr)); return flash + (paddr - FLASH_LEFT); }
 paddr_t host_to_guest(uint8_t *haddr) { return haddr - flash + FLASH_LEFT; }
 

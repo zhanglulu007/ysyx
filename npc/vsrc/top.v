@@ -689,8 +689,7 @@ module top(
 `ifdef SOC_MODE
       if (commit && mem_valid &&
           ((addr >= 32'h10000000 && addr < 32'h10020000) ||
-          (addr >= 32'h21000000 && addr < 32'h22000000) ||
-          (addr >= 32'h30000000 && addr < 32'h40000000))) begin
+          (addr >= 32'h21000000 && addr < 32'h22000000))) begin
         difftest_skip_ref();
       end
 `endif

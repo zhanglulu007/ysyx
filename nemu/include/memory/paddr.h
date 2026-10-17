@@ -19,10 +19,7 @@
 #include <common.h>
 
 #ifdef YSYXSOC_REF
-/* ===== ysyxsoc REF 地址空间 (不存在 pmem, 与 ysyxSoC 一致) =====
- * FLASH 0x30000000 16MB: 复位向量/镜像入口 (XIP), 只读
- * SRAM  0x0f000000 8KB : FSBL/SSBL 运行区
- * SDRAM 0xa0000000 32MB: 主程序运行区 */
+
 #define FLASH_LEFT  ((paddr_t)0x30000000)
 #define FLASH_SIZE  0x1000000
 #define FLASH_RIGHT (FLASH_LEFT + FLASH_SIZE - 1)
@@ -40,7 +37,9 @@ bool in_sdram(paddr_t addr);
 uint8_t* flash_to_host(paddr_t paddr);
 uint8_t* sram_to_host(paddr_t paddr);
 uint8_t* sdram_to_host(paddr_t paddr);
+
 #else
+
 #define PMEM_LEFT  ((paddr_t)CONFIG_MBASE)
 #define PMEM_RIGHT ((paddr_t)CONFIG_MBASE + CONFIG_MSIZE - 1)
 #define RESET_VECTOR (PMEM_LEFT + CONFIG_PC_RESET_OFFSET)
@@ -48,10 +47,10 @@ uint8_t* sdram_to_host(paddr_t paddr);
 static inline bool in_pmem(paddr_t addr) {
   return addr - CONFIG_MBASE < CONFIG_MSIZE;
 }
+
 #endif
 
-/* convert the guest physical address in the guest program to host virtual address in NEMU
- * (ysyxsoc REF 中复位向量位于 FLASH, 该接口映射到 FLASH 窗口) */
+/* convert the guest physical address in the guest program to host virtual address in NEMU */
 uint8_t* guest_to_host(paddr_t paddr);
 /* convert the host virtual address in NEMU to guest physical address in the guest program */
 paddr_t host_to_guest(uint8_t *haddr);

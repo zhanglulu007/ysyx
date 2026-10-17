@@ -4,6 +4,4 @@ CONFIG_RVE=y
 CONFIG_TARGET_SHARE=y
 CONFIG_CC_OPT="-O2"
 # CONFIG_TRACE is not set
-# 注意: SOC 内存模型宏 (-DYSYXSOC_REF) 由 Makefile 的 difftest-so-ysyxsoc 目标注入;
-#       SoC REF 地址空间为 FLASH/SRAM/SDRAM (见 paddr.h), 不存在 pmem, 无需 MBASE/MSIZE
 CONFIG_MEM_RANDOM=y
