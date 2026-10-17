@@ -19,11 +19,16 @@
 #include <memory/paddr.h>
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
-  /* NPC 只在初始化时同步镜像, 目标总在 pmem 内:
-   *   - standalone REF (riscv32e-npc):     0x80000000 (= CONFIG_MBASE)
-   *   - ysyxsoc REF    (riscv32e-ysyxsoc): 0x30000000 (= Flash 窗口 = CONFIG_MBASE) */
+  /* NPC 只在初始化时同步镜像:
+   *   - standalone REF (riscv32e-npc):     写入 pmem  (0x80000000)
+   *   - ysyxsoc REF    (riscv32e-ysyxsoc): 写入 FLASH (0x30000000) */
+#ifdef YSYXSOC_REF
+  assert(in_flash(addr));
+  uint8_t *host = flash_to_host(addr);
+#else
   assert(in_pmem(addr));
   uint8_t *host = guest_to_host(addr);
+#endif
 
   if (direction == DIFFTEST_TO_REF) {
     memcpy(host, buf, n);
