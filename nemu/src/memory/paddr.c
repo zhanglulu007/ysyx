@@ -27,39 +27,27 @@ static uint8_t pmem[CONFIG_MSIZE] PG_ALIGN = {};
 uint8_t* guest_to_host(paddr_t paddr) { return pmem + paddr - CONFIG_MBASE; }
 paddr_t host_to_guest(uint8_t *haddr) { return haddr - pmem + CONFIG_MBASE; }
 
-#define CONFIG_MROM_SIZE 0x1000   
-#define CONFIG_SRAM_SIZE 0x2000   
-#define CONFIG_FLASH_SIZE 0x1000000
-#define CONFIG_PSRAM_SIZE 0x400000 
-#define CONFIG_SDRAM_SIZE 0x2000000
-
-#define MROM_LEFT  ((paddr_t)0x20000000)
-#define MROM_RIGHT (MROM_LEFT + CONFIG_MROM_SIZE - 1)
+/* ===== 地址空间定义 =====
+ * pmem 由 CONFIG_MBASE/CONFIG_MSIZE 决定:
+ *   - standalone REF (riscv32e-npc):     0x80000000
+ *   - ysyxsoc REF    (riscv32e-ysyxsoc): 0x30000000 (Flash 窗口, 取指也从这里开始)
+ * YSYXSOC_REF 由 Makefile 的 difftest-so-ysyxsoc 目标注入 (非 Kconfig 选项):
+ * 只有 ysyxsoc REF 需要额外的 SRAM/SDRAM 区域, 其余构建仅使用 pmem.
+ */
+#ifdef YSYXSOC_REF
+#define SRAM_SIZE  0x2000
+#define SDRAM_SIZE 0x2000000
 #define SRAM_LEFT  ((paddr_t)0x0f000000)
-#define SRAM_RIGHT (SRAM_LEFT + CONFIG_SRAM_SIZE - 1)
-#define FLASH_LEFT  ((paddr_t)0x30000000)
-#define FLASH_RIGHT (FLASH_LEFT + CONFIG_FLASH_SIZE - 1)
-#define PSRAM_LEFT  ((paddr_t)0x80000000)
-#define PSRAM_RIGHT (PSRAM_LEFT + CONFIG_PSRAM_SIZE - 1)
-#define SDRAM_LEFT  ((paddr_t)0xa0000000)
-#define SDRAM_RIGHT (SDRAM_LEFT + CONFIG_SDRAM_SIZE - 1)
+#define SDRAM_LEFT ((paddr_t)0xa0000000)
 
-static uint8_t mrom[CONFIG_MROM_SIZE] PG_ALIGN = {};  
-static uint8_t sram[CONFIG_SRAM_SIZE] PG_ALIGN = {};  
-static uint8_t flash[CONFIG_FLASH_SIZE] PG_ALIGN = {};
-static uint8_t psram[CONFIG_PSRAM_SIZE] PG_ALIGN = {};
-static uint8_t sdram[CONFIG_SDRAM_SIZE] PG_ALIGN = {};
+static uint8_t sram[SRAM_SIZE] PG_ALIGN = {};
+static uint8_t sdram[SDRAM_SIZE] PG_ALIGN = {};
 
-bool in_mrom(paddr_t addr) { return addr - MROM_LEFT < CONFIG_MROM_SIZE; }
-bool in_sram(paddr_t addr) { return addr - SRAM_LEFT < CONFIG_SRAM_SIZE; }
-bool in_flash(paddr_t addr) { return addr - FLASH_LEFT < CONFIG_FLASH_SIZE; }
-bool in_psram(paddr_t addr) { return addr - PSRAM_LEFT < CONFIG_PSRAM_SIZE; }
-bool in_sdram(paddr_t addr) { return addr - SDRAM_LEFT < CONFIG_SDRAM_SIZE; }
-uint8_t* mrom_to_host(paddr_t paddr) { return mrom + (paddr - MROM_LEFT); }
+bool in_sram(paddr_t addr) { return addr - SRAM_LEFT < SRAM_SIZE; }
+bool in_sdram(paddr_t addr) { return addr - SDRAM_LEFT < SDRAM_SIZE; }
 uint8_t* sram_to_host(paddr_t paddr) { return sram + (paddr - SRAM_LEFT); }
-uint8_t* flash_to_host(paddr_t paddr) { return flash + (paddr - FLASH_LEFT); }
-uint8_t* psram_to_host(paddr_t paddr) { return psram + (paddr - PSRAM_LEFT); }
 uint8_t* sdram_to_host(paddr_t paddr) { return sdram + (paddr - SDRAM_LEFT); }
+#endif
 
 #ifdef CONFIG_MTRACE
 static void mtrace_read(paddr_t addr, int len, word_t data) {
@@ -110,33 +98,18 @@ word_t paddr_read(paddr_t addr, int len) {
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
-  if (in_mrom(addr)) {
-    word_t ret = host_read(mrom_to_host(addr), len);
-    IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
-    return ret;
-  }
+#ifdef YSYXSOC_REF
   if (in_sram(addr)) {
     word_t ret = host_read(sram_to_host(addr), len);
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
-  if (in_flash(addr)) {
-    word_t ret = host_read(flash_to_host(addr), len);
+  if (in_sdram(addr)) {
+    word_t ret = host_read(sdram_to_host(addr), len);
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
-  if (in_psram(addr)) {
-    word_t ret = host_read(psram_to_host(addr), len);
-    IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
-    return ret;
-  }
-  IFDEF(CONFIG_YSYXSOC,
-    if (in_sdram(addr)) {
-      word_t ret = host_read(sdram_to_host(addr), len);
-      IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
-      return ret;
-    }
-  )
+#endif
   IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
   out_of_bound(addr);
   return 0;
@@ -145,13 +118,10 @@ word_t paddr_read(paddr_t addr, int len) {
 void paddr_write(paddr_t addr, int len, word_t data) {
   IFDEF(CONFIG_MTRACE, mtrace_write(addr, len, data));
   if (in_pmem(addr)) { pmem_write(addr, len, data); return; }
+#ifdef YSYXSOC_REF
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
-  if (in_psram(addr)) { host_write(psram_to_host(addr), len, data); return; }
-  IFDEF(CONFIG_YSYXSOC,
-    if (in_sdram(addr)) { host_write(sdram_to_host(addr), len, data); return; }
-  )
-  if (in_mrom(addr)) { return; }
-  if (in_flash(addr)) { return; }
+  if (in_sdram(addr)) { host_write(sdram_to_host(addr), len, data); return; }
+#endif
   IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
   out_of_bound(addr);
 }

@@ -19,12 +19,11 @@
 #include <memory/paddr.h>
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
-
-  uint8_t *host;
-  if (in_pmem(addr))      host = guest_to_host(addr);
-  else if (in_mrom(addr)) host = mrom_to_host(addr);
-  else if (in_flash(addr)) host = flash_to_host(addr);
-  else { assert(0); }     
+  /* NPC 只在初始化时同步镜像, 目标总在 pmem 内:
+   *   - standalone REF (riscv32e-npc):     0x80000000 (= CONFIG_MBASE)
+   *   - ysyxsoc REF    (riscv32e-ysyxsoc): 0x30000000 (= Flash 窗口 = CONFIG_MBASE) */
+  assert(in_pmem(addr));
+  uint8_t *host = guest_to_host(addr);
 
   if (direction == DIFFTEST_TO_REF) {
     memcpy(host, buf, n);
