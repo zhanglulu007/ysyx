@@ -105,7 +105,7 @@ void init_mem() {
 }
 
 word_t paddr_read(paddr_t addr, int len) {
-  if (likely(in_pmem(addr))) {
+  if (in_pmem(addr)) {
     word_t ret = pmem_read(addr, len);
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
@@ -144,7 +144,7 @@ word_t paddr_read(paddr_t addr, int len) {
 
 void paddr_write(paddr_t addr, int len, word_t data) {
   IFDEF(CONFIG_MTRACE, mtrace_write(addr, len, data));
-  if (likely(in_pmem(addr))) { pmem_write(addr, len, data); return; }
+  if (in_pmem(addr)) { pmem_write(addr, len, data); return; }
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
   if (in_psram(addr)) { host_write(psram_to_host(addr), len, data); return; }
   IFDEF(CONFIG_YSYXSOC,
