@@ -15,7 +15,7 @@ uint8_t* get_flash_buffer() {
     return flash;
 }
 uint32_t flash_read_word(uint32_t addr) {
-    uint32_t off = ((uint32_t)addr & ~0x3u);
+    uint32_t off = ((uint32_t)addr - FLASH_BASE) & ~0x3u;
     uint32_t value = 0;
     for (int i = 0; i < 4; i++) {
         uint32_t boff = off + i;
