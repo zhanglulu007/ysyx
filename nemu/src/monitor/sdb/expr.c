@@ -296,7 +296,11 @@ static word_t eval(int p, int q, bool *success) {
       if (!*success) return 0;
       
       // 检查地址是否有效
+#ifdef YSYXSOC_REF
+      if (!(in_flash(addr) || in_sram(addr) || in_sdram(addr))) {
+#else
       if (!in_pmem(addr)) {
+#endif
         printf("Invalid memory address: " FMT_WORD "\n", addr);
         *success = false;
         return 0;

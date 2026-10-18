@@ -95,15 +95,18 @@ static void sdl_update_screen() {
 void init_device() {
     boot_time = get_time_us();
     memset(g_fb, 0, sizeof(g_fb));
+#ifndef ENABLE_NVBOARD
     init_keymap();
-    init_sdl();
+#endif
 }
 
 void device_cleanup() {
+#ifndef ENABLE_NVBOARD
     if (g_texture)  SDL_DestroyTexture(g_texture);
     if (g_renderer) SDL_DestroyRenderer(g_renderer);
     if (g_window)   SDL_DestroyWindow(g_window);
     SDL_Quit();
+#endif
 }
 
 bool is_device_addr(uint32_t addr) {
@@ -166,6 +169,8 @@ void fb_write(uint32_t addr, uint32_t data, uint8_t wmask) {
 }
 
 void device_update() {
+#ifndef ENABLE_NVBOARD
+    // 原仿真环境（standalone）的 SDL 事件轮询
     // 每 1ms 才轮询一次 SDL 事件，避免每条指令都调用 SDL 拖慢仿真
     static uint64_t last_update = 0;
     uint64_t now = get_time_us();
@@ -191,4 +196,5 @@ void device_update() {
             default: break;
         }
     }
+#endif
 }

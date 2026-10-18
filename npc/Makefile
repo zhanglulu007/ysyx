@@ -1,154 +1,211 @@
-######################################################################
-#
-# DESCRIPTION: Verilator Example: Small Makefile
-#
-# This calls the object directory makefile.  That allows the objects to
-# be placed in the "current directory" which simplifies the Makefile.
-#
-# This file ONLY is placed under the Creative Commons Public Domain, for
-# any use, without warranty, 2020 by Wilson Snyder.
-# SPDX-License-Identifier: CC0-1.0
-#
-######################################################################
-# Check for sanity to avoid later confusion
+PROJECT_DIR := $(abspath $(CURDIR))
+WORKBENCH_ROOT := $(abspath $(PROJECT_DIR)/..)
+SRC_ROOT := $(PROJECT_DIR)/csrc
+NEMU_HOME ?= $(WORKBENCH_ROOT)/nemu
+YSYXSOC_ROOT ?= $(WORKBENCH_ROOT)/ysyxSoC
+YSYXSOC_BUILD := $(YSYXSOC_ROOT)/build
+YSYXSOC_PERIP := $(YSYXSOC_ROOT)/perip
 
-	
 include ../Makefile
 
 ifneq ($(words $(CURDIR)),1)
   $(error Unsupported: GNU Make cannot build in directories containing spaces, build elsewhere: '$(CURDIR)')
 endif
 
-######################################################################
-
-# This is intended to be a minimal example.  Before copying this to start a
-# real project, it is better to start with a more complete example,
-# e.g. examples/make_tracing_c.
-
-# If $VERILATOR_ROOT isn't in the environment, we assume it is part of a
-# package install, and verilator is in your path. Otherwise find the
-# binary relative to $VERILATOR_ROOT (such as when inside the git sources).
 ifeq ($(VERILATOR_ROOT),)
-  VERILATOR = verilator
+  VERILATOR := verilator
 else
   export VERILATOR_ROOT
-  VERILATOR = $(VERILATOR_ROOT)/bin/verilator
+  VERILATOR := $(VERILATOR_ROOT)/bin/verilator
 endif
 
-#default:
-#	@echo "-- Verilator hello-world simple example"
-#	@echo "-- VERILATE & BUILD --------"
-#	$(VERILATOR) -cc --exe --build -j top.v sim_main.cpp
-#	@echo "-- RUN ---------------------"
-#	obj_dir/Vtop
-#	@echo "-- DONE --------------------"
-#	@echo "Note: Once this example is understood, see examples/make_tracing_c."
-#	@echo "Note: See also https://verilator.org/guide/latest/examples.html"
+SOC ?= 0
+FST ?= 0
+TRACE ?= 0
+DIFFTEST ?= 0
+FFLASH  ?= 0
+NVBOARD ?= 0
+PERF    ?= 0
+F       ?= 0
 
-######################################################################
+BUILD_DIR := $(PROJECT_DIR)/build
+WAVE_DIR := $(PROJECT_DIR)/wave
+$(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
-maintainer-copy::
-clean mostlyclean distclean maintainer-clean::
-	-rm -rf $(OBJ_DIR) *.log *.dmp *.vpd core $(WAVE_DIR) ./build
-	
-all:
-	@echo "Write this Makefile by your self."
-	
-WAVE_DIR = wave
-WAVE_FILE = $(WAVE_DIR)/dump.fst
+CORE_RTL_SRCS := $(sort \
+  $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
+  $(wildcard $(PROJECT_DIR)/vsrc/*.sv))
+SIM_SRCS := \
+  $(SRC_ROOT)/main.cpp \
+  $(wildcard $(SRC_ROOT)/core/*.cpp) \
+  $(wildcard $(SRC_ROOT)/sdb/*.cpp) \
+  $(wildcard $(SRC_ROOT)/utils/*.cpp) \
+  $(wildcard $(SRC_ROOT)/trace/*.cpp)
 
-BUILD_DIR = ./build
-OBJ_DIR = $(BUILD_DIR)/obj_dir
+EXTRA_CFLAGS :=
+VERILATOR_TRACE_FLAGS :=
 
-FST     ?= 0
-TRACE   ?= 0
-DIFFTEST_SO ?=
-
-# FST：需要在 Verilator 阶段加 --trace-fst，并向 C++ 传宏
-ifeq ($(FST), 1)
-  VERILATOR_TRACE_FLAGS = --trace-fst --trace-structs
-  EXTRA_CFLAGS += -DENABLE_FST
+ifeq ($(SOC),1)
+  MODE := soc
+  TOP := ysyxSoCFull
+  TOP_CLASS := VysyxSoCFull
+  OBJ_DIR := $(BUILD_DIR)/obj_dir_soc
+  PROG ?= /dev/null
+  DIFFTEST_SO ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so
+  SOC_RTL_SRCS := \
+    $(YSYXSOC_BUILD)/ysyxSoCFull.v \
+    $(wildcard $(YSYXSOC_PERIP)/uart16550/rtl/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/spi/rtl/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/sdram/core_sdram_axi4/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/sdram/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/psram/efabless/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/psram/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/vga/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/ps2/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/gpio/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/flash/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/bitrev/*.v) \
+    $(wildcard $(YSYXSOC_PERIP)/amba/*.v)
+  RTL_SRCS := $(SOC_RTL_SRCS) $(CORE_RTL_SRCS)
+  EXTRA_CFLAGS += -DSOC_MODE
+  VERILATOR_MODE_FLAGS := \
+    -DSOC_MODE \
+    -I$(YSYXSOC_PERIP)/uart16550/rtl \
+    -I$(YSYXSOC_PERIP)/spi/rtl \
+	  --autoflush
+  MODE_PREREQUISITE := check-soc
 else
-  VERILATOR_TRACE_FLAGS =
+  MODE := standalone
+  TOP := top
+  TOP_CLASS := Vtop
+  OBJ_DIR := $(BUILD_DIR)/obj_dir
+  PROG ?= test/mem.bin
+  DIFFTEST_SO ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
+  RTL_SRCS := $(CORE_RTL_SRCS)
 endif
 
-# Trace：只需向 C++ 传宏
-ifeq ($(TRACE), 1)
+ifeq ($(NVBOARD), 1)
+  EXTRA_CFLAGS += -DENABLE_NVBOARD
+  NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
+  NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
+  NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
+  NVBOARD_HOME ?= /home/zhangshenlu/ysyx-workbench/nvboard
+  NXDC_FILES = $(PROJECT_DIR)/constr/soc.nxdc
+  SRC_AUTO_BIND = $(BUILD_DIR)/auto_bind.cpp
+
+$(SRC_AUTO_BIND): $(NXDC_FILES)
+	python3 $(NVBOARD_HOME)/scripts/auto_pin_bind.py $^ $@
+
+include $(NVBOARD_HOME)/scripts/nvboard.mk
+else
+  NVBOARD_PREREQ =
+  NVBOARD_CSRCS  =
+  NVBOARD_LDFLAGS =
+endif
+
+PROG_ABS := $(abspath $(PROG))
+ELF ?=
+ELF_ABS := $(if $(ELF),$(abspath $(ELF)))
+BATCH ?= -b
+
+VERILATOR_FLAGS := \
+  --top-module $(TOP) \
+  --x-assign fast --x-initial fast \
+  --timescale "1ns/1ns" --no-timing \
+  $(VERILATOR_MODE_FLAGS)
+
+ifeq ($(FST),1)
+  VERILATOR_TRACE_FLAGS += --trace-fst --trace-structs
+  EXTRA_CFLAGS += -DENABLE_FST
+endif
+
+ifeq ($(TRACE),1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
-# DiffTest：非空则拼成 -d <path> 传给可执行文件
-ifneq ($(DIFFTEST_SO),)
-  DIFFTEST_ARG = -d $(DIFFTEST_SO)
-else
-  DIFFTEST_ARG =
-endif
-
-# ELF：非空则拼成 -e <path> 传给可执行文件（ftrace 需要）
 ifneq ($(ELF),)
-  ELF_ARG = -e $(ELF)
-else
-  ELF_ARG =
+  ELF_ARG := -e $(ELF_ABS)
 endif
 
-PROG  ?= test/mem.bin
-ELF   ?=
-BATCH ?= -b
-CXXFLAGS += -O3 -march=native
-VERILATOR_FLAGS += --x-assign fast --x-initial fast
+ifeq ($(DIFFTEST),1)
+  DIFFTEST_ARG := -d $(DIFFTEST_SO)
+endif
 
-$(shell mkdir -p $(BUILD_DIR))
+ifeq ($(FFLASH), 1)
+  VERILATOR_FLAGS += -DFAST_FLASH
+  EXTRA_CFLAGS += -DFAST_FLASH
+endif
 
-# 打印当前功能开关状态
-show-config:
-	@echo "FST=$(FST)  TRACE=$(TRACE)  DIFFTEST_SO=$(DIFFTEST_SO)  ELF=$(ELF)"
-	@echo "Usage examples:"
-	@echo "  make build                          # 全关（最快）"
-	@echo "  make build TRACE=1                  # 开 trace"
-	@echo "  make build FST=1                    # 开波形"
-	@echo "  make build FST=1 TRACE=1            # 全开"
-	@echo "  make run PROG=x.bin                 # 不带 ftrace/difftest 运行"
-	@echo "  make run PROG=x.bin ELF=x.elf TRACE=1  # 开 ftrace"
-	@echo "  make run PROG=x.bin DIFFTEST_SO=../nemu/build/riscv32-nemu-interpreter-so"
+ifeq ($(PERF), 1)
+  VERILATOR_FLAGS += -DENABLE_PERF
+  EXTRA_CFLAGS += -DENABLE_PERF
+endif
+
+ifneq ($(F),0)
+  EXTRA_CFLAGS += -DF=$(F)
+endif
+
+SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_LIBS := $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf
 
 define VERILATE_CMD
-	$(VERILATOR) --top-module top -cc --exe --build -j \
-	$(VERILATOR_TRACE_FLAGS) \
-	-CFLAGS "-std=c++14 -O3 -I$(shell pwd)/csrc \
-	  -I$(shell pwd)/../nemu/tools/capstone/repo/include \
-	  -I$(shell pwd)/../nemu/include \
-	  $(shell sdl2-config --cflags) \
-	  $(EXTRA_CFLAGS)" \
-	-LDFLAGS "-lreadline -ldl $(shell sdl2-config --libs)" \
-	vsrc/*.v csrc/main.cpp csrc/core/*.cpp csrc/sdb/*.cpp \
-	csrc/utils/*.cpp csrc/trace/*.cpp \
-	--Mdir $(OBJ_DIR)
+	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_TRACE_FLAGS) \
+	  -cc --exe --build -j \
+	  -CFLAGS "-std=c++14 -O3 \
+	    -I$(SRC_ROOT) \
+	    -I$(NEMU_HOME)/tools/capstone/repo/include \
+	    -I$(NEMU_HOME)/include \
+      -I$(NVBOARD_HOME)/usr/include \
+	    $(SDL_CFLAGS) $(EXTRA_CFLAGS)" \
+	  -LDFLAGS "$(NVBOARD_LDFLAGS) -lreadline -ldl $(SDL_LIBS)" \
+	  $(RTL_SRCS) $(SIM_SRCS) \
+	  --Mdir $(OBJ_DIR) \
+    $(NVBOARD_CSRCS)
 endef
 
-# 只编译不运行
-build:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
-	@mkdir -p $(WAVE_DIR)
-	$(VERILATE_CMD)
-	@echo "-- BUILD DONE --------------"
+all: build
 
-# 编译并运行
-run:
-	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
-	@echo "-- VERILATE & BUILD [FST=$(FST) TRACE=$(TRACE)] --------"
-	@mkdir -p $(WAVE_DIR)
-	$(VERILATE_CMD)
-	@echo "-- BUILD DONE --------------"
-	@if [ ! -f $(OBJ_DIR)/Vtop ]; then \
-		echo "Error: Vtop not found after build."; exit 1; \
-	fi
-	@if [ ! -f "$(PROG)" ]; then \
-		echo "Error: Program file '$(PROG)' not found."; exit 1; \
-	fi
-	@echo "-- RUN [DIFFTEST=$(if $(DIFFTEST_SO),ON,OFF)] -----------"
-	@echo "Running: $(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)"
-	@$(OBJ_DIR)/Vtop $(PROG) $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
-	@echo "-- DONE --------------------"
+show-config:
+	@echo "MODE=$(MODE) SOC=$(SOC) TOP=$(TOP) TOP_CLASS=$(TOP_CLASS)"
+	@echo "OBJ_DIR=$(OBJ_DIR)"
+	@echo "FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH)"
+	@echo "PERF=$(PERF) NVBOARD=$(NVBOARD) F=$(F)"
+	@echo "PROG=$(PROG_ABS) ELF=$(ELF_ABS)"
+	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 
-.PHONY: build sim run clean
+check-soc:
+	@test -f "$(YSYXSOC_BUILD)/ysyxSoCFull.v" || { \
+	  echo "Error: missing $(YSYXSOC_BUILD)/ysyxSoCFull.v; run 'make -C $(YSYXSOC_ROOT) verilog'."; \
+	  exit 1; \
+	}
+	@grep -q 'ysyx_26020070' "$(YSYXSOC_BUILD)/ysyxSoCFull.v" || { \
+	  echo "Error: ysyxSoCFull.v does not instantiate ysyx_26020070."; \
+	  exit 1; \
+	}
+
+lint: $(MODE_PREREQUISITE)
+	$(VERILATOR) --lint-only -Wno-fatal $(VERILATOR_FLAGS) $(RTL_SRCS)
+
+build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
+	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
+	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH)] --"
+	$(VERILATE_CMD)
+
+run: build
+	@if [ ! -r "$(PROG_ABS)" ]; then \
+	  echo "Error: program '$(PROG_ABS)' not found."; exit 1; \
+	fi
+	@if [ "$(DIFFTEST)" = "1" ] && [ ! -f "$(DIFFTEST_SO)" ]; then \
+	  echo "Error: DiffTest REF '$(DIFFTEST_SO)' not found."; exit 1; \
+	fi
+	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
+	@echo "-- RUN NPC [MODE=$(MODE) DIFFTEST=$(DIFFTEST)] --"
+	@cd $(PROJECT_DIR) && \
+	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
+	  -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
+
+clean:
+	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
+
+.PHONY: all show-config check-soc lint build run \
+	build-standalone run-standalone build-soc run-soc clean

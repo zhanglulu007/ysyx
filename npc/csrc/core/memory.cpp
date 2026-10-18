@@ -1,19 +1,80 @@
-/***************************************************************************************
-* NPC Memory Management
-* 存储器管理模块实现
-***************************************************************************************/
-
 #include "memory.h"
 #include "device.h"
 #include "npc.h"
 #include "../utils/log.h"
 #include "../utils/difftest.h"
 #include "../trace/mtrace.h"
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 
-// 物理内存
 static uint8_t pmem[PMEM_SIZE];
+static uint8_t flash[FLASH_SIZE];
+
+uint8_t* get_flash_buffer() {
+    return flash;
+}
+uint32_t flash_read_word(uint32_t addr) {
+    uint32_t off = ((uint32_t)addr & ~0x3u);
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i++) {
+        uint32_t boff = off + i;
+        value |= (boff < FLASH_SIZE ? (uint32_t)flash[boff] : 0u) << (8 * i);
+    }
+    return value;
+}
+
+bool in_flash(uint32_t addr) {
+    return addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE;
+}
+
+bool flash_load(const char* filename) {
+    FILE* fp = fopen(filename, "rb");
+    if (!fp) {
+        Log("ERROR: Cannot open file '%s'", filename);
+        return false;
+    }
+    
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    
+    if (size > FLASH_SIZE) {
+        Log("ERROR: Program size (%ld bytes) exceeds flash size (%d bytes)", size, FLASH_SIZE);
+        fclose(fp);
+        return false;
+    }
+    
+    size_t bytes_read = fread(flash, 1, size, fp);
+    fclose(fp);
+    
+    Log("Loaded %zu bytes from '%s' into flash at 0x%08x", bytes_read, filename, FLASH_BASE);
+    return true;
+}
+
+// DPI-C: flash 颗粒读 (flash.v 的 flash_cmd 调用), 按字节地址读 4 字节
+extern "C" void flash_read(int32_t addr, int32_t *data) {
+    uint32_t off = ((uint32_t)addr & ~0x3u);
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i++) {
+        uint32_t boff = off + i;
+        value |= (boff < FLASH_SIZE ? (uint32_t)flash[boff] : 0u) << (8 * i);
+    }
+    *data = (int32_t)value;
+}
+
+extern "C" void mrom_read(int32_t addr, int32_t *data) {
+    (void)addr;
+    *data = 0;
+}
+
+uint8_t* get_pmem_buffer() {
+    return pmem;
+}
+
+uint8_t* guest_to_host(uint32_t paddr) {
+    return pmem + (paddr - PMEM_BASE);
+}
 
 // mtrace去重变量（仅 TRACE 开启时使用）
 #ifdef ENABLE_TRACE
@@ -22,11 +83,6 @@ static uint32_t last_read_addr = 0;
 static uint64_t last_write_cycle = 0;
 static uint32_t last_write_addr = 0;
 #endif
-
-// 地址转换
-uint8_t* guest_to_host(uint32_t paddr) {
-    return pmem + (paddr - PMEM_BASE);
-}
 
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
@@ -60,7 +116,7 @@ extern "C" int pmem_read(int raddr) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_read_cycle || raddr != last_read_addr) {
-        mtrace_read(raddr, 4, ret, pc);
+        mtrace_read(raddr, 4, ret, pc, cycle);
         last_read_cycle = cycle;
         last_read_addr = raddr;
     }
@@ -103,7 +159,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_write_cycle || waddr != last_write_addr) {
-        mtrace_write(waddr, len, wdata, pc);
+        mtrace_write(waddr, len, wdata, pc, cycle);
         last_write_cycle = cycle;
         last_write_addr = waddr;
     }
@@ -132,7 +188,6 @@ bool in_pmem(uint32_t addr) {
     return addr >= PMEM_BASE && addr < PMEM_BASE + PMEM_SIZE;
 }
 
-// 加载二进制文件到存储器
 bool load_program(const char* filename) {
     FILE* fp = fopen(filename, "rb");
     if (!fp) {

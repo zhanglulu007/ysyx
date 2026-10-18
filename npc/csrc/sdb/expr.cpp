@@ -1,8 +1,3 @@
-/***************************************************************************************
-* NPC Simple Debugger (sdb)
-* 表达式求值模块
-***************************************************************************************/
-
 #include "sdb.h"
 #include <regex.h>
 #include <cassert>
@@ -231,6 +226,15 @@ static word_t eval(int p, int q, bool *success) {
       word_t addr = eval(p + 1, q, success);
       if (!*success) return 0;
       
+#ifdef SOC_MODE
+      if (!in_flash(addr)) {
+        printf("Invalid memory address: 0x%08x\n", addr);
+        *success = false;
+        return 0;
+      }
+      
+      return flash_read_word(addr);
+#else
       if (!in_pmem(addr)) {
         printf("Invalid memory address: 0x%08x\n", addr);
         *success = false;
@@ -238,6 +242,7 @@ static word_t eval(int p, int q, bool *success) {
       }
       
       return pmem_read_word(addr);
+#endif
     }
     
     int op = find_main_op(p, q);

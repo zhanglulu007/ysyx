@@ -64,17 +64,22 @@ void init_difftest(const char *ref_so_file, long img_size) {
   // 初始化 REF
   ref_difftest_init(1234);
   
-  if (img_size < 0 || img_size > PMEM_SIZE) {
-    Log("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)", img_size, PMEM_SIZE);
-    printf("ERROR: invalid image size for difftest: %ld (PMEM_SIZE=%d)\n", img_size, PMEM_SIZE);
+  if (img_size < 0 || img_size > MAX_IMG_SIZE) {
+    Log("ERROR: invalid image size for difftest: %ld (MAX_IMG_SIZE=%d)", img_size, MAX_IMG_SIZE);
+    printf("ERROR: invalid image size for difftest: %ld (MAX_IMG_SIZE=%d)\n", img_size, MAX_IMG_SIZE);
     return;
   }
 
-  // 同步内存
-  ref_difftest_memcpy(0x80000000, guest_to_host(0x80000000), img_size, DIFFTEST_TO_REF);
-  
+  uint32_t sync_size = (uint32_t)img_size;
+#ifdef SOC_MODE
+  ref_difftest_memcpy(FLASH_BASE, get_flash_buffer(), sync_size, DIFFTEST_TO_REF);
+#else
+  ref_difftest_memcpy(PMEM_BASE, get_pmem_buffer(), sync_size, DIFFTEST_TO_REF);
+#endif
+
   // 同步寄存器
   DiffTestState dut_state;
+  memset(&dut_state, 0, sizeof(dut_state));
   const int gpr_num = sizeof(dut_state.gpr) / sizeof(dut_state.gpr[0]);
   for (int i = 0; i < gpr_num; i++) {
     dut_state.gpr[i] = npc_get_reg(i);
@@ -94,8 +99,8 @@ void init_difftest(const char *ref_so_file, long img_size) {
   printf("\n");
 }
 
-// 跳过 REF 的执行
-void difftest_skip_ref() {
+// 跳过 REF 的执行 (extern "C": 供 ysyx_26020070.v 的 DPI-C 直接调用)
+extern "C" void difftest_skip_ref() {
   if (!is_difftest_enabled) return;
   is_skip_ref = true;
 }

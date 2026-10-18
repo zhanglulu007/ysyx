@@ -1,14 +1,10 @@
-/***************************************************************************************
-* NPC - RISC-V Processor Simulator
-* 主程序入口
-***************************************************************************************/
-
 #include <cstdio>
 #include <cstring>
 #include "core/npc.h"
 #include "core/cpu.h"
 #include "core/memory.h"
 #include "core/device.h"
+#include "core/perf.h"
 #include "core/reg.h"
 #include "sdb/sdb.h"
 #include "utils/log.h"
@@ -20,7 +16,6 @@
 #include "trace/ftrace.h"
 #endif
 
-// 打印使用说明
 static void print_usage(const char* prog_name) {
     printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file] [-d ref_so]\n", prog_name);
     printf("  -b: batch mode (non-interactive)\n");
@@ -30,7 +25,6 @@ static void print_usage(const char* prog_name) {
     printf("Example: %s build/dummy-riscv32e-npc.bin\n", prog_name);
 }
 
-// 解析命令行参数
 static bool parse_args(int argc, char** argv, 
                       const char** program_file,
                       bool* batch_mode,
@@ -139,10 +133,11 @@ int main(int argc, char** argv) {
     // 打印欢迎信息
     print_welcome();
     
-    // 加载程序
-    if (!load_program(program_file)) {
-        return 1;
-    }
+#ifdef SOC_MODE
+    if (!flash_load(program_file)) return 1;
+#else
+    if (!load_program(program_file)) return 1;   
+#endif
     
     printf("\n");
     
@@ -166,7 +161,7 @@ int main(int argc, char** argv) {
         printf("Entering interactive mode. Type 'help' for commands.\n\n");
     }
     
-    Log("Starting simulation from PC=0x%08x", PMEM_BASE);
+    Log("Starting simulation from PC=0x%08x", npc_get_pc());
     
     // 进入sdb主循环
     sdb_mainloop();
@@ -175,7 +170,12 @@ int main(int argc, char** argv) {
     Log("Simulation finished");
     printf("\nSimulation finished.\n");
     print_exit_info();
-    
+
+#ifdef ENABLE_PERF
+    // 仿真结束时打印性能报告 (仅 PERF=1 构建)
+    perf_report();
+#endif
+
     // 清理资源
     cleanup_cpu();
     

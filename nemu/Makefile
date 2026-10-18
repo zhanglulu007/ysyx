@@ -53,6 +53,10 @@ CFLAGS_TRACE += -DMTRACE_COND=$(if $(CONFIG_MTRACE_COND),$(call remove_quote,$(C
 CFLAGS  += $(CFLAGS_BUILD) $(CFLAGS_TRACE) -D__GUEST_ISA__=$(GUEST_ISA)
 LDFLAGS += $(CFLAGS_BUILD)
 
+ifeq ($(YSYXSOC_REF),1)
+CFLAGS += -DYSYXSOC_REF
+endif
+
 # Include rules for menuconfig
 include $(NEMU_HOME)/scripts/config.mk
 
@@ -63,3 +67,64 @@ else
 # Include rules to build NEMU
 include $(NEMU_HOME)/scripts/native.mk
 endif
+
+NEMU_BUILD_DIR := $(NEMU_HOME)/build
+DIFFTEST_SO_STANDALONE := $(NEMU_BUILD_DIR)/riscv32-nemu-interpreter-standalone-so
+DIFFTEST_SO_YSYXSOC   := $(NEMU_BUILD_DIR)/riscv32-nemu-interpreter-ysyxsoc-so
+
+# kconfig 生成物清单与备份目录 (defconfig/syncconfig 会改写这些文件)
+DIFFTEST_CFG_FILES := .config .config.old include/config include/generated
+DIFFTEST_CFG_BAK   := $(NEMU_BUILD_DIR)/.difftest-cfg-bak
+
+.PHONY: difftest-so difftest-so-standalone difftest-so-ysyxsoc
+
+difftest-so: difftest-so-standalone difftest-so-ysyxsoc
+	@echo "=== All NEMU REF .so ready ==="
+
+difftest-so-standalone:
+	@echo "=== Building NEMU REF .so (standalone) ==="
+	@set -e; \
+	B=$(DIFFTEST_CFG_BAK); \
+	rm -rf $$B; mkdir -p $$B; \
+	for f in $(DIFFTEST_CFG_FILES); do \
+	  if [ -e "$(NEMU_HOME)/$$f" ]; then cp -a "$(NEMU_HOME)/$$f" "$$B/$$(echo $$f | tr / _)"; fi; \
+	done; \
+	restore() { \
+	  [ -d "$$B" ] || return 0; \
+	  for f in $(DIFFTEST_CFG_FILES); do \
+	    rm -rf "$(NEMU_HOME)/$$f"; \
+	    b="$$B/$$(echo $$f | tr / _)"; \
+	    if [ -e "$$b" ]; then cp -a "$$b" "$(NEMU_HOME)/$$f"; fi; \
+	  done; \
+	  rm -rf $$B; \
+	  echo "=== NEMU config restored (standalone) ==="; \
+	}; \
+	trap 'restore; exit 130' INT TERM; \
+	trap restore EXIT; \
+	$(MAKE) -C $(NEMU_HOME) riscv32-standalone_defconfig; \
+	$(MAKE) -C $(NEMU_HOME) NAME=riscv32-nemu-interpreter-standalone app; \
+	test -f "$(DIFFTEST_SO_STANDALONE)"
+
+difftest-so-ysyxsoc:
+	@echo "=== Building NEMU REF .so (ysyxsoc) ==="
+	@set -e; \
+	B=$(DIFFTEST_CFG_BAK); \
+	rm -rf $$B; mkdir -p $$B; \
+	for f in $(DIFFTEST_CFG_FILES); do \
+	  if [ -e "$(NEMU_HOME)/$$f" ]; then cp -a "$(NEMU_HOME)/$$f" "$$B/$$(echo $$f | tr / _)"; fi; \
+	done; \
+	restore() { \
+	  [ -d "$$B" ] || return 0; \
+	  for f in $(DIFFTEST_CFG_FILES); do \
+	    rm -rf "$(NEMU_HOME)/$$f"; \
+	    b="$$B/$$(echo $$f | tr / _)"; \
+	    if [ -e "$$b" ]; then cp -a "$$b" "$(NEMU_HOME)/$$f"; fi; \
+	  done; \
+	  rm -rf $$B; \
+	  echo "=== NEMU config restored (ysyxsoc) ==="; \
+	}; \
+	trap 'restore; exit 130' INT TERM; \
+	trap restore EXIT; \
+	$(MAKE) -C $(NEMU_HOME) riscv32-ysyxsoc-so_defconfig; \
+	$(MAKE) -C $(NEMU_HOME) NAME=riscv32-nemu-interpreter-ysyxsoc YSYXSOC_REF=1 app; \
+	test -f "$(DIFFTEST_SO_YSYXSOC)"

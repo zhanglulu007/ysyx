@@ -1,125 +1,248 @@
-// LSU - Load-Store Unit
-// 访存单元：负责存储器的读写操作
-
 module LSU(
   input clk,
   input rst,
-  
-  // 控制信号
-  input mem_valid,            // 访存有效
-  input mem_wen,              // 写使能
-  
-  // 加载指令
-  input is_lb,                // 加载有符号字节
-  input is_lh,                // 加载有符号半字
-  input is_lw,                // 加载字
-  input is_lbu,               // 加载无符号字节
-  input is_lhu,               // 加载无符号半字
-  
-  // 存储指令
-  input is_sb,                // 存储字节
-  input is_sh,                // 存储半字
-  input is_sw,                // 存储字
-  
-  // 地址和数据
-  input [31:0] mem_addr,      // 访存地址
-  input [31:0] wdata,         // 写入数据（来自rs2）
-  
-  // 输出
-  output [31:0] rdata         // 读出数据
+
+  input mem_valid,
+  input mem_wen,
+
+  input is_lb,
+  input is_lh,
+  input is_lw,
+  input is_lbu,
+  input is_lhu,
+
+  input is_sb,
+  input is_sh,
+  input is_sw,
+
+  // AXI4 AR
+  output lsu_arvalid,
+  input lsu_arready,
+  output [31:0] lsu_araddr,
+  output [3:0] lsu_arid,
+  output [7:0] lsu_arlen,
+  output reg [2:0] lsu_arsize,
+  output [1:0] lsu_arburst,
+
+  // AXI4 R
+  input lsu_rvalid,
+  output lsu_rready,
+  input [1:0] lsu_rresp,
+  input [31:0] lsu_rdata,
+  input lsu_rlast,
+  input [3:0] lsu_rid,
+
+  // AXI4 AW
+  output lsu_awvalid,
+  input lsu_awready,
+  output [31:0] lsu_awaddr,
+  output [3:0] lsu_awid,
+  output [7:0] lsu_awlen,
+  output reg [2:0] lsu_awsize,
+  output [1:0] lsu_awburst,
+
+  // AXI4 W
+  output lsu_wvalid,
+  input lsu_wready,
+  output reg [31:0] lsu_wdata,
+  output reg [3:0] lsu_wstrb,
+  output lsu_wlast,
+
+  // AXI4 B
+  input lsu_bvalid,
+  output lsu_bready,
+  input [1:0] lsu_bresp,
+  input [3:0] lsu_bid,
+
+  input [31:0] addr,
+  input [31:0] wdata,
+
+  output reg [31:0] rdata,
+  output lsu_done
 );
 
-  // DPI-C函数：存储器读写
-  import "DPI-C" function int pmem_read(input int raddr);
-  import "DPI-C" function void pmem_write(input int waddr, input int wdata, input byte wmask);
-  
-  // 地址低2位，用于字节/半字选择
-  wire [1:0] mem_offset;
-  assign mem_offset = mem_addr[1:0];
-  
-  // ========== 读操作 ==========
-  // 在下降沿对 load 访存进行一次采样，避免组合逻辑反复调用 pmem_read()
-  reg [31:0] mem_rdata_raw;
-  always @(negedge clk) begin
-    if (rst) begin
-      mem_rdata_raw <= 32'b0;
-    end else if (mem_valid && !mem_wen) begin
-      mem_rdata_raw <= pmem_read(mem_addr);
-    end else begin
-      mem_rdata_raw <= 32'b0;
-    end
-  end
-  
-  // 根据指令类型和地址偏移选择读取的数据
-  reg [31:0] mem_rdata_selected;
-  always @(*) begin
-    if (is_lw) begin
-      // LW：直接返回32位数据
-      mem_rdata_selected = mem_rdata_raw;
-    end 
-    else if (is_lh) begin
-      // LH：根据地址低1位选择半字并符号扩展
-      case (mem_offset[1])
-        1'b0: mem_rdata_selected = {{16{mem_rdata_raw[15]}}, mem_rdata_raw[15:0]};
-        1'b1: mem_rdata_selected = {{16{mem_rdata_raw[31]}}, mem_rdata_raw[31:16]};
-      endcase
-    end
-    else if (is_lhu) begin
-      // LHU：根据地址低1位选择半字并零扩展
-      case (mem_offset[1])
-        1'b0: mem_rdata_selected = {16'b0, mem_rdata_raw[15:0]};
-        1'b1: mem_rdata_selected = {16'b0, mem_rdata_raw[31:16]};
-      endcase
-    end
-    else if (is_lb) begin
-      // LB：根据地址低2位选择字节并符号扩展
-      case (mem_offset)
-        2'b00: mem_rdata_selected = {{24{mem_rdata_raw[7]}},  mem_rdata_raw[7:0]};
-        2'b01: mem_rdata_selected = {{24{mem_rdata_raw[15]}}, mem_rdata_raw[15:8]};
-        2'b10: mem_rdata_selected = {{24{mem_rdata_raw[23]}}, mem_rdata_raw[23:16]};
-        2'b11: mem_rdata_selected = {{24{mem_rdata_raw[31]}}, mem_rdata_raw[31:24]};
-      endcase
-    end
-    else if (is_lbu) begin
-      // LBU：根据地址低2位选择字节并零扩展
-      case (mem_offset)
-        2'b00: mem_rdata_selected = {24'b0, mem_rdata_raw[7:0]};
-        2'b01: mem_rdata_selected = {24'b0, mem_rdata_raw[15:8]};
-        2'b10: mem_rdata_selected = {24'b0, mem_rdata_raw[23:16]};
-        2'b11: mem_rdata_selected = {24'b0, mem_rdata_raw[31:24]};
-      endcase
-    end 
-    else begin
-      mem_rdata_selected = 0;
-    end
-  end
-  
-  assign rdata = mem_rdata_selected;
-  
-  // ========== 写操作 ==========
+  localparam IDLE_R = 1'b0, IDLE_W = 1'b0;
+  localparam WAIT_R = 1'b1, WAIT_W = 1'b1;
+  reg state_r, state_w;
+
   always @(posedge clk) begin
-    if (!rst && mem_valid && mem_wen) begin
-      if (is_sw) begin
-        // SW：写入4字节，写掩码全1
-        pmem_write(mem_addr, wdata, 8'hFF);
-      end 
-      else if (is_sh) begin
-        // SH：根据地址低1位写入2字节
-        case (mem_offset[1])
-          1'b0: pmem_write(mem_addr, wdata,          8'h03);  // 写入低半字
-          1'b1: pmem_write(mem_addr, wdata << 16,    8'h0C);  // 写入高半字
-        endcase
-      end
-      else if (is_sb) begin
-        // SB：根据地址低2位写入1字节
-        case (mem_offset)
-          2'b00: pmem_write(mem_addr, wdata,          8'h01);
-          2'b01: pmem_write(mem_addr, wdata << 8,     8'h02);
-          2'b10: pmem_write(mem_addr, wdata << 16,    8'h04);
-          2'b11: pmem_write(mem_addr, wdata << 24,    8'h08);
-        endcase
-      end
+    if (rst) begin
+      state_r <= IDLE_R;
+      state_w <= IDLE_W;
+    end else begin
+      case (state_r)
+        IDLE_R: begin
+          if (lsu_arvalid && lsu_arready) begin
+            state_r <= WAIT_R;
+          end
+        end
+        WAIT_R: begin
+          if (lsu_rvalid && lsu_rready && lsu_rlast) begin
+            state_r <= IDLE_R;
+          end
+        end 
+        default: state_r <= IDLE_R;        
+      endcase
+
+      case (state_w)
+        IDLE_W: begin
+          if (lsu_awvalid && lsu_awready) begin
+            state_w <= WAIT_W;
+          end
+        end
+        WAIT_W: begin
+          if (lsu_bvalid && lsu_bready) begin
+            state_w <= IDLE_W;
+          end
+        end 
+        default: state_w <= IDLE_W;
+      endcase
+
     end
+  end
+
+  assign lsu_arvalid = mem_valid && !mem_wen && !lsu_rvalid && (state_r == IDLE_R);
+  assign lsu_araddr = addr;
+  assign lsu_arid = 4'b0010;
+  assign lsu_arlen = 8'b0;
+  assign lsu_arburst = 2'b01;
+  
+  assign lsu_rready = mem_valid && !mem_wen;
+
+  assign lsu_awvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
+  assign lsu_awaddr = addr;
+  assign lsu_awid = 4'b0010;
+  assign lsu_awlen = 8'b0;
+  assign lsu_awburst = 2'b01;
+
+  assign lsu_wvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
+  assign lsu_wlast = lsu_wvalid;
+
+  assign lsu_bready = mem_valid && mem_wen;
+
+
+  assign lsu_done = !rst && mem_valid &&
+                    ((!mem_wen && lsu_rvalid && lsu_rready && lsu_rlast) ||
+                     (mem_wen && lsu_bvalid && lsu_bready));
+
+  always @(*) begin
+
+    case (1'b1)
+
+      // LHU：根据地址低1位选择半字并零扩展
+      is_lhu: begin
+      case (addr[1])
+        1'b0: rdata = {16'b0, lsu_rdata[15:0]};
+        1'b1: rdata = {16'b0, lsu_rdata[31:16]};
+      endcase
+      lsu_arsize = 3'b001;
+      lsu_awsize = 3'b001;
+    end
+
+      // LBU：根据地址低2位选择字节并零扩展
+      is_lbu: begin
+      case (addr[1:0])
+        2'b00: rdata = {24'b0, lsu_rdata[7:0]};
+        2'b01: rdata = {24'b0, lsu_rdata[15:8]};
+        2'b10: rdata = {24'b0, lsu_rdata[23:16]};
+        2'b11: rdata = {24'b0, lsu_rdata[31:24]};
+      endcase
+      lsu_arsize = 3'b000;
+      lsu_awsize = 3'b000;
+    end
+
+      is_lw: begin 
+        rdata = lsu_rdata; // LW
+        lsu_arsize = 3'b010;
+        lsu_awsize = 3'b010;
+      end
+
+      is_lh:begin
+      // LH：根据地址低1位选择半字并符号扩展
+      case (addr[1])
+        1'b0: rdata = {{16{lsu_rdata[15]}}, lsu_rdata[15:0]};
+        1'b1: rdata = {{16{lsu_rdata[31]}}, lsu_rdata[31:16]};
+      endcase
+      lsu_arsize = 3'b001;
+      lsu_awsize = 3'b001;
+    end
+
+      is_lb: begin
+      // LB：根据地址低2位选择字节并符号扩展
+      case (addr[1:0])
+        2'b00: rdata = {{24{lsu_rdata[7]}},  lsu_rdata[7:0]};
+        2'b01: rdata = {{24{lsu_rdata[15]}}, lsu_rdata[15:8]};
+        2'b10: rdata = {{24{lsu_rdata[23]}}, lsu_rdata[23:16]};
+        2'b11: rdata = {{24{lsu_rdata[31]}}, lsu_rdata[31:24]};
+      endcase
+      lsu_arsize = 3'b000;
+      lsu_awsize = 3'b000;
+    end
+
+      default:  rdata = 32'b0;
+
+    endcase
+  end
+
+  always @(*) begin
+
+    case (1'b1)
+
+        // SW：写入4字节，写掩码全1
+      is_sw: begin
+        lsu_wstrb = 4'b1111;
+        lsu_wdata = wdata;
+        lsu_arsize = 3'b010;
+        lsu_awsize = 3'b010;
+      end
+
+        // SH：根据地址低1位写入2字节
+      is_sh: begin
+        case (addr[1])
+          1'b0: begin
+            lsu_wstrb = 4'b0011;  // 写入低半字
+            lsu_wdata = wdata;
+          end
+          1'b1: begin
+            lsu_wstrb = 4'b1100;  // 写入高半字
+            lsu_wdata = wdata << 16;
+          end
+        endcase
+        lsu_arsize = 3'b001;
+        lsu_awsize = 3'b001;
+      end
+
+        // SB：根据地址低2位写入1字节
+      is_sb: begin
+        case (addr[1:0])
+          2'b00: begin
+            lsu_wstrb = 4'b0001;
+            lsu_wdata = wdata;
+          end
+          2'b01: begin
+            lsu_wstrb = 4'b0010;
+            lsu_wdata = wdata << 8;
+          end
+          2'b10: begin
+            lsu_wstrb = 4'b0100;
+            lsu_wdata = wdata << 16;
+          end
+          2'b11: begin
+            lsu_wstrb = 4'b1000;
+            lsu_wdata = wdata << 24;
+          end
+        endcase
+        lsu_arsize = 3'b000;
+        lsu_awsize = 3'b000;
+      end
+
+      default: begin
+        lsu_wstrb = 4'b0;
+        lsu_wdata = 32'b0;
+      end
+
+    endcase
+
   end
 
 endmodule

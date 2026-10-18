@@ -19,13 +19,20 @@
 #include <memory/paddr.h>
 
 __EXPORT void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
+#ifdef YSYXSOC_REF
+  assert(in_flash(addr));
+  uint8_t *host = flash_to_host(addr);
+#else
+  assert(in_pmem(addr));
+  uint8_t *host = guest_to_host(addr);
+#endif
+
   if (direction == DIFFTEST_TO_REF) {
-    // 从DUT拷贝到REF：将buf中的数据写入REF的内存addr处
-    memcpy(guest_to_host(addr), buf, n);
+    memcpy(host, buf, n);
   } else {
-    // 从REF拷贝到DUT：将REF内存addr处的数据读到buf中
-    memcpy(buf, guest_to_host(addr), n);
+    memcpy(buf, host, n);
   }
+
 }
 
 __EXPORT void difftest_regcpy(void *dut, bool direction) {

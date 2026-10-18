@@ -1,21 +1,20 @@
-/***************************************************************************************
-* NPC FTRACE DPI-C Interface
-* FTRACE的DPI-C接口实现
-***************************************************************************************/
+#include "core/npc.h"
+#include "trace/ftrace.h"
 
-#include "ftrace_dpi.h"
-#include "../trace/ftrace.h"
-
-// DPI-C函数：ftrace函数调用处理
 extern "C" void ftrace_call_handler(int pc_val, int target_val) {
 #ifdef ENABLE_TRACE
-    ftrace_call(pc_val, target_val);
+    ftrace_call(static_cast<uint32_t>(pc_val), static_cast<uint32_t>(target_val));
+#else
+    (void)pc_val;
+    (void)target_val;
 #endif
 }
 
-// DPI-C函数：ftrace函数返回处理
-extern "C" void ftrace_ret_handler(int pc_val, int target_val) {
+// The copied single-cycle RTL uses the historical one-argument return hook.
+extern "C" void ftrace_ret_handler(int pc_val) {
 #ifdef ENABLE_TRACE
-    ftrace_ret(pc_val, target_val);
+    ftrace_ret(static_cast<uint32_t>(pc_val), npc_get_reg(1));
+#else
+    (void)pc_val;
 #endif
 }

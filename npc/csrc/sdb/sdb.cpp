@@ -1,8 +1,3 @@
-/***************************************************************************************
-* NPC Simple Debugger (sdb)
-* 简易调试器主逻辑
-***************************************************************************************/
-
 #include "sdb.h"
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -105,7 +100,11 @@ static int cmd_x(char *args) {
       printf("0x%08x: ", addr + i * 4);
     }
     
+#ifdef SOC_MODE
+    word_t data = flash_read_word(addr + i * 4);
+#else
     word_t data = pmem_read_word(addr + i * 4);
+#endif
     printf("0x%08x  ", data);
     
     if (i % 4 == 3) printf("\n");

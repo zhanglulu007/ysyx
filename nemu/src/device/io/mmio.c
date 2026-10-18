@@ -36,9 +36,21 @@ static void report_mmio_overlap(const char *name1, paddr_t l1, paddr_t r1,
 void add_mmio_map(const char *name, paddr_t addr, void *space, uint32_t len, io_callback_t callback) {
   assert(nr_map < NR_MAP);
   paddr_t left = addr, right = addr + len - 1;
+#ifdef YSYXSOC_REF
+  if (in_flash(left) || in_flash(right)) {
+    report_mmio_overlap(name, left, right, "flash", FLASH_LEFT, FLASH_RIGHT);
+  }
+  if (in_sram(left) || in_sram(right)) {
+    report_mmio_overlap(name, left, right, "sram", SRAM_LEFT, SRAM_RIGHT);
+  }
+  if (in_sdram(left) || in_sdram(right)) {
+    report_mmio_overlap(name, left, right, "sdram", SDRAM_LEFT, SDRAM_RIGHT);
+  }
+#else
   if (in_pmem(left) || in_pmem(right)) {
     report_mmio_overlap(name, left, right, "pmem", PMEM_LEFT, PMEM_RIGHT);
   }
+#endif
   for (int i = 0; i < nr_map; i++) {
     if (left <= maps[i].high && right >= maps[i].low) {
       report_mmio_overlap(name, left, right, maps[i].name, maps[i].low, maps[i].high);
