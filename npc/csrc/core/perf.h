@@ -1,7 +1,6 @@
 /***************************************************************************************
 * NPC Performance Counter
 * 性能计数器: 接收 RTL 通过 DPI-C 上报的性能事件, 在仿真结束时打印性能报告.
-* 事件编号必须与 vsrc/top.v 中 `ifdef ENABLE_PERF 段内的 PERF_* localparam 一致.
 ***************************************************************************************/
 
 #ifndef __PERF_H__
@@ -9,7 +8,6 @@
 
 #include <cstdint>
 
-// 性能事件编号 (与 vsrc/top.v 中的 localparam 一一对应)
 enum PerfEventId {
     PERF_COMMIT       = 0,   // 提交(动态)指令数
     PERF_IF_FETCH     = 1,   // IFU 取到指令
@@ -31,12 +29,8 @@ enum PerfEventId {
     PERF_EVENT_COUNT
 };
 
-// 仿真结束时打印性能报告
 void perf_report();
 
-// DPI-C 接口: 供 RTL 延迟模块 (apb_delayer.v / axi4_delayer.v) 获取每拍累加量.
-// 返回 (r - 1) * 2^M, 其中 r = f_cpu / f_dev, M 为 RTL 中的放大系数(log2 s).
-// r 由编译期 -DF 传入的核评估频率计算, 只依赖主频, 因此可在 initial 里调用一次.
 #ifdef __cplusplus
 extern "C" {
 #endif

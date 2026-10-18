@@ -11,24 +11,19 @@
 
 static uint64_t perf_count[PERF_EVENT_COUNT] = {};
 
-// DPI-C 接口: RTL 在性能事件发生的那一拍调用一次
 extern "C" void perf_event(int event_id) {
     if (event_id >= 0 && event_id < PERF_EVENT_COUNT) {
         perf_count[event_id]++;
     }
 }
 
-// DPI-C 接口: 延迟模块每拍累加量 acc_step = (r - 1) * 2^M.
-//   r = f_cpu / f_dev, f_cpu 由编译期 -DF 给出 (F 以 10MHz 为单位, F=55 -> 550MHz),
-//   f_dev 取讲义假设的 100MHz. -DF 未定义或 f_cpu <= f_dev 时返回 0 (r=1, 不延迟).
-// 注意: M 必须与 apb_delayer.v / axi4_delayer.v 中的 localparam M 保持一致.
 extern "C" int perf_delay_acc_step() {
     static const int M = 8;                 // 放大系数 s = 2^M
     static const int S = 1 << M;
-    static const int F_DEV_MHZ = 100;       // 外设频率 (讲义假设 100MHz)
+    static const int F_DEV_MHZ = 100;       // 外设频率
 
 #ifdef F
-    const int f_cpu_mhz = F * 10;           // F 以 10MHz 为单位
+    const int f_cpu_mhz = F * 10;           
 #else
     const int f_cpu_mhz = F_DEV_MHZ;        // 未指定 F: r = 1
 #endif
@@ -54,7 +49,7 @@ void perf_report() {
         perf_count[PERF_EBREAK];
 
     printf("\n=================== Performance Report ===================\n");
-    printf("Cycles           : %" PRIu64 "\n", cycle);
+    printf("Cycles           : %" PRIu64 "\n",  cycle);
     printf("Instructions     : %" PRIu64 "\n", commit);
     printf("IPC              : %.4f\n", ratio(commit, cycle));
 

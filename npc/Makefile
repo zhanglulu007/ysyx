@@ -207,17 +207,5 @@ run: build
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
-
-# 构建 NEMU REF .so (供 difftest 使用)
-difftest-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so
-
-# 显式规则: 触发 NEMU 构建对应的 .so
-$(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so-standalone
-
-$(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc-so:
-	$(MAKE) -C $(NEMU_HOME) difftest-so-ysyxsoc
-
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc clean difftest-so
+	build-standalone run-standalone build-soc run-soc clean
