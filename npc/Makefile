@@ -244,7 +244,7 @@ perf:
 	      AM_HOME=$(WORKBENCH_ROOT)/abstract-machine \
 	      NPC_HOME=$(PROJECT_DIR) \
 	      ARCH=riscv32e-ysyxsoc SOC=1 FFLASH=0 PERF=1 \
-	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 mainargs=test run \
+	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 mainargs=train run \
 	      > $(PERF_MICROBENCH_LOG) 2>&1; then \
 	  echo "[perf] microbench failed; tail of $(PERF_MICROBENCH_LOG):"; \
 	  tail -n 80 $(PERF_MICROBENCH_LOG); \
