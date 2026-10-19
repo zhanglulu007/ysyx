@@ -25,6 +25,7 @@
 #include "trace_file.h"
 #include "text.h"
 #include "export_chrome.h"
+#include "tui.h"
 
 namespace {
 
@@ -43,14 +44,6 @@ void usage(const char* prog) {
   printf("  --type LIST         restrict to event categories, e.g. itrace,mtrace\n");
   printf("  --elf FILE          ELF for ftrace symbol names (text)\n");
   printf("  -h, --help          this message\n");
-}
-
-// M1/M2 命令统一给出清晰提示, 避免让人误以为“命令失败”
-int not_yet(const char* cmd, const char* milestone) {
-  fprintf(stderr, "npc-trace: '%s' is planned for %s and not implemented in M0.\n",
-          cmd, milestone);
-  fprintf(stderr, "           M0 delivers the container, CLI and build fixes only.\n");
-  return 2;
 }
 
 struct Options {
@@ -279,6 +272,31 @@ int cmd_export(const std::string& file, const Options& opt) {
   return 0;
 }
 
+int cmd_tui(const std::string& file, const Options& opt) {
+  npctrace::TuiOptions to;
+  to.elf = opt.elf;
+  if (!opt.types.empty() && !parse_types_s(opt.types, &to.types)) {
+    fprintf(stderr, "npc-trace: invalid --type list: '%s'\n", opt.types.c_str());
+    return 1;
+  }
+  for (const std::string& r : opt.ranges) {
+    npctrace::CycleRange cr{};
+    if (!parse_range_s(r, &cr)) {
+      fprintf(stderr, "npc-trace: invalid --range value: '%s'\n", r.c_str());
+      return 1;
+    }
+    to.ranges.push_back(cr);
+  }
+  npctrace::normalize_ranges(to.ranges);
+
+  std::string err;
+  if (!npctrace::run_tui(file, to, &err)) {
+    fprintf(stderr, "npc-trace: %s\n", err.c_str());
+    return 1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -308,7 +326,7 @@ int main(int argc, char** argv) {
   if (cmd == "stats")  return cmd_stats(file);
   if (cmd == "text")   return cmd_text(file, opt);
   if (cmd == "export") return cmd_export(file, opt);
-  if (cmd == "tui")    return not_yet("tui", "M2");
+  if (cmd == "tui")    return cmd_tui(file, opt);
 
   fprintf(stderr, "npc-trace: unknown command '%s'\n", cmd.c_str());
   usage(argv[0]);

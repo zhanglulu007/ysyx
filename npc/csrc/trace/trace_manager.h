@@ -14,6 +14,7 @@
 #define __NPC_TRACE_MANAGER_H__
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,22 @@ class TraceManager {
   void     set_inflight_commit(uint64_t id) { inflight_commit_ = id; }
   uint64_t inflight_commit() const { return inflight_commit_; }
 
+  // ── 动态范围(SDB, §5.4) ──────────────────────────────────────────────────
+  // 运行时增删范围, 从下一个事件起生效; 已写入的事件不删除。
+  bool   dyn_range_add(uint64_t begin, uint64_t end, std::string* err);
+  void   dyn_range_clear();                    // 清空所有范围 -> 回到全量
+  void   dyn_range_start(uint64_t now);         // 从现在起开始记录
+  void   dyn_range_stop(uint64_t now);          // 结束当前区间
+
+  // SDB `trace status` / `trace range list` 的文本
+  std::string status_string() const;
+  std::string range_list_string() const;
+
+  // ── ring buffer + 失败快照(§5.5) ─────────────────────────────────────────
+  // 失败时把"最近 N 条事件"落成 snapshot.npct(标准格式, npc-trace 可直接读)
+  // 与 snapshot.log(含 CPU 状态)。可重复调用, 只生效一次。
+  void dump_snapshot(const std::string& reason);
+
  private:
   TraceManager() = default;
   TraceManager(const TraceManager&) = delete;
@@ -73,6 +90,24 @@ class TraceManager {
 
   void write_marker(TraceType t, uint32_t range_id,
                     uint32_t pc, uint64_t cycle, uint64_t commit_id);
+
+  // ring 里的一项(itrace 或通用事件)。自包含, 不依赖 tools 侧类型。
+  struct RingItem {
+    bool     is_itrace;
+    uint32_t pc;
+    uint32_t inst;      // itrace: 指令编码; 事件: data
+    uint32_t addr;
+    uint16_t type;
+    uint16_t flags;
+    uint16_t len;
+    uint8_t  channel;
+    uint8_t  region;
+    uint64_t cycle;
+    uint64_t commit_id;
+  };
+  void ring_push_event(const TraceEvent& ev);
+  void ring_push_itrace(uint32_t pc, uint32_t inst, uint64_t cycle, uint64_t commit_id);
+  void ring_push(const RingItem& it);
 
   BinaryWriter writer_;
   bool     enabled_ = false;
@@ -93,8 +128,15 @@ class TraceManager {
 
   // 统计(进入 summary)
   uint64_t stat_ring_ = 0;
-};
 
+  // ring buffer + 快照
+  std::deque<RingItem> ring_;
+  uint64_t    ring_cap_ = 1000000;
+  TraceMeta   snap_meta_;                 // init 时保存, 供 snapshot 复用
+  std::string snap_path_ = "snapshot.npct";
+  std::string snap_log_  = "snapshot.log";
+  bool        snap_done_ = false;
+};
 }  // namespace npctrace
 
 #endif  // __NPC_TRACE_MANAGER_H__

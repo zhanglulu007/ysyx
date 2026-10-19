@@ -11,6 +11,10 @@
 #include <string.h>
 #include <ctime>
 
+#ifdef ENABLE_TRACE
+#include "../trace/trace_manager.h"
+#endif
+
 FILE *log_fp = NULL;
 
 void init_log(const char *log_file) {
@@ -80,4 +84,10 @@ void assert_fail_msg() {
     fprintf(log_fp, "Assertion failed!\n");
     fflush(log_fp);
   }
+#ifdef ENABLE_TRACE
+  // assert 属于失败路径: 落一份最近事件快照(TRACE 已启用时才有意义)
+  if (npctrace::TraceManager::instance().enabled()) {
+    npctrace::TraceManager::instance().dump_snapshot("assertion failed");
+  }
+#endif
 }

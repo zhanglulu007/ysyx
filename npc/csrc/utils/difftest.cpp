@@ -17,6 +17,7 @@
 
 #ifdef ENABLE_TRACE
 #include "../trace/itrace.h"
+#include "../trace/trace_manager.h"
 #endif
 
 // REF API 函数指针
@@ -182,6 +183,11 @@ void difftest_step(uint32_t pc, uint32_t npc) {
   // 对比寄存器
   if (!checkregs(&ref_state, pc)) {
     Log("DiffTest failed at pc = 0x%08x", pc);
+#ifdef ENABLE_TRACE
+    char rbuf[80];
+    snprintf(rbuf, sizeof(rbuf), "difftest mismatch at pc=0x%08x", pc);
+    npctrace::TraceManager::instance().dump_snapshot(rbuf);
+#endif
     printf("\nDiffTest failed! Program aborted.\n");
     printf("Please check the log file for details.\n\n");
     exit(1);

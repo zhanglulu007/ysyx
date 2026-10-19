@@ -12,7 +12,7 @@ NEMU_HOME ?= ../../../nemu
 CAPSTONE_INC := $(NEMU_HOME)/tools/capstone/repo/include
 INCLUDES := -I$(CSRC) -I$(CAPSTONE_INC)
 
-SRCS := main.cpp decode.cpp text.cpp export_chrome.cpp $(CSRC)/trace/trace_event.cpp
+SRCS := main.cpp decode.cpp disasm.cpp text.cpp export_chrome.cpp tui.cpp $(CSRC)/trace/trace_event.cpp
 
 TOOL := npc-trace
 

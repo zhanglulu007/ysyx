@@ -3,7 +3,11 @@
 ***************************************************************************************/
 #include "trace_manager.h"
 
+#include <cstdio>
 #include <cstring>
+#include <sstream>
+
+#include "../core/npc.h"
 
 namespace npctrace {
 
@@ -39,6 +43,10 @@ bool TraceManager::init(const TraceCliConfig& cfg, const TraceMeta& meta,
   cur_range_id_ = 0;
   next_seq_ = 0;
   stat_ring_ = 0;
+  ring_cap_ = cfg.ring_size;
+  snap_meta_ = m;
+  snap_done_ = false;
+  ring_.clear();
   enabled_ = true;
   return true;
 }
@@ -131,6 +139,10 @@ void TraceManager::emit_itrace(uint32_t pc, uint32_t inst,
                                uint64_t cycle, uint64_t commit_id) {
   if (!enabled_) return;
   if (!(types_ & TCAT_ITRACE)) return;
+
+  // ring: 先记录(不受 range/sample 影响), 失败时可用于回放
+  ring_push_itrace(pc, inst, cycle, commit_id);
+
   if (!pass_range(cycle, commit_id, pc)) return;
 
   // 采样: 每 sample_ 条保留一条
@@ -150,6 +162,9 @@ void TraceManager::emit(TraceEvent& ev) {
 
   // 1. type 过滤
   if (!(types_ & category_of(static_cast<TraceType>(ev.type)))) return;
+
+  // ring: 先记录(不受 range/sample 影响)
+  ring_push_event(ev);
 
   // 2. range 过滤(含边界 marker)
   const bool inside = pass_range(ev.cycle, ev.commit_id, ev.pc);
@@ -171,6 +186,189 @@ void TraceManager::emit(TraceEvent& ev) {
 
 void TraceManager::flush() {
   // M1 即时写盘, 无需 flush。
+}
+
+// ── 动态范围(SDB, §5.4) ────────────────────────────────────────────────────
+// 范围变化会让 id 重编, 因此每次都先闭合当前区间并重置 last_inside_,
+// 使下一个事件重新触发 RANGE_BEGIN marker。
+bool TraceManager::dyn_range_add(uint64_t begin, uint64_t end, std::string* err) {
+  CycleRange r{begin, end, 0};
+  if (!range_valid(r)) {
+    if (err) *err = "invalid range (begin must be < end; end==0 means open)";
+    return false;
+  }
+  if (last_inside_ && cur_range_id_ != 0) {
+    write_marker(TT_RANGE_END, cur_range_id_, 0, last_inside_cycle_, 0);
+  }
+  ranges_.push_back(r);
+  normalize_ranges(ranges_);
+  last_inside_ = false;
+  cur_range_id_ = 0;
+  return true;
+}
+
+void TraceManager::dyn_range_clear() {
+  if (last_inside_ && cur_range_id_ != 0) {
+    write_marker(TT_RANGE_END, cur_range_id_, 0, last_inside_cycle_, 0);
+  }
+  ranges_.clear();
+  last_inside_ = false;
+  cur_range_id_ = 0;
+  writer_.set_index_range_id(0);
+}
+
+void TraceManager::dyn_range_start(uint64_t now) {
+  std::string err;
+  dyn_range_add(now, 0, &err);   // [now, +inf)
+}
+
+void TraceManager::dyn_range_stop(uint64_t now) {
+  // 闭合最近一个开放(end==0)的范围; 没有则从 0 到 now
+  if (last_inside_ && cur_range_id_ != 0) {
+    write_marker(TT_RANGE_END, cur_range_id_, 0, last_inside_cycle_, 0);
+  }
+  bool closed = false;
+  for (auto it = ranges_.rbegin(); it != ranges_.rend(); ++it) {
+    if (it->end == 0) { it->end = now; closed = true; break; }
+  }
+  if (!closed) ranges_.push_back(CycleRange{0, now, 0});
+  normalize_ranges(ranges_);
+  last_inside_ = false;
+  cur_range_id_ = 0;
+}
+
+std::string TraceManager::status_string() const {
+  std::ostringstream os;
+  os << "trace: " << (enabled_ ? "ON" : "OFF");
+  if (enabled_) os << ", out=" << writer_.path();
+  os << "\n";
+  os << "  events=" << writer_.event_count()
+     << " itrace=" << writer_.itrace_count()
+     << " dropped=" << writer_.dropped_count() << "\n";
+  os << "  ranges(" << range_unit_name(range_unit_) << ")="
+     << (ranges_.empty() ? "(full)" : std::to_string(ranges_.size()))
+     << ", outside=" << outside_policy_name(outside_)
+     << ", sample=" << sample_ << "\n";
+  os << "  inflight_commit=" << inflight_commit_;
+  return os.str();
+}
+
+std::string TraceManager::range_list_string() const {
+  if (ranges_.empty()) return "(full: no ranges, tracing everything)";
+  std::ostringstream os;
+  for (size_t i = 0; i < ranges_.size(); i++) {
+    const CycleRange& r = ranges_[i];
+    os << "  #" << r.id << " [" << r.begin << ", ";
+    if (r.end == 0) os << "inf";
+    else os << r.end;
+    os << ")";
+    if (i + 1 < ranges_.size()) os << "\n";
+  }
+  return os.str();
+}
+
+// ── ring buffer + 失败快照(§5.5) ───────────────────────────────────────────
+void TraceManager::ring_push(const RingItem& it) {
+  if (ring_cap_ == 0) return;
+  while (ring_.size() >= ring_cap_) ring_.pop_front();
+  ring_.push_back(it);
+}
+
+void TraceManager::ring_push_event(const TraceEvent& ev) {
+  if (ring_cap_ == 0) return;
+  RingItem it{};
+  it.is_itrace = false;
+  it.pc = ev.pc; it.inst = ev.data; it.addr = ev.addr;
+  it.type = ev.type; it.flags = ev.flags; it.len = ev.len;
+  it.channel = ev.channel; it.region = ev.region;
+  it.cycle = ev.cycle; it.commit_id = ev.commit_id;
+  ring_push(it);
+}
+
+void TraceManager::ring_push_itrace(uint32_t pc, uint32_t inst,
+                                    uint64_t cycle, uint64_t commit_id) {
+  if (ring_cap_ == 0) return;
+  RingItem it{};
+  it.is_itrace = true;
+  it.pc = pc; it.inst = inst;
+  it.type = TT_ITRACE;
+  it.cycle = cycle; it.commit_id = commit_id;
+  ring_push(it);
+}
+
+void TraceManager::dump_snapshot(const std::string& reason) {
+  if (snap_done_) return;
+  snap_done_ = true;
+
+  // 1) snapshot.npct: 用标准格式写 ring 内容, npc-trace 可直接读
+  BinaryWriter w;
+  std::string err;
+  TraceMeta m = snap_meta_;
+  m.ranges.clear();                 // 快照即全量
+  m.text_mode = TextMode::OFF;
+  const bool wrote_npct = w.open(snap_path_, m, &err);
+  if (wrote_npct) {
+    uint64_t seq = 0;
+    for (const RingItem& it : ring_) {
+      if (it.is_itrace) {
+        w.write_itrace(it.pc, it.inst, it.cycle, it.commit_id);
+      } else {
+        TraceEvent ev{};
+        ev.seq = seq++;
+        ev.cycle = it.cycle;
+        ev.commit_id = it.commit_id;
+        ev.pc = it.pc;
+        ev.addr = it.addr;
+        ev.data = it.inst;
+        ev.type = it.type;
+        ev.flags = it.flags | TF_RING;   // 标记来自 ring 回放
+        ev.len = it.len;
+        ev.channel = it.channel;
+        ev.region = it.region;
+        w.write_event(ev);
+      }
+    }
+    w.close();
+  }
+
+  // 2) snapshot.log: 原因 + CPU 状态 + 最近事件文本
+  bool wrote_log = false;
+  FILE* f = fopen(snap_log_.c_str(), "w");
+  if (f) {
+    fprintf(f, "=== NPC trace snapshot ===\n");
+    fprintf(f, "reason : %s\n", reason.c_str());
+    fprintf(f, "cycle  : %llu\n", (unsigned long long)npc_get_cycle());
+    fprintf(f, "pc     : 0x%08x\n", npc_get_pc());
+    fprintf(f, "inst   : 0x%08x\n", npc_get_inst());
+    static const char* rn[16] = {"$0", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+                                 "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5"};
+    for (int i = 0; i < 16; i++) {
+      fprintf(f, "  %-3s : 0x%08x\n", rn[i], npc_get_reg(i));
+    }
+    fprintf(f, "\nring: %zu / %llu entries\n",
+            ring_.size(), (unsigned long long)ring_cap_);
+    const size_t n = ring_.size();
+    const size_t start = n > 64 ? n - 64 : 0;
+    for (size_t i = start; i < n; i++) {
+      const RingItem& it = ring_[i];
+      if (it.is_itrace) {
+        fprintf(f, "  [cyc=%llu commit=%llu] itrace  0x%08x: %08x\n",
+                (unsigned long long)it.cycle, (unsigned long long)it.commit_id,
+                it.pc, it.inst);
+      } else {
+        fprintf(f, "  [cyc=%llu commit=%llu] %-14s pc=0x%08x addr=0x%08x data=0x%08x len=%u\n",
+                (unsigned long long)it.cycle, (unsigned long long)it.commit_id,
+                type_name((TraceType)it.type), it.pc, it.addr, it.inst, it.len);
+      }
+    }
+    fclose(f);
+    wrote_log = true;
+  }
+
+  fprintf(stderr, "[npc-trace] snapshot: npct=%s log=%s (reason: %s)\n",
+          wrote_npct ? snap_path_.c_str() : "FAILED",
+          wrote_log ? snap_log_.c_str() : "FAILED",
+          reason.c_str());
 }
 
 }  // namespace npctrace

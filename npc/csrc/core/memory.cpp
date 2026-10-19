@@ -3,7 +3,6 @@
 #include "npc.h"
 #include "../utils/log.h"
 #include "../utils/difftest.h"
-#include "../trace/mtrace.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -76,14 +75,6 @@ uint8_t* guest_to_host(uint32_t paddr) {
     return pmem + (paddr - PMEM_BASE);
 }
 
-// mtrace去重变量（仅 TRACE 开启时使用）
-#ifdef ENABLE_TRACE
-static uint64_t last_read_cycle = 0;
-static uint32_t last_read_addr = 0;
-static uint64_t last_write_cycle = 0;
-static uint32_t last_write_addr = 0;
-#endif
-
 // DPI-C函数：读取存储器
 extern "C" int pmem_read(int raddr) {
     // 按4字节对齐读取
@@ -109,22 +100,9 @@ extern "C" int pmem_read(int raddr) {
     }
     
     uint32_t* p = (uint32_t*)guest_to_host(raddr);
-    uint32_t ret = *p;
-    
-    // mtrace记录（TRACE 开启时才记录）
-#ifdef ENABLE_TRACE
-    uint64_t cycle = npc_get_cycle();
-    uint32_t pc = npc_get_pc();
-    if (cycle != last_read_cycle || raddr != last_read_addr) {
-        // 取指判定: IFU 取地址 == 当前指令 PC 时视为 IFETCH, 否则为 LOAD。
-        // (M2 会用 RTL 探针携带 arid=IFU_ID/LSU_ID 替换该启发式)
-        mtrace_access(false, (uint32_t)raddr == pc, raddr, 4, ret, pc, cycle);
-        last_read_cycle = cycle;
-        last_read_addr = raddr;
-    }
-#endif
-    
-    return ret;
+    // 注: 访存 trace(mtrace) 已改由 RTL 探针在 AXI 握手点发出, 见 trace_probe.cpp。
+    //     本函数只负责内存模型本身。
+    return *p;
 }
 
 // DPI-C函数：写入存储器
@@ -154,18 +132,6 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     }
     
     uint8_t* p = guest_to_host(waddr);
-    
-    // mtrace记录（TRACE 开启时才记录）
-#ifdef ENABLE_TRACE
-    int len = __builtin_popcount((uint8_t)wmask);
-    uint64_t cycle = npc_get_cycle();
-    uint32_t pc = npc_get_pc();
-    if (cycle != last_write_cycle || waddr != last_write_addr) {
-        mtrace_access(true, false, waddr, len, wdata, pc, cycle);
-        last_write_cycle = cycle;
-        last_write_addr = waddr;
-    }
-#endif
     
     // 根据写掩码写入数据
     if (wmask & 0x01) p[0] = wdata & 0xFF;

@@ -17,6 +17,7 @@
 #include "trace/ftrace.h"
 #include "trace/trace_manager.h"
 #include <cstdlib>
+#include <csignal>
 #endif
 
 static void print_usage(const char* prog_name) {
@@ -149,6 +150,14 @@ static npctrace::TraceMeta build_trace_meta(const char* program_file,
 static void trace_atexit_shutdown() {
     npctrace::TraceManager::instance().shutdown();
 }
+
+// SIGINT/SIGTERM: 先落一份失败快照, 再按默认语义退出
+static void trace_signal_handler(int sig) {
+    npctrace::TraceManager::instance().dump_snapshot(
+        sig == SIGINT ? "SIGINT" : "SIGTERM");
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
 #endif
 
 static void print_exit_info() {
@@ -232,6 +241,8 @@ int main(int argc, char** argv) {
         std::string terr;
         if (npctrace::TraceManager::instance().init(trace_cfg, meta, &terr)) {
             std::atexit(trace_atexit_shutdown);
+            std::signal(SIGINT, trace_signal_handler);
+            std::signal(SIGTERM, trace_signal_handler);
             Log("Trace binary output: %s", trace_cfg.out_file.c_str());
             printf("Trace binary   : %s\n", trace_cfg.out_file.c_str());
         } else if (trace_cfg.enabled) {

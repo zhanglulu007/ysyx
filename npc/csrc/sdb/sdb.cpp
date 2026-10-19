@@ -2,6 +2,11 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#ifdef ENABLE_TRACE
+#include "../trace/trace_manager.h"
+#include "../core/npc.h"
+#endif
+
 static int is_batch_mode = false;
 
 void init_regex();
@@ -165,6 +170,99 @@ static int cmd_d(char *args) {
   return 0;
 }
 
+// trace命令 - 动态 trace 控制(§5.4)
+#ifdef ENABLE_TRACE
+static uint64_t trace_axis_now() {
+  return npctrace::TraceManager::instance().inflight_commit() > 0
+             ? npctrace::TraceManager::instance().inflight_commit()
+             : npc_get_cycle();
+}
+
+// 解析 "BEG-END"/"BEG-", 单位为当前 range_unit
+static bool parse_dyn_range(const char *s, npctrace::CycleRange *out) {
+  if (s == NULL) return false;
+  const char *dash = strchr(s, '-');
+  if (dash == NULL) return false;
+  char a[32] = {0}, b[32] = {0};
+  int alen = (int)(dash - s);
+  if (alen <= 0 || alen >= (int)sizeof(a)) return false;
+  strncpy(a, s, alen);
+  strncpy(b, dash + 1, sizeof(b) - 1);
+  char *endp = NULL;
+  out->begin = strtoull(a, &endp, 0);
+  if (endp == a) return false;
+  out->end = (b[0] == '\0') ? 0 : strtoull(b, &endp, 0);
+  out->id = 0;
+  return npctrace::range_valid(*out);
+}
+
+static int cmd_trace(char *args) {
+  using npctrace::TraceManager;
+  TraceManager &tm = TraceManager::instance();
+
+  if (!tm.enabled()) {
+    printf("trace is disabled (build with TRACE=1 and run, or no --trace-* given)\n");
+    return 0;
+  }
+
+  char *sub = (args == NULL) ? NULL : strtok(args, " ");
+  char *rest = (sub == NULL) ? NULL : sub + strlen(sub) + 1;
+
+  if (sub == NULL || strcmp(sub, "status") == 0) {
+    printf("%s\n", tm.status_string().c_str());
+    return 0;
+  }
+  if (strcmp(sub, "range") == 0) {
+    char *op = (rest != NULL && *rest) ? strtok(rest, " ") : NULL;
+    char *val = (op == NULL) ? NULL : op + strlen(op) + 1;
+    if (op == NULL || strcmp(op, "list") == 0) {
+      printf("trace ranges (%s):\n%s\n",
+             npctrace::range_unit_name(npctrace::RangeUnit::CYCLE),
+             tm.range_list_string().c_str());
+    } else if (strcmp(op, "add") == 0) {
+      npctrace::CycleRange r{};
+      if (val == NULL || !parse_dyn_range(val, &r)) {
+        printf("Usage: trace range add BEG-END  (END empty = open)\n");
+      } else {
+        std::string err;
+        if (tm.dyn_range_add(r.begin, r.end, &err)) {
+          printf("added range [%llu, %s)\n", (unsigned long long)r.begin,
+                 r.end == 0 ? "inf" : std::to_string(r.end).c_str());
+        } else {
+          printf("error: %s\n", err.c_str());
+        }
+      }
+    } else if (strcmp(op, "clear") == 0) {
+      tm.dyn_range_clear();
+      printf("all ranges cleared (now full)\n");
+    } else {
+      printf("Usage: trace range list|add BEG-END|clear\n");
+    }
+    return 0;
+  }
+  if (strcmp(sub, "start") == 0) {
+    uint64_t now = trace_axis_now();
+    tm.dyn_range_start(now);
+    printf("tracing started at %llu\n", (unsigned long long)now);
+    return 0;
+  }
+  if (strcmp(sub, "stop") == 0) {
+    uint64_t now = trace_axis_now();
+    tm.dyn_range_stop(now);
+    printf("tracing stopped at %llu\n", (unsigned long long)now);
+    return 0;
+  }
+  if (strcmp(sub, "snapshot") == 0) {
+    tm.dump_snapshot("user snapshot (SDB)");
+    printf("snapshot written\n");
+    return 0;
+  }
+
+  printf("Usage: trace status|range list|range add BEG-END|range clear|start|stop|snapshot\n");
+  return 0;
+}
+#endif
+
 static int cmd_help(char *args);
 
 static struct {
@@ -181,6 +279,9 @@ static struct {
   { "p", "Evaluate expression: p EXPR", cmd_p },
   { "w", "Set watchpoint: w EXPR", cmd_w },
   { "d", "Delete watchpoint: d N", cmd_d },
+#ifdef ENABLE_TRACE
+  { "trace", "Dynamic trace control: trace status|range ...|start|stop", cmd_trace },
+#endif
 };
 
 #define NR_CMD (sizeof(cmd_table) / sizeof(cmd_table[0]))

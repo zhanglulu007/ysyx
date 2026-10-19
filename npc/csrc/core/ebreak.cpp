@@ -8,6 +8,10 @@
 #include "../utils/difftest.h"
 #include <cstdio>
 
+#ifdef ENABLE_TRACE
+#include "../trace/trace_manager.h"
+#endif
+
 // DPI-C函数：ebreak处理
 extern "C" void ebreak_handler(int code) {
     // code是a0寄存器的值，0表示成功，非0表示失败
@@ -19,6 +23,12 @@ extern "C" void ebreak_handler(int code) {
         printf("\n*** HIT GOOD TRAP ***\n");
     } else {
         printf("\n*** HIT BAD TRAP (code=%d) ***\n", code);
+#ifdef ENABLE_TRACE
+        // BAD TRAP 是失败路径: 落一份最近事件快照, 便于离线定位
+        char rbuf[64];
+        snprintf(rbuf, sizeof(rbuf), "HIT BAD TRAP code=%d", code);
+        npctrace::TraceManager::instance().dump_snapshot(rbuf);
+#endif
     }
 
     npc_set_exit(true, code);
@@ -33,6 +43,12 @@ extern "C" void ebreak_handler(int code) {
 extern "C" void access_fault_handler(int pc_val, int is_store) {
     printf("\n*** ACCESS FAULT at PC=0x%08x (%s), jumping to address 0 ***\n",
            pc_val, is_store ? "store" : "fetch/load");
+#ifdef ENABLE_TRACE
+    char rbuf[80];
+    snprintf(rbuf, sizeof(rbuf), "access fault at pc=0x%08x (%s)",
+             pc_val, is_store ? "store" : "fetch/load");
+    npctrace::TraceManager::instance().dump_snapshot(rbuf);
+#endif
     // Access Fault 跳转不在 NEMU 中模拟, 跳过 DiffTest 以避免误报
     difftest_skip_ref();
 }
