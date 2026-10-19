@@ -22,6 +22,7 @@
 #include "trace/ftrace.h"
 #include "trace/itrace.h"
 #include "trace/mtrace.h"
+#include "trace/trace_manager.h"
 #endif
 
 #ifdef ENABLE_NVBOARD
@@ -119,6 +120,12 @@ void exec_once() {
     const uint32_t current_pc = npc_get_pc();
     const uint64_t current_commit = npc_get_commit_count();
 
+#ifdef ENABLE_TRACE
+    // 本轮指令的 commit id = 当前已提交数 + 1; 供执行期间的 mtrace/ftrace
+    // 事件与末尾的 itrace 共享同一 commit_id, 以便按 commit_id 关联(§5.2)。
+    npctrace::TraceManager::instance().set_inflight_commit(current_commit + 1);
+#endif
+
     while (current_commit == npc_get_commit_count()) {
         eval_half_cycle(0);
         eval_half_cycle(1);
@@ -131,9 +138,12 @@ void exec_once() {
     }
 
 #ifdef ENABLE_TRACE
+    // legacy 文本(保持现有格式) + 二进制事件
     ftrace_flush(print_itrace);
     itrace_log(current_pc, npc_get_inst(), print_itrace);
     mtrace_flush(print_itrace);
+    npctrace::TraceManager::instance().on_commit(
+        current_pc, npc_get_inst(), npc_get_cycle(), npc_get_commit_count());
 #endif
 
     const uint32_t inst = npc_get_inst();

@@ -116,7 +116,9 @@ extern "C" int pmem_read(int raddr) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_read_cycle || raddr != last_read_addr) {
-        mtrace_read(raddr, 4, ret, pc, cycle);
+        // 取指判定: IFU 取地址 == 当前指令 PC 时视为 IFETCH, 否则为 LOAD。
+        // (M2 会用 RTL 探针携带 arid=IFU_ID/LSU_ID 替换该启发式)
+        mtrace_access(false, (uint32_t)raddr == pc, raddr, 4, ret, pc, cycle);
         last_read_cycle = cycle;
         last_read_addr = raddr;
     }
@@ -159,7 +161,7 @@ extern "C" void pmem_write(int waddr, int wdata, char wmask) {
     uint64_t cycle = npc_get_cycle();
     uint32_t pc = npc_get_pc();
     if (cycle != last_write_cycle || waddr != last_write_addr) {
-        mtrace_write(waddr, len, wdata, pc, cycle);
+        mtrace_access(true, false, waddr, len, wdata, pc, cycle);
         last_write_cycle = cycle;
         last_write_addr = waddr;
     }

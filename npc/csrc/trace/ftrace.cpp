@@ -1,5 +1,7 @@
 #include "ftrace.h"
+#include "trace_manager.h"
 #include "../utils/log.h"
+#include "../core/npc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -173,6 +175,17 @@ void ftrace_call(uint32_t pc, uint32_t target) {
   func_depth++;
 
   ftrace_buffer.push_back(std::string(logbuf));
+
+#ifdef ENABLE_TRACE
+  // 二进制事件: 只存 pc/addr, 函数名由 npc-trace 用 ELF 离线解析(§3 采集与解释分离)
+  npctrace::TraceEvent ev{};
+  ev.cycle = npc_get_cycle();
+  ev.commit_id = npctrace::TraceManager::instance().inflight_commit();
+  ev.pc = pc;
+  ev.addr = target;
+  ev.type = npctrace::TT_FTRACE_CALL;
+  npctrace::TraceManager::instance().emit(ev);
+#endif
 }
 
 // 记录函数返回（延迟输出）
@@ -194,6 +207,17 @@ void ftrace_ret(uint32_t pc, uint32_t target) {
            pc, indent, "", func_name, target);
 
   ftrace_buffer.push_back(std::string(logbuf));
+
+#ifdef ENABLE_TRACE
+  // 二进制事件: pc=jalr 指令地址, addr=返回目标(ra 值)
+  npctrace::TraceEvent ev{};
+  ev.cycle = npc_get_cycle();
+  ev.commit_id = npctrace::TraceManager::instance().inflight_commit();
+  ev.pc = pc;
+  ev.addr = target;
+  ev.type = npctrace::TT_FTRACE_RET;
+  npctrace::TraceManager::instance().emit(ev);
+#endif
 }
 
 // 刷新ftrace缓冲区
