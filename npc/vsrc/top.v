@@ -104,8 +104,13 @@ module top(
   wire op_load;
   wire op_store;
   wire is_jump;
+  wire [31:0] mstatus, mcause, mcycle_lo, mcycle_hi;
   wire [31:0] mepc, mtvec, csr_rdata;
   wire [31:0] csr_wdata = is_csrrw ? rs1_data : (rs1_data | csr_rdata);
+
+  // 数据访存的真实宽度（用于 mtrace）
+  wire [31:0] data_len = (is_lb || is_lbu || is_sb) ? 32'd1 :
+                         (is_lh || is_lhu || is_sh) ? 32'd2 : 32'd4;
 
   wire lsu_arvalid;
   wire lsu_arready;
@@ -569,7 +574,11 @@ module top(
     .is_ecall(is_ecall),
     .pc(pc),
     .mepc(mepc),
-    .mtvec(mtvec)
+    .mtvec(mtvec),
+    .mstatus_out(mstatus),
+    .mcause_out(mcause),
+    .mcycle_lo_out(mcycle_lo),
+    .mcycle_hi_out(mcycle_hi)
   );
 
   // WBU - 写回单元
@@ -608,74 +617,11 @@ module top(
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val);
+  import "DPI-C" function void mtrace_event(input int pc_val, input int addr, input int data, input int len, input int is_store);
   import "DPI-C" function void commit_instruction(input int pc_val, input int inst_val, input int next_pc_val);
   import "DPI-C" function void update_pc_value(input int pc_val);
+  import "DPI-C" function void update_csr_values(input int mstatus, input int mtvec, input int mepc, input int mcause, input int mcycle_lo, input int mcycle_hi);
   import "DPI-C" function void difftest_skip_ref();
-
-`ifdef ENABLE_TRACE
-  // ========== TRACE 探针 (M2) ==========
-  // 挂在 top 内部信号上, standalone(PMEM) 与 SoC(ysyxSoCFull) 通用;
-  // 只在仿真且有 ENABLE_TRACE 时存在, 综合(SYNTHESIS)与 TRACE=0 下均不生成。
-  import "DPI-C" function void trace_probe_ifetch(input int addr, input int data, input int pc);
-  import "DPI-C" function void trace_probe_mem(input int is_write, input int width, input int addr, input int data, input int pc);
-  import "DPI-C" function void trace_probe_axi(input int channel, input int id, input int addr, input int len, input int size, input int data);
-  import "DPI-C" function void trace_probe_csr(input int is_write, input int csr_addr, input int wdata, input int rdata, input int pc);
-  import "DPI-C" function void trace_probe_trap(input int kind, input int cause, input int epc, input int tvec, input int pc);
-  import "DPI-C" function void trace_probe_branch(input int pc, input int taken, input int target);
-
-  // 分支指令(用于 btrace)
-  wire probe_is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
-
-  // 真实访存宽度(替代 M1 在 memory.cpp 里固定的 len=4)
-  wire [31:0] probe_load_width =
-      (is_lb || is_lbu) ? 32'd1 : (is_lh || is_lhu) ? 32'd2 : 32'd4;
-  wire [31:0] probe_store_width =
-      is_sb ? 32'd1 : is_sh ? 32'd2 : 32'd4;
-
-  wire probe_rd_done = lsu_done && !mem_wen;
-  wire probe_wr_done = lsu_done && mem_wen;
-
-  wire probe_ar_fire = mem_arvalid && mem_arready;
-  wire probe_r_fire  = mem_rvalid && mem_rready;
-  wire probe_aw_fire = mem_awvalid && mem_awready;
-  wire probe_w_fire  = mem_wvalid && mem_wready;
-  wire probe_b_fire  = mem_bvalid && mem_bready;
-
-  always @(posedge clk) begin
-    if (!rst) begin
-      // 取指: IFU R 通道握手完成
-      if (ifu_rvalid && ifu_rready && ifu_rlast)
-        trace_probe_ifetch(ifu_araddr, ifu_rdata, ifu_araddr);
-
-      // 数据访存: LSU 完成, 带真实宽度
-      if (probe_rd_done)
-        trace_probe_mem(0, probe_load_width, addr, rdata, pc);
-      if (probe_wr_done)
-        trace_probe_mem(1, probe_store_width, addr, rs2_data, pc);
-
-      // AXI 五通道(核的 mem_* master 端口, standalone/SoC 通用)
-      // 窄信号显式零扩展到 32 位, 避免 WIDTHEXPAND 并明确意图
-      if (probe_ar_fire) trace_probe_axi(3, {28'b0, mem_arid}, mem_araddr, {24'b0, mem_arlen}, {29'b0, mem_arsize}, 0);
-      if (probe_r_fire)  trace_probe_axi(4, {28'b0, mem_rid},  mem_rdata,  0, 0, mem_rdata);
-      if (probe_aw_fire) trace_probe_axi(5, {28'b0, mem_awid}, mem_awaddr, {24'b0, mem_awlen}, {29'b0, mem_awsize}, 0);
-      if (probe_w_fire)  trace_probe_axi(6, 32'b0,             32'b0,      32'b0, 32'b0, mem_wdata);
-      if (probe_b_fire)  trace_probe_axi(7, {28'b0, mem_bid},  32'b0,      32'b0, 32'b0, 32'b0);
-
-      // CSR 读/写
-      if (is_csr && commit) trace_probe_csr(0, {20'b0, imm_i[11:0]}, 32'b0, csr_rdata, pc);
-      if (csr_wen_commit)   trace_probe_csr(1, {20'b0, imm_i[11:0]}, csr_wdata, 32'b0, pc);
-
-      // 异常/中断/返回 (kind: 0=exception 1=mret 2=ebreak)
-      if (is_ecall && commit)  trace_probe_trap(0, 32'd11, mepc, mtvec, pc);
-      if (is_mret && commit)   trace_probe_trap(1, 0, mepc, mtvec, pc);
-      if (is_ebreak && commit) trace_probe_trap(2, 0, 0, 0, pc);
-
-      // 分支
-      if (probe_is_branch && commit)
-        trace_probe_branch(pc, {31'b0, branch_taken}, branch_target);
-    end
-  end
-`endif
 
 `ifdef ENABLE_PERF
   // ========== 性能计数器探针 ==========
@@ -746,9 +692,17 @@ module top(
 `else
       update_pc_value(32'h80000000);
 `endif
+      update_csr_values(32'h00001800, 32'b0, 32'b0, 32'b0, 32'b0, 32'b0);
     end else begin
+      update_csr_values(mstatus, mtvec, mepc, mcause, mcycle_lo, mcycle_hi);
+
       if (commit) begin
         commit_instruction(pc, inst, pc_next);
+      end
+
+      // 只记录真实的数据访存，不把 IFU 取指混进 mtrace
+      if (commit && mem_valid) begin
+        mtrace_event(pc, addr, op_store ? rs2_data : rdata, data_len, {31'b0, op_store});
       end
 
 `ifdef SOC_MODE

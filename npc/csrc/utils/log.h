@@ -8,6 +8,9 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 
 // ANSI颜色定义
 #define ANSI_FG_BLACK   "\33[1;30m"
@@ -30,20 +33,35 @@
 
 #define ANSI_FMT(str, fmt) fmt str ANSI_NONE
 
+enum {
+  LOG_ERROR = 0,
+  LOG_WARN,
+  LOG_INFO,
+  LOG_DEBUG,
+};
+
 // 日志宏
 #define Log(format, ...) \
-    _Log(ANSI_FMT("[%s:%d %s] " format, ANSI_FG_BLUE) "\n", \
-        __FILE__, __LINE__, __func__, ## __VA_ARGS__)
+    _Log(LOG_INFO, __FILE__, __LINE__, __func__, format, ## __VA_ARGS__)
+#define LogWarn(format, ...) \
+    _Log(LOG_WARN, __FILE__, __LINE__, __func__, format, ## __VA_ARGS__)
+#define LogError(format, ...) \
+    _Log(LOG_ERROR, __FILE__, __LINE__, __func__, format, ## __VA_ARGS__)
+#define LogDebug(format, ...) \
+    _Log(LOG_DEBUG, __FILE__, __LINE__, __func__, format, ## __VA_ARGS__)
 
-// 断言宏
+// 失败时的统一快照（GPR/CSR/iringbuf/最近 trace）
+void npc_dump_snapshot();
+
+// 断言宏：失败时输出快照并终止，避免 NDEBUG 下 assert 失效
 #define Assert(cond, format, ...) \
   do { \
     if (!(cond)) { \
       fflush(stdout); \
       fprintf(stderr, ANSI_FMT(format, ANSI_FG_RED) "\n", ## __VA_ARGS__); \
-      fflush(log_fp); \
-      assert_fail_msg(); \
-      assert(cond); \
+      npc_dump_snapshot(); \
+      log_flush(); \
+      abort(); \
     } \
   } while (0)
 
@@ -52,10 +70,14 @@
 // 日志函数
 extern FILE* log_fp;
 void init_log(const char *log_file);
-void _Log(const char *format, ...);
-void log_write(const char *format, ...);  // 只写入日志文件，不输出到stdout
-void enable_log_buffer();  // 启用日志缓冲区
-void flush_log_buffer();   // 刷新日志缓冲区到文件
+void log_set_level(int level);
+int log_get_level();
+void _Log(int level, const char *file, int line, const char *func,
+          const char *format, ...);
+void log_write(const char *format, ...);
+void log_flush();
+void log_trace_prefix_at(char *buf, size_t size, const char *tag,
+                         uint32_t pc, uint64_t cycle, uint64_t commit, uint64_t time);
 void assert_fail_msg();
 
 #endif

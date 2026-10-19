@@ -119,10 +119,8 @@ ifeq ($(FST),1)
   EXTRA_CFLAGS += -DENABLE_FST
 endif
 
-# ── TRACE: ENABLE_TRACE 必须同时进入 C++(-CFLAGS) 与 RTL(-D) 两个编译单元 ──
 ifeq ($(TRACE),1)
   EXTRA_CFLAGS += -DENABLE_TRACE
-  VERILATOR_FLAGS += -DENABLE_TRACE
 endif
 
 ifneq ($(ELF),)
@@ -146,10 +144,6 @@ endif
 ifneq ($(F),0)
   EXTRA_CFLAGS += -DF=$(F)
 endif
-
-# 把当前 git commit 注入 meta.json(经 shell 双引号转义, 到 gcc 即 -DNPC_GIT_COMMIT="abc")
-GIT_COMMIT := $(shell git -C $(PROJECT_DIR) rev-parse --short HEAD 2>/dev/null)
-EXTRA_CFLAGS += -DNPC_GIT_COMMIT=\"$(GIT_COMMIT)\"
 
 SDL_CFLAGS := $(shell sdl2-config --cflags)
 SDL_LIBS := $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf
@@ -192,27 +186,12 @@ check-soc:
 lint: $(MODE_PREREQUISITE)
 	$(VERILATOR) --lint-only -Wno-fatal $(VERILATOR_FLAGS) $(RTL_SRCS)
 
-# ── npc-trace 离线工具(转写/导出) ───────────────────────────────────────────
-NPC_TRACE      := $(PROJECT_DIR)/tools/npc-trace/npc-trace
-TRACE_OUT      ?= trace.npct
-TRACE_TEXT_OUT ?= npc.trace.log
-TRACE_JSON_OUT ?= trace.json
-
-$(NPC_TRACE): $(wildcard $(PROJECT_DIR)/tools/npc-trace/*.cpp) \
-              $(wildcard $(PROJECT_DIR)/tools/npc-trace/*.h) \
-              $(SRC_ROOT)/trace/trace_event.cpp
-	@$(MAKE) -s -C $(PROJECT_DIR)/tools/npc-trace
-
-build-npc-trace: $(NPC_TRACE)
-
 build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
 	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH)] --"
 	$(VERILATE_CMD)
 
-# 结束后自动转写文本视图与 Chrome 时间轴。失败路径(exit != 0)也转写,
-# 且转写失败不影响仿真退出码(用 `|| true` 兜住)。
-run: build $(if $(filter 1,$(TRACE)),$(NPC_TRACE))
+run: build
 	@if [ ! -r "$(PROG_ABS)" ]; then \
 	  echo "Error: program '$(PROG_ABS)' not found."; exit 1; \
 	fi
@@ -221,24 +200,12 @@ run: build $(if $(filter 1,$(TRACE)),$(NPC_TRACE))
 	fi
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- RUN NPC [MODE=$(MODE) DIFFTEST=$(DIFFTEST)] --"
-	@set +e; \
-	  cd $(PROJECT_DIR) && \
+	@cd $(PROJECT_DIR) && \
 	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
-	    -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH); \
-	  status=$$?; \
-	  if [ "$(TRACE)" = "1" ] && [ -f "$(TRACE_OUT)" ]; then \
-	    echo "-- TRANSCRIBE $(TRACE_OUT) -> $(TRACE_TEXT_OUT) ($(TRACE_JSON_OUT)) --"; \
-	    $(NPC_TRACE) text $(TRACE_OUT) -o $(TRACE_TEXT_OUT) --format=legacy \
-	      $(if $(ELF),--elf $(ELF_ABS)) || true; \
-	    $(NPC_TRACE) export $(TRACE_OUT) --format=chrome -o $(TRACE_JSON_OUT) || true; \
-	  fi; \
-	  exit $$status
+	  -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
-	-rm -f $(PROJECT_DIR)/$(TRACE_OUT) $(PROJECT_DIR)/$(TRACE_TEXT_OUT) \
-	       $(PROJECT_DIR)/$(TRACE_JSON_OUT)
-	-$(MAKE) -s -C $(PROJECT_DIR)/tools/npc-trace clean
 
-.PHONY: all show-config check-soc lint build run build-npc-trace \
+.PHONY: all show-config check-soc lint build run \
 	build-standalone run-standalone build-soc run-soc clean

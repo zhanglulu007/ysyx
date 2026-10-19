@@ -22,7 +22,6 @@
 #include "trace/ftrace.h"
 #include "trace/itrace.h"
 #include "trace/mtrace.h"
-#include "trace/trace_manager.h"
 #endif
 
 #ifdef ENABLE_NVBOARD
@@ -44,6 +43,10 @@ static bool print_itrace = false;
 #ifdef ENABLE_FST
 static VerilatedFstC* tfp = nullptr;
 #endif
+
+uint64_t npc_get_time() {
+    return contextp ? contextp->time() : 0;
+}
 
 static void eval_half_cycle(int clock_value) {
 #ifdef SOC_MODE
@@ -68,28 +71,28 @@ bool init_cpu(int argc, char** argv) {
     tfp = new VerilatedFstC;
     top->trace(tfp, 99);
     tfp->open("wave/dump.fst");
-    printf("FST: ON  -> wave/dump.fst\n");
+    Log("FST: ON  -> wave/dump.fst");
 #else
-    printf("FST: OFF\n");
+    Log("FST: OFF");
 #endif
 
 #ifdef ENABLE_TRACE
-    printf("Trace: ON\n");
+    Log("Trace: ON");
 #else
-    printf("Trace: OFF\n");
+    Log("Trace: OFF");
 #endif
 #ifdef SOC_MODE
-    printf("Mode: ysyxSoC, multi-cycle core\n");
+    Log("Mode: ysyxSoC, multi-cycle core");
 #else
-    printf("Mode: AXI4 PMEM, multi-cycle core\n");
+    Log("Mode: AXI4 PMEM, multi-cycle core");
 #endif
 #ifdef ENABLE_NVBOARD
     nvboard_bind_all_pins(top);
     nvboard_init();
     g_nvboard_enabled = true;
-    printf("NVBoard: ON\n");
+    Log("NVBoard: ON");
 #else
-    printf("NVBoard: OFF\n");
+    Log("NVBoard: OFF");
 #endif
     return true;
 }
@@ -120,12 +123,6 @@ void exec_once() {
     const uint32_t current_pc = npc_get_pc();
     const uint64_t current_commit = npc_get_commit_count();
 
-#ifdef ENABLE_TRACE
-    // 本轮指令的 commit id = 当前已提交数 + 1; 供执行期间的 mtrace/ftrace
-    // 事件与末尾的 itrace 共享同一 commit_id, 以便按 commit_id 关联(§5.2)。
-    npctrace::TraceManager::instance().set_inflight_commit(current_commit + 1);
-#endif
-
     while (current_commit == npc_get_commit_count()) {
         eval_half_cycle(0);
         eval_half_cycle(1);
@@ -138,12 +135,10 @@ void exec_once() {
     }
 
 #ifdef ENABLE_TRACE
-    // legacy 文本(保持现有格式) + 二进制事件
-    ftrace_flush(print_itrace);
+    // 先输出当前指令，再输出该指令产生的函数调用和数据访存
     itrace_log(current_pc, npc_get_inst(), print_itrace);
+    ftrace_flush(print_itrace);
     mtrace_flush(print_itrace);
-    npctrace::TraceManager::instance().on_commit(
-        current_pc, npc_get_inst(), npc_get_cycle(), npc_get_commit_count());
 #endif
 
     const uint32_t inst = npc_get_inst();
@@ -179,6 +174,12 @@ void cpu_exec(uint64_t n) {
     uint64_t instructions = 0;
 
     while (instructions < n || n == static_cast<uint64_t>(-1)) {
+        if (check_breakpoints()) {
+            state->state = NPC_STOP;
+            printf("Program stopped at breakpoint 0x%08x.\n", npc_get_pc());
+            break;
+        }
+
         exec_once();
         instructions++;
 
@@ -187,6 +188,8 @@ void cpu_exec(uint64_t n) {
         if (check_watchpoints()) {
             state->state = NPC_STOP;
             printf("Program stopped due to watchpoint.\n");
+            Log("Program stopped due to watchpoint");
+            npc_dump_snapshot();
             break;
         }
     }
@@ -217,4 +220,5 @@ void cleanup_cpu() {
     top = nullptr;
     contextp = nullptr;
     device_cleanup();
+    log_flush();
 }

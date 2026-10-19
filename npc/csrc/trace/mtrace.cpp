@@ -1,52 +1,84 @@
 #include "mtrace.h"
 #include "../utils/log.h"
+#include "../core/npc.h"
 #include <stdio.h>
-#include <vector>
+#include <deque>
 #include <string>
+#include <vector>
 
-// mtrace缓冲区（用于延迟输出到 npc.log 的 legacy 文本）
+static bool trace_enabled = false;
 static std::vector<std::string> mtrace_buffer;
+static std::deque<std::string> mtrace_recent;
+static const size_t RECENT_MAX = 32;
 
-// 初始化mtrace
 void init_mtrace() {
+  trace_enabled = true;
   Log("mtrace initialized");
 }
 
-// legacy 实时文本行。二进制事件不在这里产生——由 RTL 探针(trace_probe.cpp)
-// 在 AXI 握手点发出, 携带真实访存宽度, 且 standalone/SoC 通用。
-void mtrace_legacy(bool is_write, bool is_fetch, uint32_t addr, int len,
-                   uint32_t data, uint32_t pc, uint64_t cycle) {
-#ifndef ENABLE_TRACE
-  (void)is_write; (void)is_fetch; (void)addr; (void)len;
-  (void)data; (void)pc; (void)cycle;
-  return;
-#endif
-  char logbuf[256];
-  snprintf(logbuf, sizeof(logbuf),
-           "[MTRACE] cyc=%llu %s at 0x%08x len=%d data=0x%08x pc=0x%08x",
-           (unsigned long long)cycle, is_write ? "WRITE" : "READ ",
-           addr, len, data, pc);
-  mtrace_buffer.push_back(std::string(logbuf));
+void set_mtrace_enabled(bool enable) {
+  trace_enabled = enable;
 }
 
-// 刷新mtrace缓冲区（仅 legacy 文本；二进制事件是即时的）
+bool mtrace_enabled() {
+  return trace_enabled;
+}
+
+static void mtrace_add(const char *line) {
+  mtrace_buffer.push_back(std::string(line));
+  mtrace_recent.push_back(std::string(line));
+  if (mtrace_recent.size() > RECENT_MAX) {
+    mtrace_recent.pop_front();
+  }
+}
+
+extern "C" void mtrace_event(int pc, int addr, int data, int len, int is_store) {
+#ifndef ENABLE_TRACE
+  (void)pc; (void)addr; (void)data; (void)len; (void)is_store;
+  return;
+#endif
+  if (!trace_enabled) return;
+
+  char prefix[160];
+  log_trace_prefix_at(prefix, sizeof(prefix), "MTRACE", (uint32_t)pc,
+                      npc_get_cycle(), npc_get_commit_count(), npc_get_time());
+
+  char line[256];
+  snprintf(line, sizeof(line), "%s%s addr=0x%08x len=%d data=0x%08x",
+           prefix, is_store ? "STORE" : "LOAD ", (uint32_t)addr, len, (uint32_t)data);
+  mtrace_add(line);
+}
+
 void mtrace_flush(bool print_to_console) {
   if (mtrace_buffer.empty()) return;
 
-  // 先收集所有输出到一个字符串，确保原子性
   std::string output;
-  for (const auto& line : mtrace_buffer) {
+  for (const auto &line : mtrace_buffer) {
     output += line + "\n";
   }
-
-  // 一次性输出到日志文件
   log_write("%s", output.c_str());
 
-  // 一次性输出到控制台
   if (print_to_console) {
     printf("%s", output.c_str());
-    fflush(stdout);  // 立即刷新，避免缓冲
+    fflush(stdout);
   }
-
   mtrace_buffer.clear();
+}
+
+void mtrace_dump_recent() {
+  const char *header = "Recent data memory accesses (mtrace):";
+  printf("\n%s\n", header);
+  log_write("\n%s\n", header);
+
+  if (mtrace_recent.empty()) {
+    printf("  (empty)\n");
+    log_write("  (empty)\n");
+    return;
+  }
+  for (const auto &line : mtrace_recent) {
+    printf("  %s\n", line.c_str());
+    log_write("  %s\n", line.c_str());
+  }
+  printf("\n");
+  log_write("\n");
 }

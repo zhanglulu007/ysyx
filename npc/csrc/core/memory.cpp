@@ -100,8 +100,6 @@ extern "C" int pmem_read(int raddr) {
     }
     
     uint32_t* p = (uint32_t*)guest_to_host(raddr);
-    // 注: 访存 trace(mtrace) 已改由 RTL 探针在 AXI 握手点发出, 见 trace_probe.cpp。
-    //     本函数只负责内存模型本身。
     return *p;
 }
 
@@ -154,6 +152,40 @@ uint32_t pmem_read_word(uint32_t addr) {
 
 bool in_pmem(uint32_t addr) {
     return addr >= PMEM_BASE && addr < PMEM_BASE + PMEM_SIZE;
+}
+
+// SDB/失败快照的统一读接口。SoC 模式下 SDRAM/SRAM/PSRAM 在 RTL 内部，
+// C++ 前端没有后门可读，因此只暴露 FLASH；standalone 可读 PMEM/FLASH/设备。
+bool npc_mem_read_word(uint32_t addr, uint32_t *data) {
+#ifdef SOC_MODE
+    if (in_flash(addr)) {
+        *data = flash_read_word(addr);
+        return true;
+    }
+    if (addr >= MROM_BASE && addr < MROM_BASE + MROM_SIZE) {
+        *data = 0;
+        return true;
+    }
+    return false;
+#else
+    if (in_pmem(addr)) {
+        *data = pmem_read_word(addr);
+        return true;
+    }
+    if (in_flash(addr)) {
+        *data = flash_read_word(addr);
+        return true;
+    }
+    if (is_device_addr(addr)) {
+        *data = device_read(addr);
+        return true;
+    }
+    if (is_fb_addr(addr)) {
+        *data = 0;
+        return true;
+    }
+    return false;
+#endif
 }
 
 bool load_program(const char* filename) {

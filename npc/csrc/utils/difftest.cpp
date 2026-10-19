@@ -17,7 +17,6 @@
 
 #ifdef ENABLE_TRACE
 #include "../trace/itrace.h"
-#include "../trace/trace_manager.h"
 #endif
 
 // REF API 函数指针
@@ -130,10 +129,6 @@ bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t du
 // 检查所有寄存器
 static bool checkregs(DiffTestState *ref, uint32_t pc) {
   if (!difftest_check_reg("pc", pc, ref->pc, npc_get_pc())) {
-    npc_reg_display();
-#ifdef ENABLE_TRACE
-    display_iringbuf();
-#endif
     return false;
   }
 
@@ -144,10 +139,6 @@ static bool checkregs(DiffTestState *ref, uint32_t pc) {
 
   for (int i = 0; i < 16; i++) {
     if (!difftest_check_reg(regs[i], pc, ref->gpr[i], npc_get_reg(i))) {
-      npc_reg_display();
-#ifdef ENABLE_TRACE
-      display_iringbuf();
-#endif
       return false;
     }
   }
@@ -182,14 +173,10 @@ void difftest_step(uint32_t pc, uint32_t npc) {
   
   // 对比寄存器
   if (!checkregs(&ref_state, pc)) {
-    Log("DiffTest failed at pc = 0x%08x", pc);
-#ifdef ENABLE_TRACE
-    char rbuf[80];
-    snprintf(rbuf, sizeof(rbuf), "difftest mismatch at pc=0x%08x", pc);
-    npctrace::TraceManager::instance().dump_snapshot(rbuf);
-#endif
+    LogError("DiffTest failed at pc = 0x%08x", pc);
     printf("\nDiffTest failed! Program aborted.\n");
-    printf("Please check the log file for details.\n\n");
+    npc_dump_snapshot();
+    log_flush();
     exit(1);
   }
 }

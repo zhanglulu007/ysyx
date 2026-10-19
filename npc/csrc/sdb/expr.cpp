@@ -226,23 +226,13 @@ static word_t eval(int p, int q, bool *success) {
       word_t addr = eval(p + 1, q, success);
       if (!*success) return 0;
       
-#ifdef SOC_MODE
-      if (!in_flash(addr)) {
-        printf("Invalid memory address: 0x%08x\n", addr);
+      word_t data = 0;
+      if (!npc_mem_read_word(addr, &data)) {
+        printf("Invalid or unavailable memory address: 0x%08x\n", addr);
         *success = false;
         return 0;
       }
-      
-      return flash_read_word(addr);
-#else
-      if (!in_pmem(addr)) {
-        printf("Invalid memory address: 0x%08x\n", addr);
-        *success = false;
-        return 0;
-      }
-      
-      return pmem_read_word(addr);
-#endif
+      return data;
     }
     
     int op = find_main_op(p, q);

@@ -10,37 +10,7 @@
 #include <sys/time.h>
 #include <SDL2/SDL.h>
 
-#ifdef ENABLE_TRACE
-#include "npc.h"
-#include "../trace/trace_manager.h"
-#endif
-
 static uint64_t boot_time = 0;
-
-#ifdef ENABLE_TRACE
-// 设备访问 trace(dtrace): UART/RTC/键盘/VGA/帧缓冲。
-// 只记录设备寄存器访问; 二进制事件由这里发出, 与 RTL 探针的 mtrace/AXI 互补。
-static void dtrace_emit(bool is_write, uint32_t addr, uint32_t data,
-                        uint8_t region, uint16_t len) {
-    npctrace::TraceEvent ev{};
-    ev.cycle     = npc_get_cycle();
-    ev.commit_id = npctrace::TraceManager::instance().inflight_commit();
-    ev.pc        = npc_get_pc();
-    ev.addr      = addr;
-    ev.data      = data;
-    ev.len       = len;
-    ev.region    = region;
-    ev.channel   = npctrace::CH_NONE;
-    if (is_write) {
-        ev.type  = npctrace::TT_DTRACE_WRITE;
-        ev.flags = npctrace::TF_WRITE;
-    } else {
-        ev.type  = npctrace::TT_DTRACE_READ;
-        ev.flags = npctrace::TF_READ;
-    }
-    npctrace::TraceManager::instance().emit(ev);
-}
-#endif
 
 static uint64_t get_time_us() {
     struct timeval tv;
@@ -153,31 +123,25 @@ bool is_fb_addr(uint32_t addr) {
 }
 
 uint32_t device_read(uint32_t addr) {
-    uint32_t result = 0;
     if (addr == RTC_ADDR_LO) {
         uint64_t us = get_time_us() - boot_time;
-        result = (uint32_t)(us & 0xFFFFFFFF);
-    } else if (addr == RTC_ADDR_HI) {
-        uint64_t us = get_time_us() - boot_time;
-        result = (uint32_t)(us >> 32);
-    } else if (addr == KBD_ADDR) {
-        result = key_dequeue();
-    } else if (addr == VGACTL_ADDR) {
-        // 高16位=宽，低16位=高
-        result = ((uint32_t)SCREEN_W << 16) | (uint32_t)SCREEN_H;
+        return (uint32_t)(us & 0xFFFFFFFF);
     }
-#ifdef ENABLE_TRACE
-    // MMIO 读: 记 dtrace(SoC 模式下 MMIO 不走本函数, 由 AXI 探针覆盖)
-    dtrace_emit(false, addr, result, npctrace::RG_MMIO, 4);
-#endif
-    return result;
+    if (addr == RTC_ADDR_HI) {
+        uint64_t us = get_time_us() - boot_time;
+        return (uint32_t)(us >> 32);
+    }
+    if (addr == KBD_ADDR) {
+        return key_dequeue();
+    }
+    if (addr == VGACTL_ADDR) {
+        // 高16位=宽，低16位=高
+        return ((uint32_t)SCREEN_W << 16) | (uint32_t)SCREEN_H;
+    }
+    return 0;
 }
 
 void device_write(uint32_t addr, uint32_t data, uint8_t wmask) {
-#ifdef ENABLE_TRACE
-    // MMIO 写: 先记 dtrace, 再执行设备语义
-    dtrace_emit(true, addr, data, npctrace::RG_MMIO, 4);
-#endif
     if (addr == SERIAL_PORT) {
         putchar((char)(data & 0xFF));
         fflush(stdout);
@@ -190,9 +154,6 @@ void device_write(uint32_t addr, uint32_t data, uint8_t wmask) {
     }
 }
 
-// 帧缓冲写入。
-// 注: FB 每个像素都是一次 MMIO 写(一帧 400x300), 若逐像素记 trace 会爆炸,
-//     因此这里不产生 dtrace 事件; FB 需要时用波形或按需扩展(见 §9 存储预算)。
 void fb_write(uint32_t addr, uint32_t data, uint8_t wmask) {
     // addr 是帧缓冲内的字节偏移（相对 FB_ADDR）
     uint32_t offset = (addr - FB_ADDR) / 4;  // 像素索引

@@ -1,16 +1,31 @@
 #include "sdb.h"
+#include "../core/npc.h"
+#include "../utils/log.h"
+#ifdef ENABLE_TRACE
+#include "../trace/itrace.h"
+#include "../trace/mtrace.h"
+#include "../trace/ftrace.h"
+#endif
 #include <readline/readline.h>
 #include <readline/history.h>
-
-#ifdef ENABLE_TRACE
-#include "../trace/trace_manager.h"
-#include "../core/npc.h"
-#endif
 
 static int is_batch_mode = false;
 
 void init_regex();
 void init_wp_pool();
+
+// 简单 PC 断点
+#define NR_BREAKPOINT 16
+static uint32_t breakpoints[NR_BREAKPOINT];
+static bool breakpoint_on[NR_BREAKPOINT];
+
+bool check_breakpoints() {
+  uint32_t pc = npc_get_pc();
+  for (int i = 0; i < NR_BREAKPOINT; i++) {
+    if (breakpoint_on[i] && breakpoints[i] == pc) return true;
+  }
+  return false;
+}
 
 /* 使用readline库提供更灵活的输入 */
 static char* rl_gets() {
@@ -46,7 +61,13 @@ static int cmd_si(char *args) {
   int n = 1;  // 默认执行1条指令
   
   if (args != NULL) {
-    sscanf(args, "%d", &n);
+    char *end = NULL;
+    long value = strtol(args, &end, 0);
+    if (end == args || *end != '\0' || value <= 0) {
+      printf("Usage: si [positive N]\n");
+      return 0;
+    }
+    n = (int)value;
   }
   
   cpu_exec(n);
@@ -57,8 +78,9 @@ static int cmd_si(char *args) {
 // info命令 - 打印寄存器或监视点信息
 static int cmd_info(char *args) {
   if (args == NULL) {
-    printf("Usage: info r - print register info\n");
+    printf("Usage: info r - print GPR/CSR info\n");
     printf("       info w - print watchpoint info\n");
+    printf("       info b - print PC breakpoints\n");
     return 0;
   }
   
@@ -67,6 +89,11 @@ static int cmd_info(char *args) {
   } 
   else if (strcmp(args, "w") == 0) {
     display_watchpoints();
+  }
+  else if (strcmp(args, "b") == 0) {
+    for (int i = 0; i < NR_BREAKPOINT; i++) {
+      if (breakpoint_on[i]) printf("%d: 0x%08x\n", i, breakpoints[i]);
+    }
   }
   else {
     printf("Unknown subcommand: %s\n", args);
@@ -85,8 +112,8 @@ static int cmd_x(char *args) {
   int n;
   char expr_str[256];
   
-  if (sscanf(args, "%d %s", &n, expr_str) != 2) {
-    printf("Invalid format. Usage: x N EXPR\n");
+  if (sscanf(args, "%d %s", &n, expr_str) != 2 || n <= 0) {
+    printf("Invalid format. Usage: x N EXPR (N > 0)\n");
     return 0;
   }
   
@@ -105,12 +132,12 @@ static int cmd_x(char *args) {
       printf("0x%08x: ", addr + i * 4);
     }
     
-#ifdef SOC_MODE
-    word_t data = flash_read_word(addr + i * 4);
-#else
-    word_t data = pmem_read_word(addr + i * 4);
-#endif
-    printf("0x%08x  ", data);
+    word_t data = 0;
+    if (!npc_mem_read_word(addr + i * 4, &data)) {
+      printf("??        ");
+    } else {
+      printf("0x%08x  ", data);
+    }
     
     if (i % 4 == 3) printf("\n");
   }
@@ -170,98 +197,104 @@ static int cmd_d(char *args) {
   return 0;
 }
 
-// trace命令 - 动态 trace 控制(§5.4)
-#ifdef ENABLE_TRACE
-static uint64_t trace_axis_now() {
-  return npctrace::TraceManager::instance().inflight_commit() > 0
-             ? npctrace::TraceManager::instance().inflight_commit()
-             : npc_get_cycle();
-}
-
-// 解析 "BEG-END"/"BEG-", 单位为当前 range_unit
-static bool parse_dyn_range(const char *s, npctrace::CycleRange *out) {
-  if (s == NULL) return false;
-  const char *dash = strchr(s, '-');
-  if (dash == NULL) return false;
-  char a[32] = {0}, b[32] = {0};
-  int alen = (int)(dash - s);
-  if (alen <= 0 || alen >= (int)sizeof(a)) return false;
-  strncpy(a, s, alen);
-  strncpy(b, dash + 1, sizeof(b) - 1);
-  char *endp = NULL;
-  out->begin = strtoull(a, &endp, 0);
-  if (endp == a) return false;
-  out->end = (b[0] == '\0') ? 0 : strtoull(b, &endp, 0);
-  out->id = 0;
-  return npctrace::range_valid(*out);
-}
-
-static int cmd_trace(char *args) {
-  using npctrace::TraceManager;
-  TraceManager &tm = TraceManager::instance();
-
-  if (!tm.enabled()) {
-    printf("trace is disabled (build with TRACE=1 and run, or no --trace-* given)\n");
+// b命令 - 添加 PC 断点
+static int cmd_b(char *args) {
+  if (args == NULL) {
+    printf("Usage: b ADDR\n");
     return 0;
   }
-
-  char *sub = (args == NULL) ? NULL : strtok(args, " ");
-  char *rest = (sub == NULL) ? NULL : sub + strlen(sub) + 1;
-
-  if (sub == NULL || strcmp(sub, "status") == 0) {
-    printf("%s\n", tm.status_string().c_str());
+  char *end = NULL;
+  uint32_t addr = (uint32_t)strtoul(args, &end, 0);
+  if (end == args || *end != '\0') {
+    printf("Invalid address\n");
     return 0;
   }
-  if (strcmp(sub, "range") == 0) {
-    char *op = (rest != NULL && *rest) ? strtok(rest, " ") : NULL;
-    char *val = (op == NULL) ? NULL : op + strlen(op) + 1;
-    if (op == NULL || strcmp(op, "list") == 0) {
-      printf("trace ranges (%s):\n%s\n",
-             npctrace::range_unit_name(npctrace::RangeUnit::CYCLE),
-             tm.range_list_string().c_str());
-    } else if (strcmp(op, "add") == 0) {
-      npctrace::CycleRange r{};
-      if (val == NULL || !parse_dyn_range(val, &r)) {
-        printf("Usage: trace range add BEG-END  (END empty = open)\n");
-      } else {
-        std::string err;
-        if (tm.dyn_range_add(r.begin, r.end, &err)) {
-          printf("added range [%llu, %s)\n", (unsigned long long)r.begin,
-                 r.end == 0 ? "inf" : std::to_string(r.end).c_str());
-        } else {
-          printf("error: %s\n", err.c_str());
-        }
-      }
-    } else if (strcmp(op, "clear") == 0) {
-      tm.dyn_range_clear();
-      printf("all ranges cleared (now full)\n");
-    } else {
-      printf("Usage: trace range list|add BEG-END|clear\n");
+  for (int i = 0; i < NR_BREAKPOINT; i++) {
+    if (breakpoint_on[i] && breakpoints[i] == addr) {
+      printf("Breakpoint already exists: %d\n", i);
+      return 0;
     }
-    return 0;
   }
-  if (strcmp(sub, "start") == 0) {
-    uint64_t now = trace_axis_now();
-    tm.dyn_range_start(now);
-    printf("tracing started at %llu\n", (unsigned long long)now);
-    return 0;
+  for (int i = 0; i < NR_BREAKPOINT; i++) {
+    if (!breakpoint_on[i]) {
+      breakpoint_on[i] = true;
+      breakpoints[i] = addr;
+      printf("Breakpoint %d at 0x%08x\n", i, addr);
+      return 0;
+    }
   }
-  if (strcmp(sub, "stop") == 0) {
-    uint64_t now = trace_axis_now();
-    tm.dyn_range_stop(now);
-    printf("tracing stopped at %llu\n", (unsigned long long)now);
-    return 0;
-  }
-  if (strcmp(sub, "snapshot") == 0) {
-    tm.dump_snapshot("user snapshot (SDB)");
-    printf("snapshot written\n");
-    return 0;
-  }
-
-  printf("Usage: trace status|range list|range add BEG-END|range clear|start|stop|snapshot\n");
+  printf("No free breakpoint\n");
   return 0;
 }
+
+// db命令 - 删除断点
+static int cmd_db(char *args) {
+  if (args == NULL) {
+    printf("Usage: db N\n");
+    return 0;
+  }
+  int no = atoi(args);
+  if (no < 0 || no >= NR_BREAKPOINT || !breakpoint_on[no]) {
+    printf("Breakpoint %d not found\n", no);
+    return 0;
+  }
+  breakpoint_on[no] = false;
+  printf("Breakpoint %d deleted\n", no);
+  return 0;
+}
+
+// snapshot命令 - 手动输出失败快照
+static int cmd_snapshot(char *args) {
+  (void)args;
+  npc_dump_snapshot();
+  return 0;
+}
+
+// trace命令 - 运行时开关 trace
+static int cmd_trace(char *args) {
+#ifdef ENABLE_TRACE
+  char *action = NULL;
+  char *what = NULL;
+  if (args != NULL) {
+    action = strtok(args, " ");
+    what = strtok(NULL, " ");
+  }
+
+  if (action == NULL || strcmp(action, "status") == 0) {
+    printf("itrace=%s mtrace=%s ftrace=%s\n",
+           itrace_enabled() ? "on" : "off",
+           mtrace_enabled() ? "on" : "off",
+           ftrace_enabled() ? "on" : "off");
+    return 0;
+  }
+
+  bool enable = (strcmp(action, "on") == 0);
+  if (!enable && strcmp(action, "off") != 0) {
+    printf("Usage: trace [on|off] [itrace|mtrace|ftrace]\n");
+    return 0;
+  }
+
+  if (what == NULL) {
+    set_itrace_enabled(enable);
+    set_mtrace_enabled(enable);
+    set_ftrace_enabled(enable);
+  } else if (strcmp(what, "itrace") == 0) {
+    set_itrace_enabled(enable);
+  } else if (strcmp(what, "mtrace") == 0) {
+    set_mtrace_enabled(enable);
+  } else if (strcmp(what, "ftrace") == 0) {
+    set_ftrace_enabled(enable);
+  } else {
+    printf("Unknown trace type: %s\n", what);
+    return 0;
+  }
+  printf("trace %s %s\n", what ? what : "all", enable ? "on" : "off");
+#else
+  (void)args;
+  printf("TRACE is disabled at compile time\n");
 #endif
+  return 0;
+}
 
 static int cmd_help(char *args);
 
@@ -279,9 +312,10 @@ static struct {
   { "p", "Evaluate expression: p EXPR", cmd_p },
   { "w", "Set watchpoint: w EXPR", cmd_w },
   { "d", "Delete watchpoint: d N", cmd_d },
-#ifdef ENABLE_TRACE
-  { "trace", "Dynamic trace control: trace status|range ...|start|stop", cmd_trace },
-#endif
+  { "b", "Set PC breakpoint: b ADDR", cmd_b },
+  { "db", "Delete PC breakpoint: db N", cmd_db },
+  { "snapshot", "Dump GPR/CSR and recent trace", cmd_snapshot },
+  { "trace", "Trace control: trace [on|off] [itrace|mtrace|ftrace]", cmd_trace },
 };
 
 #define NR_CMD (sizeof(cmd_table) / sizeof(cmd_table[0]))

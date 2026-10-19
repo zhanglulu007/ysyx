@@ -11,7 +11,11 @@ module CSR(
   input [31:0] pc,            
   
   output reg [31:0] mepc,     
-  output reg [31:0] mtvec     
+  output reg [31:0] mtvec,
+  output [31:0] mstatus_out,
+  output [31:0] mcause_out,
+  output [31:0] mcycle_lo_out,
+  output [31:0] mcycle_hi_out
 );
 
   reg [31:0] mstatus;   // 0x300 
@@ -57,7 +61,9 @@ module CSR(
     end
   end
   
-  // assign mepc_out  = mepc;
-  // assign mtvec_out = mtvec;
+  assign mstatus_out = mstatus;
+  assign mcause_out  = mcause;
+  assign mcycle_lo_out = mcycle[31:0];
+  assign mcycle_hi_out = mcycle[63:32];
 
 endmodule
