@@ -27,7 +27,6 @@ uint8_t* get_pmem_buffer();
 uint32_t flash_read_word(uint32_t addr);
 uint32_t pmem_read_word(uint32_t addr);
 
-// SDB / 失败快照使用的统一读接口；成功返回 true
 bool npc_mem_read_word(uint32_t addr, uint32_t *data);
 
 bool in_flash(uint32_t addr);

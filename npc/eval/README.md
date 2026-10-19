@@ -38,7 +38,8 @@ top
 ```bash
 make check          # 解析/elaborate 整个层次（秒级，先确认可综合）
 make synth          # 综合 -> 网表 + 面积报告
-make sta            # 综合 + 时序/功耗分析
+make sta            # 综合 + 时序/功耗分析（结束后自动更新 ../config/f_cpu）
+make update-f       # 仅从最近时序报告更新 ../config/f_cpu
 make report         # 从最近结果提取面积/频率/违例摘要
 make all            # sta + report
 make clean          # 清除 result/
@@ -48,6 +49,23 @@ make sta CLK_FREQ_MHZ=800      # 换时钟约束
 make sta PDK=nangate45         # 换工艺库
 make sta SDC_FILE=/path/design.sdc
 ```
+
+## F 参数自动更新
+
+`npc/config/f_cpu` 保存 CPU 频率参数 `F`（单位 10MHz，`F=55` 对应 550MHz）。
+`make sta` / `make all` 完成后，会从 `NPCSynth.rpt` 解析最高可达频率，
+向下取整到 10MHz 并写回该文件；也可以单独执行 `make update-f`。
+
+```bash
+make all
+cat ../config/f_cpu
+```
+
+`npc/Makefile` 读取 `F` 的优先级：
+
+1. 命令行/环境变量：`make ... F=55`
+2. `npc/config/f_cpu`
+3. `F_DEFAULT`（默认 `0`，表示不定义 `-DF`）
 
 结果写入 `result/NPCSynth-<频率>MHz/`（已 gitignore）。关键文件：
 

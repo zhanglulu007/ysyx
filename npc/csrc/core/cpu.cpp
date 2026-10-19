@@ -135,7 +135,6 @@ void exec_once() {
     }
 
 #ifdef ENABLE_TRACE
-    // 先输出当前指令，再输出该指令产生的函数调用和数据访存
     itrace_log(current_pc, npc_get_inst(), print_itrace);
     ftrace_flush(print_itrace);
     mtrace_flush(print_itrace);

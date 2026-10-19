@@ -154,8 +154,6 @@ bool in_pmem(uint32_t addr) {
     return addr >= PMEM_BASE && addr < PMEM_BASE + PMEM_SIZE;
 }
 
-// SDB/失败快照的统一读接口。SoC 模式下 SDRAM/SRAM/PSRAM 在 RTL 内部，
-// C++ 前端没有后门可读，因此只暴露 FLASH；standalone 可读 PMEM/FLASH/设备。
 bool npc_mem_read_word(uint32_t addr, uint32_t *data) {
 #ifdef SOC_MODE
     if (in_flash(addr)) {
