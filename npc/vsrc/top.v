@@ -104,8 +104,13 @@ module top(
   wire op_load;
   wire op_store;
   wire is_jump;
+  wire [31:0] mstatus, mcause, mcycle_lo, mcycle_hi;
   wire [31:0] mepc, mtvec, csr_rdata;
   wire [31:0] csr_wdata = is_csrrw ? rs1_data : (rs1_data | csr_rdata);
+
+  // 数据访存的真实宽度（用于 mtrace）
+  wire [31:0] data_len = (is_lb || is_lbu || is_sb) ? 32'd1 :
+                         (is_lh || is_lhu || is_sh) ? 32'd2 : 32'd4;
 
   wire lsu_arvalid;
   wire lsu_arready;
@@ -569,7 +574,11 @@ module top(
     .is_ecall(is_ecall),
     .pc(pc),
     .mepc(mepc),
-    .mtvec(mtvec)
+    .mtvec(mtvec),
+    .mstatus_out(mstatus),
+    .mcause_out(mcause),
+    .mcycle_lo_out(mcycle_lo),
+    .mcycle_hi_out(mcycle_hi)
   );
 
   // WBU - 写回单元
@@ -608,8 +617,10 @@ module top(
   import "DPI-C" function void ebreak_handler(input int a0_value);
   import "DPI-C" function void ftrace_call_handler(input int pc_val, input int target_val);
   import "DPI-C" function void ftrace_ret_handler(input int pc_val);
+  import "DPI-C" function void mtrace_event(input int pc_val, input int addr, input int data, input int len, input int is_store);
   import "DPI-C" function void commit_instruction(input int pc_val, input int inst_val, input int next_pc_val);
   import "DPI-C" function void update_pc_value(input int pc_val);
+  import "DPI-C" function void update_csr_values(input int mstatus, input int mtvec, input int mepc, input int mcause, input int mcycle_lo, input int mcycle_hi);
   import "DPI-C" function void difftest_skip_ref();
 
 `ifdef ENABLE_PERF
@@ -681,9 +692,17 @@ module top(
 `else
       update_pc_value(32'h80000000);
 `endif
+      update_csr_values(32'h00001800, 32'b0, 32'b0, 32'b0, 32'b0, 32'b0);
     end else begin
+      update_csr_values(mstatus, mtvec, mepc, mcause, mcycle_lo, mcycle_hi);
+
       if (commit) begin
         commit_instruction(pc, inst, pc_next);
+      end
+
+      // 只记录真实的数据访存，不把 IFU 取指混进 mtrace
+      if (commit && mem_valid) begin
+        mtrace_event(pc, addr, op_store ? rs2_data : rdata, data_len, {31'b0, op_store});
       end
 
 `ifdef SOC_MODE

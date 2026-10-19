@@ -44,6 +44,10 @@ static bool print_itrace = false;
 static VerilatedFstC* tfp = nullptr;
 #endif
 
+uint64_t npc_get_time() {
+    return contextp ? contextp->time() : 0;
+}
+
 static void eval_half_cycle(int clock_value) {
 #ifdef SOC_MODE
     top->clock = clock_value;
@@ -67,28 +71,28 @@ bool init_cpu(int argc, char** argv) {
     tfp = new VerilatedFstC;
     top->trace(tfp, 99);
     tfp->open("wave/dump.fst");
-    printf("FST: ON  -> wave/dump.fst\n");
+    Log("FST: ON  -> wave/dump.fst");
 #else
-    printf("FST: OFF\n");
+    Log("FST: OFF");
 #endif
 
 #ifdef ENABLE_TRACE
-    printf("Trace: ON\n");
+    Log("Trace: ON");
 #else
-    printf("Trace: OFF\n");
+    Log("Trace: OFF");
 #endif
 #ifdef SOC_MODE
-    printf("Mode: ysyxSoC, multi-cycle core\n");
+    Log("Mode: ysyxSoC, multi-cycle core");
 #else
-    printf("Mode: AXI4 PMEM, multi-cycle core\n");
+    Log("Mode: AXI4 PMEM, multi-cycle core");
 #endif
 #ifdef ENABLE_NVBOARD
     nvboard_bind_all_pins(top);
     nvboard_init();
     g_nvboard_enabled = true;
-    printf("NVBoard: ON\n");
+    Log("NVBoard: ON");
 #else
-    printf("NVBoard: OFF\n");
+    Log("NVBoard: OFF");
 #endif
     return true;
 }
@@ -131,8 +135,8 @@ void exec_once() {
     }
 
 #ifdef ENABLE_TRACE
-    ftrace_flush(print_itrace);
     itrace_log(current_pc, npc_get_inst(), print_itrace);
+    ftrace_flush(print_itrace);
     mtrace_flush(print_itrace);
 #endif
 
@@ -169,6 +173,12 @@ void cpu_exec(uint64_t n) {
     uint64_t instructions = 0;
 
     while (instructions < n || n == static_cast<uint64_t>(-1)) {
+        if (check_breakpoints()) {
+            state->state = NPC_STOP;
+            printf("Program stopped at breakpoint 0x%08x.\n", npc_get_pc());
+            break;
+        }
+
         exec_once();
         instructions++;
 
@@ -177,6 +187,8 @@ void cpu_exec(uint64_t n) {
         if (check_watchpoints()) {
             state->state = NPC_STOP;
             printf("Program stopped due to watchpoint.\n");
+            Log("Program stopped due to watchpoint");
+            npc_dump_snapshot();
             break;
         }
     }
@@ -207,4 +219,5 @@ void cleanup_cpu() {
     top = nullptr;
     contextp = nullptr;
     device_cleanup();
+    log_flush();
 }

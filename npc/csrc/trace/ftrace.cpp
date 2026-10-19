@@ -1,9 +1,11 @@
 #include "ftrace.h"
 #include "../utils/log.h"
+#include "../core/npc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <elf.h>
+#include <deque>
 #include <vector>
 #include <string>
 
@@ -12,9 +14,20 @@ static Elf32_Sym *symtab = NULL;
 static char *strtab = NULL;
 static int symtab_nr = 0;  // 符号表项数量
 static int func_depth = 0;  // 函数调用深度
+static bool trace_enabled = true;
 
-// ftrace缓冲区（用于延迟输出）
+// ftrace缓冲区（用于延迟输出）和最近记录
 static std::vector<std::string> ftrace_buffer;
+static std::deque<std::string> ftrace_recent;
+static const size_t RECENT_MAX = 32;
+
+void set_ftrace_enabled(bool enable) {
+  trace_enabled = enable;
+}
+
+bool ftrace_enabled() {
+  return trace_enabled;
+}
 
 // 根据地址查找函数名
 static const char* find_func_name(uint32_t addr) {
@@ -42,6 +55,7 @@ static const char* find_func_name(uint32_t addr) {
 
 // 初始化ftrace
 void init_ftrace(const char *elf_file) {
+  trace_enabled = true;
   if (elf_file == NULL) {
     Log("No ELF file for ftrace");
     return;
@@ -157,22 +171,33 @@ void init_ftrace(const char *elf_file) {
 }
 
 // 记录函数调用（延迟输出）
+static void ftrace_add(const char *line) {
+  ftrace_buffer.push_back(std::string(line));
+  ftrace_recent.push_back(std::string(line));
+  if (ftrace_recent.size() > RECENT_MAX) {
+    ftrace_recent.pop_front();
+  }
+}
+
 void ftrace_call(uint32_t pc, uint32_t target) {
 #ifndef ENABLE_TRACE
   return;  // TRACE 未开启时直接返回，避免 ftrace_buffer 无限增长
 #endif
+  if (!trace_enabled) return;
+
   const char *func_name = find_func_name(target);
   // 用固定宽度缩进，避免 %*s 在 depth 很大时撑爆 buffer
   int indent = func_depth * 2;
   if (indent > 40) indent = 40;  // 最多 20 层缩进
+  char prefix[160];
+  log_trace_prefix_at(prefix, sizeof(prefix), "FTRACE", pc,
+                      npc_get_cycle(), npc_get_commit_count(), npc_get_time());
   char logbuf[512];
-  snprintf(logbuf, sizeof(logbuf),
-           "[FTRACE] 0x%08x: %*scall [%s@0x%08x]",
-           pc, indent, "", func_name, target);
+  snprintf(logbuf, sizeof(logbuf), "%s%*scall [%s@0x%08x]",
+           prefix, indent, "", func_name, target);
 
   func_depth++;
-
-  ftrace_buffer.push_back(std::string(logbuf));
+  ftrace_add(logbuf);
 }
 
 // 记录函数返回（延迟输出）
@@ -182,18 +207,22 @@ void ftrace_ret(uint32_t pc, uint32_t target) {
 #ifndef ENABLE_TRACE
   return;  // TRACE 未开启时直接返回，避免 ftrace_buffer 无限增长
 #endif
+  if (!trace_enabled) return;
+
   func_depth--;
   if (func_depth < 0) func_depth = 0;
 
   const char *func_name = find_func_name(target);
   int indent = func_depth * 2;
   if (indent > 40) indent = 40;
+  char prefix[160];
+  log_trace_prefix_at(prefix, sizeof(prefix), "FTRACE", pc,
+                      npc_get_cycle(), npc_get_commit_count(), npc_get_time());
   char logbuf[512];
-  snprintf(logbuf, sizeof(logbuf),
-           "[FTRACE] 0x%08x: %*sret  [%s@0x%08x]",
-           pc, indent, "", func_name, target);
+  snprintf(logbuf, sizeof(logbuf), "%s%*sret  [%s@0x%08x]",
+           prefix, indent, "", func_name, target);
 
-  ftrace_buffer.push_back(std::string(logbuf));
+  ftrace_add(logbuf);
 }
 
 // 刷新ftrace缓冲区
@@ -216,4 +245,22 @@ void ftrace_flush(bool print_to_console) {
   }
   
   ftrace_buffer.clear();
+}
+
+void ftrace_dump_recent() {
+  const char *header = "Recent function calls (ftrace):";
+  printf("\n%s\n", header);
+  log_write("\n%s\n", header);
+
+  if (ftrace_recent.empty()) {
+    printf("  (empty)\n");
+    log_write("  (empty)\n");
+    return;
+  }
+  for (const auto &line : ftrace_recent) {
+    printf("  %s\n", line.c_str());
+    log_write("  %s\n", line.c_str());
+  }
+  printf("\n");
+  log_write("\n");
 }

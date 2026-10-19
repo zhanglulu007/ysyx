@@ -6,7 +6,8 @@
 # 用法:
 #   make check                  # 只解析/elaborate 整个层次 (最快, 先验证可综合)
 #   make synth                  # 综合出网表 + 面积报告
-#   make sta                    # 综合 + 时序/功耗分析
+#   make sta                    # 综合 + 时序/功耗分析 (结束后更新 ../config/f_cpu)
+#   make update-f               # 从最近时序报告更新 ../config/f_cpu
 #   make report                 # 从上次结果中提取面积/频率/违例摘要
 #   make all                    # sta + report
 #
@@ -55,6 +56,9 @@ NETLIST := $(RESULT_DIR)/$(DESIGN).netlist.v
 TIMING_RPT := $(RESULT_DIR)/$(DESIGN).rpt
 AREA_RPT := $(RESULT_DIR)/synth_stat.txt
 
+# 评估完成后回写到 npc/config/f_cpu（单位 10MHz）
+F_CONFIG ?= $(abspath $(PROJ_PATH)/../config/f_cpu)
+
 # yosys.tcl / sta.tcl 从环境变量读取时钟与宏定义
 export CLK_FREQ_MHZ CLK_PORT_NAME DEFINES
 
@@ -74,6 +78,35 @@ sta: synth
 	  $(IEDA_BIN) -script \
 	  $(YOSYS_STA_HOME)/scripts/sta.tcl \
 	  $(SDC_FILE) $(NETLIST) $(DESIGN) $(PDK) 2>&1 | tee sta.log
+	@$(MAKE) --no-print-directory update-f
+
+# 从时序报告解析最高可达频率，向下取整到 10MHz 后写入 npc/config/f_cpu
+update-f:
+	@if [ ! -f "$(TIMING_RPT)" ]; then \
+	  echo "[F] $(TIMING_RPT) not found; keep $(F_CONFIG)"; \
+	  exit 0; \
+	fi; \
+	freq=$$(awk -F'|' ' \
+	  /core_clock/ && /\| max / { \
+	    gsub(/ /,"",$$5); gsub(/ /,"",$$8); gsub(/ /,"",$$9); \
+	    if ($$9 ~ /^[0-9.]+$$/ && (min=="" || $$9+0<min)) min=$$9+0; \
+	  } \
+	  END { if (min=="") exit 1; printf "%.3f", min }' "$(TIMING_RPT)" 2>/dev/null); \
+	if [ -z "$$freq" ]; then \
+	  echo "[F] cannot parse max frequency from $(TIMING_RPT); keep $(F_CONFIG)"; \
+	  exit 0; \
+	fi; \
+	new_f=$$(awk -v f="$$freq" 'BEGIN { if (f <= 0) exit 1; printf "%d", f / 10 }') || { \
+	  echo "[F] invalid frequency '$$freq'; keep $(F_CONFIG)"; exit 0; \
+	}; \
+	mkdir -p "$$(dirname "$(F_CONFIG)")"; \
+	old=$$(cat "$(F_CONFIG)" 2>/dev/null || true); \
+	printf '%s\n' "$$new_f" > "$(F_CONFIG)"; \
+	if [ "$$old" = "$$new_f" ]; then \
+	  echo "[F] $(F_CONFIG) = $$new_f (unchanged, from $$freq MHz)"; \
+	else \
+	  echo "[F] $(F_CONFIG): $${old:-<empty>} -> $$new_f (from $$freq MHz)"; \
+	fi
 
 # 从最近一次结果提取关键指标: 面积 / 可达频率 / WNS / 关键路径端点
 report:
@@ -103,6 +136,7 @@ report:
 	@if [ -f "$(RESULT_DIR)/$(DESIGN).pwr" ]; then \
 	  echo "[功耗]"; grep -E "Total|total" "$(RESULT_DIR)/$(DESIGN).pwr" | grep -iE "power|mW" | sed 's/^/  /'; \
 	fi
+	@echo "[F] config: $(F_CONFIG) = $$(cat "$(F_CONFIG)" 2>/dev/null || echo '<unset>')"
 	@echo "=========================================================="
 
 all: sta report
@@ -110,4 +144,4 @@ all: sta report
 clean:
 	-rm -rf $(PROJ_PATH)/result
 
-.PHONY: check synth sta report all clean
+.PHONY: check synth sta update-f report all clean

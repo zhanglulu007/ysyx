@@ -29,6 +29,9 @@ bool delete_watchpoint(int no);
 void display_watchpoints();
 bool check_watchpoints();
 
+// PC 断点
+bool check_breakpoints();
+
 // sdb主接口
 void init_sdb();
 void sdb_set_batch_mode();
@@ -41,6 +44,7 @@ extern word_t flash_read_word(uint32_t addr);
 extern bool in_flash(uint32_t addr);
 extern word_t pmem_read_word(uint32_t addr);
 extern bool in_pmem(uint32_t addr);
+extern bool npc_mem_read_word(uint32_t addr, uint32_t *data);
 
 // CPU执行接口
 extern void cpu_exec(uint64_t n);

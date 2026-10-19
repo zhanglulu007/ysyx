@@ -5,6 +5,7 @@
 
 #include "core/perf.h"
 #include "core/npc.h"
+#include "../utils/log.h"
 
 #include <cinttypes>
 #include <cstdio>
@@ -78,4 +79,7 @@ void perf_report() {
     printf("  avg load latency : %.4f cycles\n",
            ratio(perf_count[PERF_LD_WAIT], perf_count[PERF_LD_DONE]));
     printf("==========================================================\n");
+
+    Log("Perf summary: cycles=%llu inst=%llu ipc=%.4f",
+        (unsigned long long)cycle, (unsigned long long)commit, ratio(commit, cycle));
 }

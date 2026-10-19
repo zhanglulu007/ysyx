@@ -26,10 +26,31 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-F       ?= 0
+
+F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
+F_DEFAULT     ?= 0
+ifeq ($(origin F),undefined)
+  ifneq ($(wildcard $(F_CONFIG_FILE)),)
+    F_FROM_FILE := $(strip $(shell head -n1 $(F_CONFIG_FILE) 2>/dev/null))
+    ifneq ($(F_FROM_FILE),)
+      ifeq ($(shell printf '%s' '$(F_FROM_FILE)' | grep -Eq '^[0-9]+$$' && echo ok),ok)
+        F := $(F_FROM_FILE)
+      else
+        $(warning NPC: invalid F value '$(F_FROM_FILE)' in $(F_CONFIG_FILE); using default $(F_DEFAULT))
+      endif
+    endif
+  endif
+endif
+ifeq ($(origin F),undefined)
+  F := $(F_DEFAULT)
+endif
 
 BUILD_DIR := $(PROJECT_DIR)/build
 WAVE_DIR := $(PROJECT_DIR)/wave
+EVAL_DIR ?= $(PROJECT_DIR)/eval
+MICROBENCH_DIR ?= $(WORKBENCH_ROOT)/am-kernels/benchmarks/microbench
+PERF_EVAL_LOG := $(BUILD_DIR)/perf-eval.log
+PERF_MICROBENCH_LOG := $(BUILD_DIR)/perf-microbench.log
 $(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
 CORE_RTL_SRCS := $(sort \
@@ -141,8 +162,10 @@ ifeq ($(PERF), 1)
   EXTRA_CFLAGS += -DENABLE_PERF
 endif
 
-ifneq ($(F),0)
-  EXTRA_CFLAGS += -DF=$(F)
+ifneq ($(strip $(F)),)
+  ifneq ($(strip $(F)),0)
+    EXTRA_CFLAGS += -DF=$(strip $(F))
+  endif
 endif
 
 SDL_CFLAGS := $(shell sdl2-config --cflags)
@@ -204,8 +227,44 @@ run: build
 	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
 	  -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
+# 一键性能评估：清理 NPC -> eval 综合 -> microbench train -> 打印报告
+perf:
+	@set -e; \
+	echo "[perf] 1/3 clean NPC build"; \
+	$(MAKE) --no-print-directory -C $(PROJECT_DIR) clean; \
+	mkdir -p $(BUILD_DIR) $(WAVE_DIR); \
+	echo "[perf] 2/3 eval: $(EVAL_DIR)"; \
+	if ! $(MAKE) --no-print-directory -C $(EVAL_DIR) all > $(PERF_EVAL_LOG) 2>&1; then \
+	  echo "[perf] eval failed; tail of $(PERF_EVAL_LOG):"; \
+	  tail -n 80 $(PERF_EVAL_LOG); \
+	  exit 1; \
+	fi; \
+	echo "[perf] 3/3 microbench train: $(MICROBENCH_DIR)"; \
+	if ! $(MAKE) --no-print-directory -C $(MICROBENCH_DIR) \
+	      AM_HOME=$(WORKBENCH_ROOT)/abstract-machine \
+	      NPC_HOME=$(PROJECT_DIR) \
+	      ARCH=riscv32e-ysyxsoc SOC=1 FFLASH=0 PERF=1 \
+	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 mainargs=train run \
+	      > $(PERF_MICROBENCH_LOG) 2>&1; then \
+	  echo "[perf] microbench failed; tail of $(PERF_MICROBENCH_LOG):"; \
+	  tail -n 80 $(PERF_MICROBENCH_LOG); \
+	  exit 1; \
+	fi; \
+	echo ""; \
+	echo "==================== PERF REPORT ===================="; \
+	if grep -q "Performance Report" $(PERF_MICROBENCH_LOG); then \
+	  awk '/Performance Report/ {show=1} show {print} show && /^=+$$/ {exit}' $(PERF_MICROBENCH_LOG); \
+	else \
+	  echo "(未找到 NPC Performance Report，完整日志: $(PERF_MICROBENCH_LOG))"; \
+	fi; \
+	echo ""; \
+	echo "==================== EVAL REPORT ===================="; \
+	$(MAKE) --no-print-directory -C $(EVAL_DIR) report; \
+	echo ""; \
+	echo "[perf] logs: $(PERF_EVAL_LOG), $(PERF_MICROBENCH_LOG)"
+
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc clean
+	build-standalone run-standalone build-soc run-soc perf clean

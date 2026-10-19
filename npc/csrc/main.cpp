@@ -16,6 +16,14 @@
 #include "trace/ftrace.h"
 #endif
 
+#ifdef F
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
+#define F_STR STRINGIFY(F)
+#else
+#define F_STR "0"
+#endif
+
 static void print_usage(const char* prog_name) {
     printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file] [-d ref_so]\n", prog_name);
     printf("  -b: batch mode (non-interactive)\n");
@@ -103,11 +111,6 @@ static void print_exit_info() {
         printf("Exit reason: EBREAK instruction (program completed)\n");
         printf("Exit code: %d\n", exit_code);
 
-        if (exit_code != 0) {
-#ifdef ENABLE_TRACE
-            display_iringbuf();
-#endif
-        }
     }
 }
 
@@ -126,7 +129,38 @@ int main(int argc, char** argv) {
     
     // 初始化子系统
     init_subsystems(log_file, elf_file);
-    
+
+    Log("Config: mode=%s trace=%s fst=%s perf=%s nvboard=%s F=%s",
+#ifdef SOC_MODE
+        "soc",
+#else
+        "standalone",
+#endif
+#ifdef ENABLE_TRACE
+        "on",
+#else
+        "off",
+#endif
+#ifdef ENABLE_FST
+        "on",
+#else
+        "off",
+#endif
+#ifdef ENABLE_PERF
+        "on",
+#else
+        "off",
+#endif
+#ifdef ENABLE_NVBOARD
+        "on",
+#else
+        "off",
+#endif
+        F_STR);
+    Log("Images: program=%s elf=%s ref=%s",
+        program_file, elf_file ? elf_file : "(none)",
+        ref_so_file ? ref_so_file : "(none)");
+
     Log("NPC - RISC-V processor simulator with Simple Debugger");
     Log("Build time: %s, %s", __TIME__, __DATE__);
     
@@ -178,6 +212,7 @@ int main(int argc, char** argv) {
 
     // 清理资源
     cleanup_cpu();
+    log_flush();
     
     return npc_get_exit_code();
 }

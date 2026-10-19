@@ -9,4 +9,6 @@
 !*.cpp
 !.gitignore
 !README.md
+!config/
+!config/*
 build/

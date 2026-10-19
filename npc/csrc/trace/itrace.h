@@ -7,6 +7,10 @@
 // 初始化itrace（包括capstone反汇编库）
 void init_itrace();
 
+// 运行时开关
+void set_itrace_enabled(bool enable);
+bool itrace_enabled();
+
 // 记录一条指令的执行
 // pc: 指令地址
 // inst: 指令编码

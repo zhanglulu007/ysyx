@@ -4,13 +4,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// 初始化mtrace
 void init_mtrace();
-void mtrace_read(uint32_t addr, int len, uint32_t data, uint32_t pc, uint64_t cycle);
-void mtrace_write(uint32_t addr, int len, uint32_t data, uint32_t pc, uint64_t cycle);
-void mtrace_flush(bool print_to_console);
+void set_mtrace_enabled(bool enable);
+bool mtrace_enabled();
 
-extern "C" void mtrace_read_handler(int addr, int data, int pc);
-extern "C" void mtrace_write_handler(int addr, int data, int wstrb, int pc);
+// RTL 在 commit 时上报一次数据访存（不包含取指）
+extern "C" void mtrace_event(int pc, int addr, int data, int len, int is_store);
+
+void mtrace_flush(bool print_to_console);
+void mtrace_dump_recent();
 
 #endif
