@@ -58,7 +58,12 @@ nemu/tools/cachesim/run-dse.sh --check
 4. 从 `npc/build/perf-microbench.log` 读取 NPC 实测的平均缺失代价（找不到则用 30）；
 5. 扫描 size/block/ways 组合，按 TMT 排序，结果写入 `dse.csv`；
 6. `--check` 额外把 `64B / 4B / 1-way` 的 cachesim 结果与 NPC 的
-   `icache_access`、`icache_hit` 对比，作为性能 DiffTest。
+   `icache_miss` 对比，作为性能 DiffTest（TMT 只由缺失次数决定）。
+   默认允许 `CHECK_TOL=0.001` 的相对误差；`CHECK_TOL=0` 可做严格比较。
+
+> NEMU 的 SoC MMIO sink 不模拟 UART THRE 的真实时序，所以带 `putch` 轮询的程序
+> 在 NEMU 中会少执行一些“全命中”的等待指令，`access/hit` 可能略小于 NPC；
+> 缺失次数仍然可以对齐（hello 实测 381 vs 381，microbench train 51140840 vs 51141501）。
 
 可用环境变量覆盖默认值：
 
