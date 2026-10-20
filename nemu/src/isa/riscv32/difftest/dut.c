@@ -23,8 +23,8 @@ bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
     return false;
   }
   
-  // 检查通用寄存器 (RV32E 只有 16 个)
-  for (int i = 0; i < RISCV_GPR_NUM; i++) {
+  // 检查32个通用寄存器
+  for (int i = 0; i < 32; i++) {
     if (!difftest_check_reg(reg_name(i), pc, ref_r->gpr[i], cpu.gpr[i])) {
       return false;
     }

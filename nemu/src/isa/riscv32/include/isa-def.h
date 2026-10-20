@@ -26,8 +26,6 @@ typedef struct {
   word_t mtvec;    // Machine trap-handler base address
   word_t mepc;     // Machine exception program counter
   word_t mcause;   // Machine trap cause
-  word_t mcycle;   // Machine cycle counter (low)
-  word_t mcycleh;  // Machine cycle counter (high)
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
 
 // decode

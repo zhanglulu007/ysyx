@@ -33,13 +33,11 @@ static inline const char* reg_name(int idx) {
 // CSR register access helper
 #define csr(addr) (*({ \
   word_t *__csr_ptr = NULL; \
-  switch (BITS(addr, 11, 0)) { \
+  switch (addr) { \
     case 0x300: __csr_ptr = &cpu.mstatus; break;  \
     case 0x305: __csr_ptr = &cpu.mtvec; break;    \
     case 0x341: __csr_ptr = &cpu.mepc; break;     \
     case 0x342: __csr_ptr = &cpu.mcause; break;   \
-    case 0xb00: __csr_ptr = &cpu.mcycle; break;   \
-    case 0xb80: __csr_ptr = &cpu.mcycleh; break;  \
     default: panic("Unknown CSR register: 0x%x", addr); \
   } \
   __csr_ptr; \

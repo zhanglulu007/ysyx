@@ -35,8 +35,6 @@ static void restart() {
   
   /* Initialize CSR registers for DiffTest */
   cpu.mstatus = 0x1800;  // Set MPP to Machine mode for riscv32
-  cpu.mcycle = 0;
-  cpu.mcycleh = 0;
 }
 
 void init_isa() {
