@@ -158,6 +158,20 @@ module top(
   wire [3:0] ifu_rid;
   wire ifu_valid;
 
+  wire icache_arvalid;
+  wire icache_arready;
+  wire [31:0] icache_araddr;
+  wire [3:0] icache_arid;
+  wire [7:0] icache_arlen;
+  wire [2:0] icache_arsize;
+  wire [1:0] icache_arburst;
+  wire icache_rvalid;
+  wire icache_rready;
+  wire [1:0] icache_rresp;
+  wire [31:0] icache_rdata;
+  wire icache_rlast;
+  wire [3:0] icache_rid;
+
 `ifndef SOC_MODE
   wire mem_arvalid;
   wire mem_arready;
@@ -259,6 +273,42 @@ module top(
     .pc(pc),
     .inst(inst),
     .ifu_valid(ifu_valid)
+  );
+
+  // ICache - 指令缓存 (IFU -> ICache -> Arbiter)
+  ICache u_icache(
+    .clk(clk),
+    .rst(rst),
+
+    .ifu_arvalid(ifu_arvalid),
+    .ifu_arready(ifu_arready),
+    .ifu_araddr(ifu_araddr),
+    .ifu_arid(ifu_arid),
+    .ifu_arlen(ifu_arlen),
+    .ifu_arsize(ifu_arsize),
+    .ifu_arburst(ifu_arburst),
+
+    .ifu_rvalid(ifu_rvalid),
+    .ifu_rready(ifu_rready),
+    .ifu_rresp(ifu_rresp),
+    .ifu_rdata(ifu_rdata),
+    .ifu_rlast(ifu_rlast),
+    .ifu_rid(ifu_rid),
+
+    .arvalid(icache_arvalid),
+    .arready(icache_arready),
+    .araddr(icache_araddr),
+    .arid(icache_arid),
+    .arlen(icache_arlen),
+    .arsize(icache_arsize),
+    .arburst(icache_arburst),
+
+    .rvalid(icache_rvalid),
+    .rready(icache_rready),
+    .rresp(icache_rresp),
+    .rdata(icache_rdata),
+    .rlast(icache_rlast),
+    .rid(icache_rid)
   );
   
   // IDU - 译码单元
@@ -452,19 +502,19 @@ module top(
   Arbiter u_arbiter(
     .clk(clk),
     .rst(rst),
-    .ifu_arvalid(ifu_arvalid),
-    .ifu_arready(ifu_arready),
-    .ifu_araddr(ifu_araddr),
-    .ifu_arid(ifu_arid),
-    .ifu_arlen(ifu_arlen),
-    .ifu_arsize(ifu_arsize),
-    .ifu_arburst(ifu_arburst),
-    .ifu_rvalid(ifu_rvalid),
-    .ifu_rready(ifu_rready),
-    .ifu_rresp(ifu_rresp),
-    .ifu_rdata(ifu_rdata),
-    .ifu_rlast(ifu_rlast),
-    .ifu_rid(ifu_rid),
+    .ifu_arvalid(icache_arvalid),
+    .ifu_arready(icache_arready),
+    .ifu_araddr(icache_araddr),
+    .ifu_arid(icache_arid),
+    .ifu_arlen(icache_arlen),
+    .ifu_arsize(icache_arsize),
+    .ifu_arburst(icache_arburst),
+    .ifu_rvalid(icache_rvalid),
+    .ifu_rready(icache_rready),
+    .ifu_rresp(icache_rresp),
+    .ifu_rdata(icache_rdata),
+    .ifu_rlast(icache_rlast),
+    .ifu_rid(icache_rid),
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
