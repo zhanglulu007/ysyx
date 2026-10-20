@@ -33,10 +33,12 @@ make -C "$HERE" cachesim >/dev/null
 
 NEMU_STALE=0
 if [ -x "$NEMU_BIN" ] && [ -n "$(find "$NEMU_HOME/src" "$NEMU_HOME/include" \
-  -type f -newer "$NEMU_BIN" -print -quit 2>/dev/null)" ]; then
+  -type f \( -name '*.c' -o -name '*.h' \) -newer "$NEMU_BIN" -print -quit 2>/dev/null)" ]; then
   NEMU_STALE=1
 fi
-if [ ! -x "$NEMU_BIN" ] || [ "$NEMU_HOME/Makefile" -nt "$NEMU_BIN" ] || [ "$NEMU_STALE" = 1 ]; then
+if [ ! -x "$NEMU_BIN" ] || [ "$NEMU_HOME/Makefile" -nt "$NEMU_BIN" ] || \
+   [ "$NEMU_HOME/configs/riscv32-ysyxsoc_defconfig" -nt "$NEMU_BIN" ] || \
+   [ "$NEMU_STALE" = 1 ]; then
   echo "[dse] building NEMU trace binary..."
   make -C "$NEMU_HOME" cachesim-nemu
 fi
@@ -56,7 +58,7 @@ fi
 PENALTY=${PENALTY:-30}
 CHECK_TOL=${CHECK_TOL:-0.001}
 
-echo "size,block,ways,sets,accesses,hits,misses,bypass,hit_rate,miss_penalty,tmt" > "$OUT"
+echo "size,block,ways,sets,accesses,hits,misses,bypass,hit_rate,miss_penalty,tmt,compulsory,replace" > "$OUT"
 for size in $SIZES; do
   for block in $BLOCKS; do
     for ways in $WAYS; do
@@ -93,19 +95,32 @@ if [ "$CHECK" = 1 ]; then
     REF_ACCESS=$(echo "$REF" | cut -d, -f5)
     REF_HIT=$(echo "$REF" | cut -d, -f6)
     REF_MISS=$(echo "$REF" | cut -d, -f7)
+    REF_COMP=$(echo "$REF" | cut -d, -f12)
+    REF_REPL=$(echo "$REF" | cut -d, -f13)
     echo
     echo "[dse] performance DiffTest vs NPC (misses determine TMT):"
     echo "  NPC      access=$ACCESS hit=$HIT miss=$MISS"
     echo "  cachesim access=$REF_ACCESS hit=$REF_HIT miss=$REF_MISS"
-    DELTA=$((MISS - REF_MISS))
-    ABS_DELTA=${DELTA#-}
-    if [ "$ABS_DELTA" -eq 0 ]; then
-      echo "  PASS (misses identical)"
-    elif awk -v d="$ABS_DELTA" -v m="$MISS" -v t="$CHECK_TOL" \
-      'BEGIN { exit !(m > 0 && d / m <= t) }'; then
-      echo "  PASS (miss delta=$DELTA, within CHECK_TOL=$CHECK_TOL)"
+    CR=$(grep -o 'compulsory / replace: [0-9]* / [0-9]*' "$LOG" | tail -1 || true)
+    if [ -n "$CR" ]; then
+      NPC_COMP=$(echo "$CR" | awk '{print $4}')
+      NPC_REPL=$(echo "$CR" | awk '{print $6}')
+      echo "  NPC      compulsory=$NPC_COMP replace=$NPC_REPL"
+      echo "  cachesim compulsory=$REF_COMP replace=$REF_REPL"
+    fi
+    if [ -z "$MISS" ] || [ -z "$REF_MISS" ]; then
+      echo "  SKIP (icache_miss not found in NPC log)"
     else
-      echo "  MISMATCH (miss delta=$DELTA; use CHECK_TOL=0 for exact check)"
+      DELTA=$((MISS - REF_MISS))
+      ABS_DELTA=${DELTA#-}
+      if [ "$ABS_DELTA" -eq 0 ]; then
+        echo "  PASS (misses identical)"
+      elif awk -v d="$ABS_DELTA" -v m="$MISS" -v t="$CHECK_TOL" \
+        'BEGIN { exit !(m > 0 && d / m <= t) }'; then
+        echo "  PASS (miss delta=$DELTA, within CHECK_TOL=$CHECK_TOL)"
+      else
+        echo "  MISMATCH (miss delta=$DELTA; use CHECK_TOL=0 for exact check)"
+      fi
     fi
     # NEMU does not model UART THRE timing, so a program that polls UART
     # can have extra all-hit instructions in its PC stream.  Miss count is

@@ -263,8 +263,13 @@ perf:
 	echo ""; \
 	echo "[perf] logs: $(PERF_EVAL_LOG), $(PERF_MICROBENCH_LOG)"
 
+# 快速 cache 参数评估：NEMU 生成 PC trace + cachesim 扫描参数组合
+dse:
+	IMAGE=$(MICROBENCH_DIR)/build/microbench-riscv32e-ysyxsoc.bin \
+	$(MAKE) -C $(NEMU_HOME)/tools/cachesim dse
+
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc perf clean
+	build-standalone run-standalone build-soc run-soc perf dse clean

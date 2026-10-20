@@ -40,6 +40,7 @@ nemu/tools/cachesim/cachesim --trace build/cachesim.trace \
 
 - `accesses/hits/misses`：可缓存取指数、命中数、缺失数
 - `bypass`：不可缓存取指数
+- `compulsory/replace`：首次填充 / 替换造成的缺失
 - `tmt = misses * miss_penalty`
 
 `--csv` 只输出一行，便于脚本收集。

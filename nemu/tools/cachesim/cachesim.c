@@ -37,6 +37,8 @@ typedef struct {
   uint64_t hits;
   uint64_t misses;
   uint64_t bypass;
+  uint64_t compulsory;
+  uint64_t replace;
 } Cache;
 
 static bool is_pow2(uint64_t x) {
@@ -109,11 +111,14 @@ static bool cache_access(Cache *c, uint32_t addr, bool cache_all) {
 
   c->misses ++;
   size_t victim = base;
+  bool victim_invalid = false;
   for (uint32_t w = 0; w < c->ways; w ++) {
     size_t i = base + w;
-    if (!c->valid[i]) { victim = i; break; }
+    if (!c->valid[i]) { victim = i; victim_invalid = true; break; }
     if (c->age[i] < c->age[victim]) victim = i;
   }
+  if (victim_invalid) c->compulsory ++;
+  else c->replace ++;
   c->valid[victim] = 1;
   c->tags[victim] = tag;
   c->age[victim] = stamp;
@@ -270,14 +275,16 @@ int main(int argc, char **argv) {
   if (csv) {
     printf("%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
            "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ","
-           "%.4f,%.4f,%.0f\n",
+           "%.4f,%.4f,%.0f,%" PRIu64 ",%" PRIu64 "\n",
            size, block, ways, sets, c.accesses, c.hits, c.misses, c.bypass,
-           hit_rate, miss_penalty, tmt);
+           hit_rate, miss_penalty, tmt, c.compulsory, c.replace);
   } else {
     printf("cache: size=%" PRIu64 "B block=%" PRIu64 "B ways=%" PRIu64
            " sets=%" PRIu64 "\n", size, block, ways, sets);
     printf("accesses=%" PRIu64 " hits=%" PRIu64 " misses=%" PRIu64
            " bypass=%" PRIu64 "\n", c.accesses, c.hits, c.misses, c.bypass);
+    printf("compulsory=%" PRIu64 " replace=%" PRIu64 "\n",
+           c.compulsory, c.replace);
     printf("hit_rate=%.4f miss_rate=%.4f\n", hit_rate, miss_rate);
     printf("miss_penalty=%.4f tmt=%.0f cycles\n", miss_penalty, tmt);
   }
