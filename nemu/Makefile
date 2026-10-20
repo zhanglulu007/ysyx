@@ -78,7 +78,7 @@ DIFFTEST_CFG_BAK   := $(NEMU_BUILD_DIR)/.difftest-cfg-bak
 
 CACHESIM_NEMU := $(NEMU_BUILD_DIR)/riscv32-nemu-interpreter-ysyxsoc
 
-.PHONY: difftest-so difftest-so-standalone difftest-so-ysyxsoc cachesim-nemu
+.PHONY: difftest-so difftest-so-standalone difftest-so-ysyxsoc cachesim cachesim-dse cachesim-nemu
 
 difftest-so: difftest-so-standalone difftest-so-ysyxsoc
 	@echo "=== All NEMU REF .so ready ==="
@@ -130,6 +130,12 @@ difftest-so-ysyxsoc:
 	$(MAKE) -C $(NEMU_HOME) riscv32-ysyxsoc-so_defconfig; \
 	$(MAKE) -C $(NEMU_HOME) NAME=riscv32-nemu-interpreter-ysyxsoc YSYXSOC_REF=1 app; \
 	test -f "$(DIFFTEST_SO_YSYXSOC)"
+
+cachesim:
+	$(MAKE) -C $(NEMU_HOME)/tools/cachesim
+
+cachesim-dse:
+	$(MAKE) -C $(NEMU_HOME)/tools/cachesim dse
 
 cachesim-nemu:
 	@echo "=== Building NEMU for cachesim trace (ysyxSoC) ==="
