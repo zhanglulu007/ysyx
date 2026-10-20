@@ -26,6 +26,12 @@ enum PerfEventId {
     PERF_ECALL        = 14,  // ecall
     PERF_MRET         = 15,  // mret
     PERF_EBREAK       = 16,  // ebreak
+    PERF_IC_ACCESS    = 17,  // ICache 取指请求数
+    PERF_IC_HIT       = 18,  // ICache 命中数
+    PERF_IC_MISS      = 19,  // ICache 缺失数
+    PERF_IC_REFILL    = 20,  // ICache 缺失时发起的总线 AR 数
+    PERF_IC_MISS_AR   = 21,  // ICache 缺失等待 AR 的周期数
+    PERF_IC_MISS_R    = 22,  // ICache 缺失等待 R 的周期数
     PERF_EVENT_COUNT
 };
 

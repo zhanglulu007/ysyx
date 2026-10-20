@@ -172,6 +172,13 @@ module top(
   wire icache_rlast;
   wire [3:0] icache_rid;
 
+  wire icache_access;
+  wire icache_hit;
+  wire icache_miss;
+  wire icache_refill;
+  wire icache_miss_ar_wait;
+  wire icache_miss_r_wait;
+
 `ifndef SOC_MODE
   wire mem_arvalid;
   wire mem_arready;
@@ -308,7 +315,14 @@ module top(
     .rresp(icache_rresp),
     .rdata(icache_rdata),
     .rlast(icache_rlast),
-    .rid(icache_rid)
+    .rid(icache_rid),
+
+    .icache_access(icache_access),
+    .icache_hit(icache_hit),
+    .icache_miss(icache_miss),
+    .icache_refill(icache_refill),
+    .icache_miss_ar_wait(icache_miss_ar_wait),
+    .icache_miss_r_wait(icache_miss_r_wait)
   );
   
   // IDU - 译码单元
@@ -679,8 +693,10 @@ module top(
   // 仿真环境 csrc/core/perf.cpp 中完成, 不参与综合(见 Makefile 的 PERF 变量).
   localparam PERF_COMMIT       = 0;   // 提交(动态)指令数
   localparam PERF_IF_FETCH     = 1;   // IFU 取到指令
-  localparam PERF_IF_STALL_BUS = 2;   // IFU 等 AR 握手 (总线/仲裁忙)
-  localparam PERF_IF_STALL_MEM = 3;   // IFU 已发请求, 等 R 数据 (访存延迟)
+  // 注意: 接入 ICache 后, 下面两个 IFU 侧探针统计的是 IFU<->ICache,
+  // 不再直接对应 IFU<->总线; ICache 命中/缺失需在 ICache 内单独统计.
+  localparam PERF_IF_STALL_BUS = 2;   // IFU 等 ICache 接收请求
+  localparam PERF_IF_STALL_MEM = 3;   // IFU 等 ICache 返回指令
   localparam PERF_LD_DONE      = 4;   // LSU 取到数据 (load 完成)
   localparam PERF_ST_DONE      = 5;   // LSU 完成 store
   localparam PERF_LD_WAIT      = 6;   // load 等待数据周期数 (统计平均访存延迟)
@@ -694,6 +710,12 @@ module top(
   localparam PERF_ECALL        = 14;  // ecall
   localparam PERF_MRET         = 15;  // mret
   localparam PERF_EBREAK       = 16;  // ebreak
+  localparam PERF_IC_ACCESS    = 17;  // ICache 取指请求数
+  localparam PERF_IC_HIT       = 18;  // ICache 命中数
+  localparam PERF_IC_MISS      = 19;  // ICache 缺失数
+  localparam PERF_IC_REFILL    = 20;  // ICache 缺失时发起的总线 AR 数
+  localparam PERF_IC_MISS_AR   = 21;  // ICache 缺失等待 AR 的周期数
+  localparam PERF_IC_MISS_R    = 22;  // ICache 缺失等待 R 的周期数
 
   import "DPI-C" function void perf_event(input int event_id);
 
@@ -711,13 +733,20 @@ module top(
 
   always @(posedge clk) begin
     if (!rst) begin
-      if (commit)            perf_event(PERF_COMMIT);
-      if (perf_if_fetch)     perf_event(PERF_IF_FETCH);
-      if (perf_if_stall_bus) perf_event(PERF_IF_STALL_BUS);
-      if (perf_if_stall_mem) perf_event(PERF_IF_STALL_MEM);
-      if (perf_ld_done)      perf_event(PERF_LD_DONE);
-      if (perf_st_done)      perf_event(PERF_ST_DONE);
-      if (perf_ld_wait)      perf_event(PERF_LD_WAIT);
+      if (commit)             perf_event(PERF_COMMIT);
+      if (perf_if_fetch)      perf_event(PERF_IF_FETCH);
+      if (perf_if_stall_bus)  perf_event(PERF_IF_STALL_BUS);
+      if (perf_if_stall_mem)  perf_event(PERF_IF_STALL_MEM);
+      if (perf_ld_done)       perf_event(PERF_LD_DONE);
+      if (perf_st_done)       perf_event(PERF_ST_DONE);
+      if (perf_ld_wait)       perf_event(PERF_LD_WAIT);
+
+      if (icache_access)       perf_event(PERF_IC_ACCESS);
+      if (icache_hit)          perf_event(PERF_IC_HIT);
+      if (icache_miss)         perf_event(PERF_IC_MISS);
+      if (icache_refill)       perf_event(PERF_IC_REFILL);
+      if (icache_miss_ar_wait) perf_event(PERF_IC_MISS_AR);
+      if (icache_miss_r_wait)  perf_event(PERF_IC_MISS_R);
 
       if (commit) begin
         if (perf_is_alu)    perf_event(PERF_ALU);

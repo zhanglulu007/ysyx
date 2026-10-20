@@ -34,7 +34,15 @@ module ICache (
   input [1:0] rresp,
   input [31:0] rdata,
   input rlast,
-  input [3:0] rid
+  input [3:0] rid,
+
+  // 性能计数器观测端口 (仅仿真使用)
+  output icache_access,       // IFU 发出一次取指请求
+  output icache_hit,          // 命中
+  output icache_miss,         // 缺失
+  output icache_refill,       // 缺失时发起一次总线 AR
+  output icache_miss_ar_wait, // 缺失等待 AR 握手的周期
+  output icache_miss_r_wait   // 缺失等待 R 数据的周期
 
 );
 
@@ -75,6 +83,14 @@ module ICache (
   assign arburst = 2'b01;
 
   assign rready  = !rst && (state == MISS_R);
+
+  // 性能计数器观测信号
+  assign icache_access       = !rst && (state == IDLE) && ifu_arvalid && ifu_arready;
+  assign icache_hit          = icache_access && hit;
+  assign icache_miss         = icache_access && !hit;
+  assign icache_refill       = !rst && (state == MISS_AR) && arvalid && arready;
+  assign icache_miss_ar_wait = !rst && (state == MISS_AR);
+  assign icache_miss_r_wait  = !rst && (state == MISS_R);
 
   always @(posedge clk) begin
     if (rst) begin

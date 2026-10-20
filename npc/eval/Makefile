@@ -43,6 +43,7 @@ RTL_FILES := $(PROJ_PATH)/NPCSynth.v \
              $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/CSR.v \
              $(NPC_VSRC)/EXU.v \
+             $(NPC_VSRC)/ICache.v \
              $(NPC_VSRC)/IDU.v \
              $(NPC_VSRC)/IFU.v \
              $(NPC_VSRC)/LSU.v \

@@ -13,9 +13,10 @@
 ```
 top
 ├── IFU          LSU
-├── IDU          WBU
-├── EXU          CSR
-├── RegisterFile Arbiter (IFU/LSU 的 AXI AR 仲裁)
+├── ICache       WBU
+├── IDU          CSR
+├── EXU          RegisterFile
+└── Arbiter (ICache/LSU 的 AXI AR 仲裁)
 ```
 
 读取 RTL 时定义 `SYNTHESIS`，此时：
