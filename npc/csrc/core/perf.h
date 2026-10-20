@@ -11,8 +11,8 @@
 enum PerfEventId {
     PERF_COMMIT       = 0,   // 提交(动态)指令数
     PERF_IF_FETCH     = 1,   // IFU 取到指令
-    PERF_IF_STALL_BUS = 2,   // IFU 等 AR 握手 (总线/仲裁忙)
-    PERF_IF_STALL_MEM = 3,   // IFU 已发请求, 等 R 数据 (访存延迟)
+    PERF_IF_STALL_BUS = 2,   // IFU 等 ICache 接收请求
+    PERF_IF_STALL_MEM = 3,   // IFU 等 ICache 返回指令
     PERF_LD_DONE      = 4,   // LSU 取到数据 (load 完成)
     PERF_ST_DONE      = 5,   // LSU 完成 store
     PERF_LD_WAIT      = 6,   // load 等待数据周期数 (统计平均访存延迟)

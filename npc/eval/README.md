@@ -85,6 +85,9 @@ cat ../config/f_cpu
 
 ## 基线结果（2026-10-15 实测）
 
+> 注：下表是**加入 ICache 之前**的基线，加入 ICache 后面积/时序会变化，
+> 需要重新执行 `make all` 更新。
+
 `make all PDK=icsprout55 CLK_FREQ_MHZ=1200`：
 
 | 指标 | 数值 |
