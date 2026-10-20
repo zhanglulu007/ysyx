@@ -110,4 +110,7 @@ cat ../config/f_cpu
   每次改动的 PPA 变化都可归因。
 - `sta` 的功耗使用固定翻转率 0.1（iPA 默认），不是真实负载功耗，
   只用于版本间相对比较。
+- `synth` 后会检查 `yosys.log` 中的 `multiple conflicting drivers`：
+  一旦出现多个 always 块驱动同一寄存器，综合会直接失败，避免生成
+  “只剩几个 TIE cell”的空网表。
 - 本评估项目不修改 `../vsrc` 的源 RTL，只读取。

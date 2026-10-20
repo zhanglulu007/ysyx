@@ -36,7 +36,6 @@ module ICache (
   input rlast,
   input [3:0] rid,
 
-  // 性能计数器观测端口 (仅仿真使用)
   output icache_access,       // IFU 发出一次取指请求
   output icache_hit,          // 命中
   output icache_miss,         // 缺失
@@ -102,7 +101,7 @@ module ICache (
       case (state)
         IDLE: begin
           if (ifu_arvalid && ifu_arready) begin
-            req_tag   <= req_tag_in;
+            req_tag <= req_tag_in;
             req_index <= req_index_in;
             if (hit) begin
               state <= RETURN;
@@ -120,9 +119,9 @@ module ICache (
 
         MISS_R: begin
           if (rvalid && rready && rlast) begin
-            cache[req_index]       <= {req_tag, rdata};
+            cache[req_index] <= {req_tag, rdata};
             cache_valid[req_index] <= 1'b1;
-            state                  <= RETURN;
+            state <= RETURN;
           end
         end
 
