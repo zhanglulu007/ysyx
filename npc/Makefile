@@ -53,6 +53,23 @@ PERF_EVAL_LOG := $(BUILD_DIR)/perf-eval.log
 PERF_MICROBENCH_LOG := $(BUILD_DIR)/perf-microbench.log
 $(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
+# ---- cachesim: 基于 NEMU PC 序列的 ICache 快速评估 ----
+# 只回放 PC 序列统计缺失次数, 不跑 Verilator, 因此比 RTL 仿真快 2~3 个数量级.
+CACHESIM_DIR     ?= $(PROJECT_DIR)/cachesim
+CACHESIM_BIN     := $(CACHESIM_DIR)/build/cachesim
+CACHESIM_TRACE   ?= $(BUILD_DIR)/microbench-train.pc
+CACHESIM_CSETS   ?= 16
+CACHESIM_CWAYS   ?= 1
+CACHESIM_CBLOCK  ?= 4
+CACHESIM_PENALTY ?= 30
+CACHESIM_SWEEP_BLOCKS ?= 4 8 16 32
+CACHESIM_SWEEP_WAYS   ?= 1 2 4
+CACHESIM_SWEEP_SETS   ?= 4 8 16 32
+JOBS ?= $(shell nproc 2>/dev/null || echo 4)
+NEMU_TRACE_BIN   ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc
+MICROBENCH_BIN   ?= $(MICROBENCH_DIR)/build/microbench-riscv32e-ysyxsoc.bin
+CACHESIM_NEMU_LOG := $(BUILD_DIR)/cachesim-nemu.log
+
 CORE_RTL_SRCS := $(sort \
   $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
   $(wildcard $(PROJECT_DIR)/vsrc/*.sv))
@@ -263,8 +280,77 @@ perf:
 	echo ""; \
 	echo "[perf] logs: $(PERF_EVAL_LOG), $(PERF_MICROBENCH_LOG)"
 
+# ==================== cachesim 快速评估 ====================
+# 流程: 编译 microbench(train) -> NEMU 导出 PC 序列 -> cachesim 回放统计
+
+$(CACHESIM_BIN): $(CACHESIM_DIR)/cachesim.cpp
+	@$(MAKE) --no-print-directory -C $(CACHESIM_DIR)
+
+# microbench 的 train 镜像; bin 已存在则跳过, FORCE=1 可强制重编
+$(MICROBENCH_BIN):
+	@echo "[cachesim] 编译 microbench (mainargs=train) ..."
+	@$(MAKE) --no-print-directory -C $(MICROBENCH_DIR) \
+	  AM_HOME=$(WORKBENCH_ROOT)/abstract-machine \
+	  ARCH=riscv32e-ysyxsoc mainargs=train insert-arg > /dev/null
+
+cachesim-trace: $(MICROBENCH_BIN)
+	@if [ -f "$(CACHESIM_TRACE)" ] && [ "$(FORCE)" != "1" ]; then \
+	  echo "[cachesim] 复用已有 PC 序列: $(CACHESIM_TRACE)  (FORCE=1 可强制重建)"; \
+	else \
+	  echo "[cachesim] 构建 NEMU (riscv32-ysyxsoc 配置) ..."; \
+	  $(MAKE) --no-print-directory -C $(NEMU_HOME) riscv32-ysyxsoc_defconfig > /dev/null; \
+	  $(MAKE) --no-print-directory -C $(NEMU_HOME) YSYXSOC_REF=1 \
+	    NAME=riscv32-nemu-interpreter-ysyxsoc -j > /dev/null; \
+	  echo "[cachesim] 导出 PC 序列 -> $(CACHESIM_TRACE)"; \
+	  $(NEMU_TRACE_BIN) -b -c $(CACHESIM_TRACE) $(MICROBENCH_BIN) \
+	    > $(CACHESIM_NEMU_LOG) 2>&1; \
+	  echo "[cachesim] trace 大小: $$(du -h $(CACHESIM_TRACE) | cut -f1)  (NEMU 日志: $(CACHESIM_NEMU_LOG))"; \
+	fi
+
+cachesim: $(CACHESIM_BIN) cachesim-trace
+	@echo "=== cachesim 评估 [sets=$(CACHESIM_CSETS) ways=$(CACHESIM_CWAYS) block=$(CACHESIM_CBLOCK)B penalty=$(CACHESIM_PENALTY)] ==="
+	@$(CACHESIM_BIN) --trace $(CACHESIM_TRACE) \
+	  --sets $(CACHESIM_CSETS) --ways $(CACHESIM_CWAYS) \
+	  --block $(CACHESIM_CBLOCK) --miss-penalty $(CACHESIM_PENALTY)
+
+cachesim-sweep: $(CACHESIM_BIN) cachesim-trace
+	@mkdir -p $(BUILD_DIR)/cachesim-sweep
+	@rm -f $(BUILD_DIR)/cachesim-sweep/*.csv
+	@echo "[cachesim] 参数扫描 blocks={$(CACHESIM_SWEEP_BLOCKS)} ways={$(CACHESIM_SWEEP_WAYS)} sets={$(CACHESIM_SWEEP_SETS)} (并行 $(JOBS) 路)"
+	@for b in $(CACHESIM_SWEEP_BLOCKS); do \
+	  for w in $(CACHESIM_SWEEP_WAYS); do \
+	    for s in $(CACHESIM_SWEEP_SETS); do echo "$$b $$w $$s"; done; \
+	  done; \
+	done | xargs -P $(JOBS) -n 3 sh -c '\
+	  $(CACHESIM_BIN) --csv --trace $(CACHESIM_TRACE) \
+	    --block $$0 --ways $$1 --sets $$2 --miss-penalty $(CACHESIM_PENALTY) \
+	    > $(BUILD_DIR)/cachesim-sweep/$${0}_$${1}_$${2}.csv'
+	@echo ""
+	@printf "%-6s %-5s %-5s %9s %12s %14s\n" block ways sets hit-rate miss TMT
+	@printf "%-6s %-5s %-5s %9s %12s %14s\n" ------ ----- ----- --------- ------------ --------------
+	@cat $(BUILD_DIR)/cachesim-sweep/*.csv | sort -t, -k1,1n -k2,2n -k3,3n | \
+	  awk -F, '{ printf "%-6s %-5s %-5s %8s%% %12s %14s\n", $$1, $$2, $$3, $$4, $$5, $$6 }'
+
+cachesim-report: $(CACHESIM_BIN) cachesim-trace
+	@echo "============ cachesim vs NPC perf (仅供参考, 不自动断言) ============"
+	@echo "--- NPC perf [ICache behavior]  ($(PERF_MICROBENCH_LOG)) ---"
+	@if [ -f "$(PERF_MICROBENCH_LOG)" ]; then \
+	  awk '/\[ICache behavior\]/{show=1} show{print} show&&/^\[LSU behavior\]/{exit}' $(PERF_MICROBENCH_LOG); \
+	else \
+	  echo "  (未找到 perf 日志, 请先运行 make perf)"; \
+	fi
+	@echo ""
+	@echo "--- cachesim (sets=16 ways=1 block=4, 与当前 ICache 一致) ---"
+	@$(CACHESIM_BIN) --trace $(CACHESIM_TRACE) --sets 16 --ways 1 --block 4 \
+	  --miss-penalty $(CACHESIM_PENALTY)
+	@echo "======================================================================"
+
+cachesim-clean:
+	-rm -rf $(CACHESIM_DIR)/build $(BUILD_DIR)/cachesim-sweep $(CACHESIM_TRACE)
+
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc perf clean
+	build-standalone run-standalone build-soc run-soc perf clean \
+	cachesim cachesim-trace cachesim-sweep cachesim-report cachesim-clean
