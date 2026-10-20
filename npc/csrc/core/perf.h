@@ -11,8 +11,8 @@
 enum PerfEventId {
     PERF_COMMIT       = 0,   // 提交(动态)指令数
     PERF_IF_FETCH     = 1,   // IFU 取到指令
-    PERF_IF_STALL_BUS = 2,   // IFU 等 AR 握手 (总线/仲裁忙)
-    PERF_IF_STALL_MEM = 3,   // IFU 已发请求, 等 R 数据 (访存延迟)
+    PERF_IF_STALL_BUS = 2,   // IFU 等 ICache 接收请求
+    PERF_IF_STALL_MEM = 3,   // IFU 等 ICache 返回指令
     PERF_LD_DONE      = 4,   // LSU 取到数据 (load 完成)
     PERF_ST_DONE      = 5,   // LSU 完成 store
     PERF_LD_WAIT      = 6,   // load 等待数据周期数 (统计平均访存延迟)
@@ -26,6 +26,12 @@ enum PerfEventId {
     PERF_ECALL        = 14,  // ecall
     PERF_MRET         = 15,  // mret
     PERF_EBREAK       = 16,  // ebreak
+    PERF_IC_ACCESS    = 17,  // ICache 取指请求数
+    PERF_IC_HIT       = 18,  // ICache 命中数
+    PERF_IC_MISS      = 19,  // ICache 缺失数
+    PERF_IC_REFILL    = 20,  // ICache 缺失时发起的总线 AR 数
+    PERF_IC_MISS_AR   = 21,  // ICache 缺失等待 AR 的周期数
+    PERF_IC_MISS_R    = 22,  // ICache 缺失等待 R 的周期数
     PERF_EVENT_COUNT
 };
 

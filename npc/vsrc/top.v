@@ -158,6 +158,53 @@ module top(
   wire [3:0] ifu_rid;
   wire ifu_valid;
 
+  wire icache_arvalid;
+  wire icache_arready;
+  wire [31:0] icache_araddr;
+  wire [3:0] icache_arid;
+  wire [7:0] icache_arlen;
+  wire [2:0] icache_arsize;
+  wire [1:0] icache_arburst;
+  wire icache_rvalid;
+  wire icache_rready;
+  wire [1:0] icache_rresp;
+  wire [31:0] icache_rdata;
+  wire icache_rlast;
+  wire [3:0] icache_rid;
+
+  wire icache_access;
+  wire icache_hit;
+  wire icache_miss;
+  wire icache_refill;
+  wire icache_miss_ar_wait;
+  wire icache_miss_r_wait;
+
+  wire icache_ifu_arvalid;
+  wire icache_ifu_arready;
+  wire icache_ifu_rvalid;
+  wire [1:0] icache_ifu_rresp;
+  wire [31:0] icache_ifu_rdata;
+  wire icache_ifu_rlast;
+  wire [3:0] icache_ifu_rid;
+
+  wire arb_ifu_arvalid;
+  wire arb_ifu_arready;
+  wire [31:0] arb_ifu_araddr;
+  wire [3:0] arb_ifu_arid;
+  wire [7:0] arb_ifu_arlen;
+  wire [2:0] arb_ifu_arsize;
+  wire [1:0] arb_ifu_arburst;
+  wire arb_ifu_rvalid;
+  wire arb_ifu_rready;
+  wire [1:0] arb_ifu_rresp;
+  wire [31:0] arb_ifu_rdata;
+  wire arb_ifu_rlast;
+  wire [3:0] arb_ifu_rid;
+
+  wire ifu_cacheable;
+  reg cache_pending;
+  reg bypass_pending;
+
 `ifndef SOC_MODE
   wire mem_arvalid;
   wire mem_arready;
@@ -189,6 +236,55 @@ module top(
   wire [1:0] mem_bresp;
   wire [3:0] mem_bid;
 `endif
+
+  assign ifu_cacheable = ((ifu_araddr >= 32'h3000_0000) &&
+                          (ifu_araddr <  32'h3100_0000)) ||
+                         ((ifu_araddr >= 32'ha000_0000) &&
+                          (ifu_araddr <  32'ha200_0000));
+
+  assign icache_ifu_arvalid = ifu_arvalid && ifu_cacheable;
+  assign ifu_arready        = ifu_cacheable ? icache_ifu_arready : arb_ifu_arready;
+
+  assign arb_ifu_arvalid = ifu_cacheable ? icache_arvalid : ifu_arvalid;
+  assign arb_ifu_araddr  = ifu_cacheable ? icache_araddr : ifu_araddr;
+  assign arb_ifu_arid    = ifu_cacheable ? icache_arid : ifu_arid;
+  assign arb_ifu_arlen   = ifu_cacheable ? icache_arlen : ifu_arlen;
+  assign arb_ifu_arsize  = ifu_cacheable ? icache_arsize : ifu_arsize;
+  assign arb_ifu_arburst = ifu_cacheable ? icache_arburst : ifu_arburst;
+
+  assign icache_arready = ifu_cacheable ? arb_ifu_arready : 1'b0;
+  assign icache_rvalid  = cache_pending ? arb_ifu_rvalid : 1'b0;
+  assign icache_rresp   = arb_ifu_rresp;
+  assign icache_rdata   = arb_ifu_rdata;
+  assign icache_rlast   = arb_ifu_rlast;
+  assign icache_rid     = arb_ifu_rid;
+  assign arb_ifu_rready = cache_pending ? icache_rready :
+                          (bypass_pending ? ifu_rready : 1'b0);
+
+  assign ifu_rvalid = cache_pending ? icache_ifu_rvalid :
+                      (bypass_pending ? arb_ifu_rvalid : 1'b0);
+  assign ifu_rresp  = cache_pending ? icache_ifu_rresp : arb_ifu_rresp;
+  assign ifu_rdata  = cache_pending ? icache_ifu_rdata : arb_ifu_rdata;
+  assign ifu_rlast  = cache_pending ? icache_ifu_rlast : arb_ifu_rlast;
+  assign ifu_rid    = cache_pending ? icache_ifu_rid : arb_ifu_rid;
+
+  // Track which path owns the outstanding IFU fetch.
+  always @(posedge clk) begin
+    if (rst) begin
+      cache_pending  <= 1'b0;
+      bypass_pending <= 1'b0;
+    end else if (ifu_arvalid && ifu_arready) begin
+      cache_pending  <= ifu_cacheable;
+      bypass_pending <= !ifu_cacheable;
+    end else begin
+      if (cache_pending && icache_ifu_rvalid && ifu_rready) begin
+        cache_pending <= 1'b0;
+      end
+      if (bypass_pending && arb_ifu_rvalid && ifu_rready) begin
+        bypass_pending <= 1'b0;
+      end
+    end
+  end
 
   wire commit = ifu_valid && (!mem_valid || lsu_done);
 
@@ -259,6 +355,49 @@ module top(
     .pc(pc),
     .inst(inst),
     .ifu_valid(ifu_valid)
+  );
+
+  // ICache - 指令缓存 (IFU -> ICache -> Arbiter)
+  ICache u_icache(
+    .clk(clk),
+    .rst(rst),
+
+    .ifu_arvalid(icache_ifu_arvalid),
+    .ifu_arready(icache_ifu_arready),
+    .ifu_araddr(ifu_araddr),
+    .ifu_arid(ifu_arid),
+    .ifu_arlen(ifu_arlen),
+    .ifu_arsize(ifu_arsize),
+    .ifu_arburst(ifu_arburst),
+
+    .ifu_rvalid(icache_ifu_rvalid),
+    .ifu_rready(ifu_rready),
+    .ifu_rresp(icache_ifu_rresp),
+    .ifu_rdata(icache_ifu_rdata),
+    .ifu_rlast(icache_ifu_rlast),
+    .ifu_rid(icache_ifu_rid),
+
+    .arvalid(icache_arvalid),
+    .arready(icache_arready),
+    .araddr(icache_araddr),
+    .arid(icache_arid),
+    .arlen(icache_arlen),
+    .arsize(icache_arsize),
+    .arburst(icache_arburst),
+
+    .rvalid(icache_rvalid),
+    .rready(icache_rready),
+    .rresp(icache_rresp),
+    .rdata(icache_rdata),
+    .rlast(icache_rlast),
+    .rid(icache_rid),
+
+    .icache_access(icache_access),
+    .icache_hit(icache_hit),
+    .icache_miss(icache_miss),
+    .icache_refill(icache_refill),
+    .icache_miss_ar_wait(icache_miss_ar_wait),
+    .icache_miss_r_wait(icache_miss_r_wait)
   );
   
   // IDU - 译码单元
@@ -452,19 +591,19 @@ module top(
   Arbiter u_arbiter(
     .clk(clk),
     .rst(rst),
-    .ifu_arvalid(ifu_arvalid),
-    .ifu_arready(ifu_arready),
-    .ifu_araddr(ifu_araddr),
-    .ifu_arid(ifu_arid),
-    .ifu_arlen(ifu_arlen),
-    .ifu_arsize(ifu_arsize),
-    .ifu_arburst(ifu_arburst),
-    .ifu_rvalid(ifu_rvalid),
-    .ifu_rready(ifu_rready),
-    .ifu_rresp(ifu_rresp),
-    .ifu_rdata(ifu_rdata),
-    .ifu_rlast(ifu_rlast),
-    .ifu_rid(ifu_rid),
+    .ifu_arvalid(arb_ifu_arvalid),
+    .ifu_arready(arb_ifu_arready),
+    .ifu_araddr(arb_ifu_araddr),
+    .ifu_arid(arb_ifu_arid),
+    .ifu_arlen(arb_ifu_arlen),
+    .ifu_arsize(arb_ifu_arsize),
+    .ifu_arburst(arb_ifu_arburst),
+    .ifu_rvalid(arb_ifu_rvalid),
+    .ifu_rready(arb_ifu_rready),
+    .ifu_rresp(arb_ifu_rresp),
+    .ifu_rdata(arb_ifu_rdata),
+    .ifu_rlast(arb_ifu_rlast),
+    .ifu_rid(arb_ifu_rid),
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
@@ -629,8 +768,8 @@ module top(
   // 仿真环境 csrc/core/perf.cpp 中完成, 不参与综合(见 Makefile 的 PERF 变量).
   localparam PERF_COMMIT       = 0;   // 提交(动态)指令数
   localparam PERF_IF_FETCH     = 1;   // IFU 取到指令
-  localparam PERF_IF_STALL_BUS = 2;   // IFU 等 AR 握手 (总线/仲裁忙)
-  localparam PERF_IF_STALL_MEM = 3;   // IFU 已发请求, 等 R 数据 (访存延迟)
+  localparam PERF_IF_STALL_BUS = 2;   // IFU 等 ICache 接收请求
+  localparam PERF_IF_STALL_MEM = 3;   // IFU 等 ICache 返回指令
   localparam PERF_LD_DONE      = 4;   // LSU 取到数据 (load 完成)
   localparam PERF_ST_DONE      = 5;   // LSU 完成 store
   localparam PERF_LD_WAIT      = 6;   // load 等待数据周期数 (统计平均访存延迟)
@@ -644,6 +783,12 @@ module top(
   localparam PERF_ECALL        = 14;  // ecall
   localparam PERF_MRET         = 15;  // mret
   localparam PERF_EBREAK       = 16;  // ebreak
+  localparam PERF_IC_ACCESS    = 17;  // ICache 取指请求数
+  localparam PERF_IC_HIT       = 18;  // ICache 命中数
+  localparam PERF_IC_MISS      = 19;  // ICache 缺失数
+  localparam PERF_IC_REFILL    = 20;  // ICache 缺失时发起的总线 AR 数
+  localparam PERF_IC_MISS_AR   = 21;  // ICache 缺失等待 AR 的周期数
+  localparam PERF_IC_MISS_R    = 22;  // ICache 缺失等待 R 的周期数
 
   import "DPI-C" function void perf_event(input int event_id);
 
@@ -661,13 +806,20 @@ module top(
 
   always @(posedge clk) begin
     if (!rst) begin
-      if (commit)            perf_event(PERF_COMMIT);
-      if (perf_if_fetch)     perf_event(PERF_IF_FETCH);
-      if (perf_if_stall_bus) perf_event(PERF_IF_STALL_BUS);
-      if (perf_if_stall_mem) perf_event(PERF_IF_STALL_MEM);
-      if (perf_ld_done)      perf_event(PERF_LD_DONE);
-      if (perf_st_done)      perf_event(PERF_ST_DONE);
-      if (perf_ld_wait)      perf_event(PERF_LD_WAIT);
+      if (commit)             perf_event(PERF_COMMIT);
+      if (perf_if_fetch)      perf_event(PERF_IF_FETCH);
+      if (perf_if_stall_bus)  perf_event(PERF_IF_STALL_BUS);
+      if (perf_if_stall_mem)  perf_event(PERF_IF_STALL_MEM);
+      if (perf_ld_done)       perf_event(PERF_LD_DONE);
+      if (perf_st_done)       perf_event(PERF_ST_DONE);
+      if (perf_ld_wait)       perf_event(PERF_LD_WAIT);
+
+      if (icache_access)       perf_event(PERF_IC_ACCESS);
+      if (icache_hit)          perf_event(PERF_IC_HIT);
+      if (icache_miss)         perf_event(PERF_IC_MISS);
+      if (icache_refill)       perf_event(PERF_IC_REFILL);
+      if (icache_miss_ar_wait) perf_event(PERF_IC_MISS_AR);
+      if (icache_miss_r_wait)  perf_event(PERF_IC_MISS_R);
 
       if (commit) begin
         if (perf_is_alu)    perf_event(PERF_ALU);

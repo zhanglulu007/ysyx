@@ -1,7 +1,7 @@
 // NPCSynth - 当前 NPC 多周期核的综合边界 (synthesis boundary)
 //
 // 评估对象: npc/vsrc 的当前多周期核
-//   top + IFU / IDU / EXU / LSU / WBU / CSR / RegisterFile / Arbiter
+//   top + IFU / ICache / IDU / EXU / LSU / WBU / CSR / RegisterFile / Arbiter
 //
 // 使用 -DSYNTHESIS 读取 RTL: 此时 top.v 走内部合成用存储模型
 // (synth_rvalid / synth_rdata, 见 top.v `ifndef SOC_MODE + `ifdef SYNTHESIS),

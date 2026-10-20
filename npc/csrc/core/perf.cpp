@@ -42,6 +42,11 @@ void perf_report() {
     const uint64_t cycle  = npc_get_cycle();
     const uint64_t commit = perf_count[PERF_COMMIT];
 
+    const uint64_t ic_access    = perf_count[PERF_IC_ACCESS];
+    const uint64_t ic_hit       = perf_count[PERF_IC_HIT];
+    const uint64_t ic_miss      = perf_count[PERF_IC_MISS];
+    const uint64_t ic_miss_wait = perf_count[PERF_IC_MISS_AR] + perf_count[PERF_IC_MISS_R];
+
     // 各指令类别计数之和, 用于与动态指令数做一致性检查
     const uint64_t class_sum =
         perf_count[PERF_ALU]    + perf_count[PERF_LOAD]   + perf_count[PERF_STORE] +
@@ -78,8 +83,21 @@ void perf_report() {
     printf("  load wait cycles : %" PRIu64 "\n", perf_count[PERF_LD_WAIT]);
     printf("  avg load latency : %.4f cycles\n",
            ratio(perf_count[PERF_LD_WAIT], perf_count[PERF_LD_DONE]));
+
+    printf("\n[ICache behavior]\n");
+    printf("  access           : %" PRIu64 "\n", ic_access);
+    printf("  hit              : %" PRIu64 "\n", ic_hit);
+    printf("  miss             : %" PRIu64 "\n", ic_miss);
+    printf("  hit rate         : %.2f%%\n", ratio(ic_hit, ic_access) * 100.0);
+    printf("  miss rate        : %.2f%%\n", ratio(ic_miss, ic_access) * 100.0);
+    printf("  refill AR        : %" PRIu64 "\n", perf_count[PERF_IC_REFILL]);
+    printf("  miss AR wait     : %" PRIu64 " cycles\n", perf_count[PERF_IC_MISS_AR]);
+    printf("  miss R wait      : %" PRIu64 " cycles\n", perf_count[PERF_IC_MISS_R]);
+    printf("  avg miss latency : %.4f cycles\n", ratio(ic_miss_wait, ic_miss));
     printf("==========================================================\n");
 
-    Log("Perf summary: cycles=%llu inst=%llu ipc=%.4f",
-        (unsigned long long)cycle, (unsigned long long)commit, ratio(commit, cycle));
+    Log("Perf summary: cycles=%llu inst=%llu ipc=%.4f icache_access=%llu icache_hit=%llu icache_hit_rate=%.4f",
+        (unsigned long long)cycle, (unsigned long long)commit, ratio(commit, cycle),
+        (unsigned long long)ic_access, (unsigned long long)ic_hit,
+        ratio(ic_hit, ic_access));
 }

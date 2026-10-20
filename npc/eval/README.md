@@ -13,9 +13,10 @@
 ```
 top
 ├── IFU          LSU
-├── IDU          WBU
-├── EXU          CSR
-├── RegisterFile Arbiter (IFU/LSU 的 AXI AR 仲裁)
+├── ICache       WBU
+├── IDU          CSR
+├── EXU          RegisterFile
+└── Arbiter (ICache/LSU 的 AXI AR 仲裁)
 ```
 
 读取 RTL 时定义 `SYNTHESIS`，此时：
@@ -82,23 +83,24 @@ cat ../config/f_cpu
   `bin/iEDA`、`scripts/{yosys,sta}.tcl`、`pdk/{icsprout55,nangate45}`。
 - 默认 `PDK=icsprout55`、`CLK_FREQ_MHZ=1200`，与 workbench 的评估口径一致。
 
-## 基线结果（2026-10-15 实测）
+## 基线结果（2026-10-20 实测，含 ICache）
 
 `make all PDK=icsprout55 CLK_FREQ_MHZ=1200`：
 
 | 指标 | 数值 |
 |---|---|
-| 芯片面积 | **13756.96** |
-| 　标准单元数 | 5380 |
-| 　顺序单元面积 | 4983.44（占 36.22%） |
+| 芯片面积 | **21530.60** |
+| 　标准单元数 | 6439 |
+| 　顺序单元面积 | 11057.20（占 51.36%） |
 | 时序约束 | 1200 MHz（周期预算 0.8333 ns） |
-| **最高可达频率** | **557.797 MHz** |
-| WNS（最差 slack） | −0.960 ns |
-| 关键路径终点 | `u_top.u_regfile.rf[7]_15__reg_p:D`（寄存器堆） |
-| 总功耗（toggle 0.1） | 1.750 W |
+| **最高可达频率** | **527.588 MHz** |
+| WNS（最差 slack） | −1.062 ns |
+| 关键路径终点 | `u_top.u_regfile.rf[8]_25__reg_p:D`（寄存器堆） |
+| 总功耗（toggle 0.1） | 2.647 W |
 
-结论：核的综合上限约 558 MHz，瓶颈在**寄存器堆的读选通 → 写回**路径，
-而非取指或执行逻辑；顺序单元只占 36% 面积，组合逻辑占比更高。
+结论：加入 16 块 × 58-bit 的触发器 ICache 后，综合上限约 528 MHz，
+瓶颈仍在**寄存器堆的读选通 → 写回**路径；顺序单元占比从 36% 升到
+51%，面积增加约 7.8k。
 
 ## 注意
 
@@ -108,4 +110,7 @@ cat ../config/f_cpu
   每次改动的 PPA 变化都可归因。
 - `sta` 的功耗使用固定翻转率 0.1（iPA 默认），不是真实负载功耗，
   只用于版本间相对比较。
+- `synth` 后会检查 `yosys.log` 中的 `multiple conflicting drivers`：
+  一旦出现多个 always 块驱动同一寄存器，综合会直接失败，避免生成
+  “只剩几个 TIE cell”的空网表。
 - 本评估项目不修改 `../vsrc` 的源 RTL，只读取。

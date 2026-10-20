@@ -43,6 +43,7 @@ RTL_FILES := $(PROJ_PATH)/NPCSynth.v \
              $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/CSR.v \
              $(NPC_VSRC)/EXU.v \
+             $(NPC_VSRC)/ICache.v \
              $(NPC_VSRC)/IDU.v \
              $(NPC_VSRC)/IFU.v \
              $(NPC_VSRC)/LSU.v \
@@ -72,6 +73,10 @@ $(NETLIST): $(RTL_FILES) $(YOSYS_STA_HOME)/scripts/yosys.tcl
 	@mkdir -p $(RESULT_DIR)
 	echo tcl $(YOSYS_STA_HOME)/scripts/yosys.tcl $(DESIGN) $(PDK) \"$(RTL_FILES)\" $@ | \
 	  $(YOSYS_BIN) -g -l $(RESULT_DIR)/yosys.log -s -
+	@if grep -q 'multiple conflicting drivers' $(RESULT_DIR)/yosys.log; then \
+	  echo "Error: multiple conflicting drivers detected; see $(RESULT_DIR)/yosys.log"; \
+	  exit 1; \
+	fi
 
 sta: synth
 	@cd $(RESULT_DIR) && set -o pipefail && \
