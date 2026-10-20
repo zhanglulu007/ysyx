@@ -69,6 +69,11 @@ JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 NEMU_TRACE_BIN   ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-ysyxsoc
 MICROBENCH_BIN   ?= $(MICROBENCH_DIR)/build/microbench-riscv32e-ysyxsoc.bin
 CACHESIM_NEMU_LOG := $(BUILD_DIR)/cachesim-nemu.log
+CACHESIM_SWEEP_DIR := $(BUILD_DIR)/cachesim-sweep
+CACHESIM_TOP     ?= 8
+# NEMU 的 kconfig 产物: 导出 trace 前备份、结束后无条件还原, 避免留下副作用
+NEMU_CFG_FILES   := .config .config.old include/config include/generated
+CACHESIM_CFG_BAK := $(BUILD_DIR)/.cachesim-cfg-bak
 
 CORE_RTL_SRCS := $(sort \
   $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
@@ -297,7 +302,25 @@ cachesim-trace: $(MICROBENCH_BIN)
 	@if [ -f "$(CACHESIM_TRACE)" ] && [ "$(FORCE)" != "1" ]; then \
 	  echo "[cachesim] 复用已有 PC 序列: $(CACHESIM_TRACE)  (FORCE=1 可强制重建)"; \
 	else \
-	  echo "[cachesim] 构建 NEMU (riscv32-ysyxsoc 配置) ..."; \
+	  set -e; \
+	  B="$(CACHESIM_CFG_BAK)"; \
+	  rm -rf "$$B"; mkdir -p "$$B"; \
+	  for f in $(NEMU_CFG_FILES); do \
+	    if [ -e "$(NEMU_HOME)/$$f" ]; then cp -a "$(NEMU_HOME)/$$f" "$$B/$$(echo $$f | tr / _)"; fi; \
+	  done; \
+	  restore() { \
+	    [ -d "$$B" ] || return 0; \
+	    for f in $(NEMU_CFG_FILES); do \
+	      rm -rf "$(NEMU_HOME)/$$f"; \
+	      b="$$B/$$(echo $$f | tr / _)"; \
+	      if [ -e "$$b" ]; then cp -a "$$b" "$(NEMU_HOME)/$$f"; fi; \
+	    done; \
+	    rm -rf "$$B"; \
+	    echo "[cachesim] NEMU 配置已恢复"; \
+	  }; \
+	  trap 'restore; exit 130' INT TERM; \
+	  trap restore EXIT; \
+	  echo "[cachesim] 切换 NEMU 到 riscv32-ysyxsoc_defconfig ..."; \
 	  $(MAKE) --no-print-directory -C $(NEMU_HOME) riscv32-ysyxsoc_defconfig > /dev/null; \
 	  $(MAKE) --no-print-directory -C $(NEMU_HOME) YSYXSOC_REF=1 \
 	    NAME=riscv32-nemu-interpreter-ysyxsoc -j > /dev/null; \
@@ -314,8 +337,8 @@ cachesim: $(CACHESIM_BIN) cachesim-trace
 	  --block $(CACHESIM_CBLOCK) --miss-penalty $(CACHESIM_PENALTY)
 
 cachesim-sweep: $(CACHESIM_BIN) cachesim-trace
-	@mkdir -p $(BUILD_DIR)/cachesim-sweep
-	@rm -f $(BUILD_DIR)/cachesim-sweep/*.csv
+	@mkdir -p $(CACHESIM_SWEEP_DIR)
+	@rm -f $(CACHESIM_SWEEP_DIR)/*.csv
 	@echo "[cachesim] 参数扫描 blocks={$(CACHESIM_SWEEP_BLOCKS)} ways={$(CACHESIM_SWEEP_WAYS)} sets={$(CACHESIM_SWEEP_SETS)} (并行 $(JOBS) 路)"
 	@for b in $(CACHESIM_SWEEP_BLOCKS); do \
 	  for w in $(CACHESIM_SWEEP_WAYS); do \
@@ -324,12 +347,14 @@ cachesim-sweep: $(CACHESIM_BIN) cachesim-trace
 	done | xargs -P $(JOBS) -n 3 sh -c '\
 	  $(CACHESIM_BIN) --csv --trace $(CACHESIM_TRACE) \
 	    --block $$0 --ways $$1 --sets $$2 --miss-penalty $(CACHESIM_PENALTY) \
-	    > $(BUILD_DIR)/cachesim-sweep/$${0}_$${1}_$${2}.csv'
-	@echo ""
-	@printf "%-6s %-5s %-5s %9s %12s %14s\n" block ways sets hit-rate miss TMT
-	@printf "%-6s %-5s %-5s %9s %12s %14s\n" ------ ----- ----- --------- ------------ --------------
-	@cat $(BUILD_DIR)/cachesim-sweep/*.csv | sort -t, -k1,1n -k2,2n -k3,3n | \
-	  awk -F, '{ printf "%-6s %-5s %-5s %8s%% %12s %14s\n", $$1, $$2, $$3, $$4, $$5, $$6 }'
+	    > $(CACHESIM_SWEEP_DIR)/$${0}_$${1}_$${2}.csv'
+	@if [ "$(SWEEP_QUIET)" != "1" ]; then \
+	  echo ""; \
+	  printf "%-6s %-5s %-5s %9s %12s %14s\n" block ways sets hit-rate miss TMT; \
+	  printf "%-6s %-5s %-5s %9s %12s %14s\n" ------ ----- ----- --------- ------------ --------------; \
+	  cat $(CACHESIM_SWEEP_DIR)/*.csv | sort -t, -k1,1n -k2,2n -k3,3n | \
+	    awk -F, '{ printf "%-6s %-5s %-5s %8s%% %12s %14s\n", $$1, $$2, $$3, $$4, $$5, $$6 }'; \
+	fi
 
 cachesim-report: $(CACHESIM_BIN) cachesim-trace
 	@echo "============ cachesim vs NPC perf (仅供参考, 不自动断言) ============"
@@ -345,12 +370,68 @@ cachesim-report: $(CACHESIM_BIN) cachesim-trace
 	  --miss-penalty $(CACHESIM_PENALTY)
 	@echo "======================================================================"
 
+# ---- 一键自动化: 隔离 NEMU 配置 -> 导出 trace -> 多进程探索 -> 打印报告 ----
+cachesim-eval: $(CACHESIM_BIN) cachesim-trace
+	@$(MAKE) --no-print-directory -C $(PROJECT_DIR) cachesim-sweep SWEEP_QUIET=1
+	@$(MAKE) --no-print-directory -C $(PROJECT_DIR) cachesim-eval-report
+
+cachesim-eval-report:
+	@set -e; \
+	D="$(CACHESIM_SWEEP_DIR)"; \
+	if [ -z "$$(ls $$D/*.csv 2>/dev/null)" ]; then \
+	  echo "未找到扫描结果, 请先运行 make cachesim-sweep"; exit 1; \
+	fi; \
+	N=$$(ls $$D/*.csv | wc -l); \
+	BASE=$$(cat $$D/*.csv | awk -F, '$$1==16 && $$2==1 && $$3==4 {print $$6; exit}'); \
+	BEST=$$(cat $$D/*.csv | sort -t, -k6,6n | head -1); \
+	echo ""; \
+	echo "================== cachesim 设计空间探索报告 =================="; \
+	echo "[环境]"; \
+	printf "  trace          : %s (%s)\n" "$(CACHESIM_TRACE)" "$$(du -h $(CACHESIM_TRACE) 2>/dev/null | cut -f1)"; \
+	printf "  参数组合       : %s\n" "$$N"; \
+	printf "  并行度         : %s\n" "$(JOBS)"; \
+	printf "  缺失代价       : %s cycles/miss\n" "$(CACHESIM_PENALTY)"; \
+	echo ""; \
+	echo "[基线] 当前 RTL 实现: sets=16 ways=1 block=4B"; \
+	printf "  TMT            : %s cycles\n" "$$BASE"; \
+	echo ""; \
+	echo "[结果 Top $(CACHESIM_TOP)] (按 TMT 升序)"; \
+	cat $$D/*.csv | sort -t, -k6,6n | head -$(CACHESIM_TOP) | \
+	  awk -F, -v base="$$BASE" 'BEGIN { \
+	    printf "  %-4s %-6s %-5s %-5s %9s %12s %14s %9s\n", \
+	           "rank", "block", "ways", "sets", "hit-rate", "miss", "TMT", "vs_base"; \
+	  } { \
+	    speed = ($$6 > 0) ? base / $$6 : 0; \
+	    printf "  %-4d %-6s %-5s %-5s %8s%% %12s %14s %8.1fx\n", \
+	           NR, $$1, $$2, $$3, $$4, $$5, $$6, speed; \
+	  }'; \
+	echo ""; \
+	echo "[最优组合]"; \
+	echo "$$BEST" | awk -F, -v base="$$BASE" '{ \
+	  printf "  sets=%s ways=%s block=%sB\n", $$3, $$2, $$1; \
+	  printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6; \
+	  if (base > 0 && $$6 > 0) printf "  TMT 相对当前实现降低 %.2f%%\n", (1 - $$6 / base) * 100; \
+	}'; \
+	echo ""; \
+	if [ -f "$(PERF_MICROBENCH_LOG)" ]; then \
+	  echo "[与 NPC perf 对照 (仅供参考)]"; \
+	  PA=$$(grep -m1 'access / hit / miss' $(PERF_MICROBENCH_LOG) | awk '{print $$(NF-4)}'); \
+	  PM=$$(grep -m1 'access / hit / miss' $(PERF_MICROBENCH_LOG) | awk '{print $$NF}'); \
+	  printf "  perf     : access=%s  miss=%s\n" "$$PA" "$$PM"; \
+	  echo "  cachesim : 见上表 sets=16 ways=1 block=4B 行"; \
+	  echo "  说明     : bypass 与 compulsory 与 perf 完全一致, 其余差异来自指令流长度"; \
+	else \
+	  echo "[与 NPC perf 对照] 未找到 $(PERF_MICROBENCH_LOG), 跳过 (可先运行 make perf)"; \
+	fi; \
+	echo "=============================================================="
+
 cachesim-clean:
-	-rm -rf $(CACHESIM_DIR)/build $(BUILD_DIR)/cachesim-sweep $(CACHESIM_TRACE)
+	-rm -rf $(CACHESIM_DIR)/build $(CACHESIM_SWEEP_DIR) $(CACHESIM_TRACE) $(CACHESIM_CFG_BAK)
 
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
 .PHONY: all show-config check-soc lint build run \
 	build-standalone run-standalone build-soc run-soc perf clean \
-	cachesim cachesim-trace cachesim-sweep cachesim-report cachesim-clean
+	cachesim cachesim-trace cachesim-sweep cachesim-report cachesim-clean \
+	cachesim-eval cachesim-eval-report
