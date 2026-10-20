@@ -770,6 +770,7 @@ module top(
   // ========== 性能计数器探针 ==========
   // 仅在仿真(PERF=1)下启用: 事件脉冲经 DPI-C 上报, 计数/聚合/报告都在
   // 仿真环境 csrc/core/perf.cpp 中完成, 不参与综合(见 Makefile 的 PERF 变量).
+  // 事件编号必须与 csrc/core/perf.h 的 PerfEventId 保持一致.
   localparam PERF_COMMIT       = 0;   // 提交(动态)指令数
   localparam PERF_IF_FETCH     = 1;   // IFU 取到指令
   localparam PERF_IF_STALL_BUS = 2;   // IFU 等 ICache 接收请求

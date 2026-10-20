@@ -46,11 +46,6 @@ static void print_mix(const char *name, uint64_t count, uint64_t total) {
     printf("  %-14s %10" PRIu64 "  %7.2f%%\n", name, count, percent(count, total));
 }
 
-static void print_check(const char *name, uint64_t sum, uint64_t total) {
-    printf("  %-26s: %10" PRIu64 " (%s)\n", name, sum,
-           sum == total ? "OK" : "MISMATCH");
-}
-
 void perf_report() {
     const uint64_t cycle  = npc_get_cycle();
     const uint64_t commit = perf_count[PERF_COMMIT];
@@ -118,6 +113,9 @@ void perf_report() {
     printf("Instructions     : %" PRIu64 "\n", commit);
     printf("IPC              : %.4f\n", ratio(commit, cycle));
     printf("CPI              : %.4f\n", ratio(cycle, commit));
+#ifdef F
+    printf("Clock estimate   : %d MHz (F=%d)\n", F * 10, F);
+#endif
     printf("Commit (state)   : %" PRIu64 " (%s)\n", state_commit,
            state_commit == commit ? "OK" : "MISMATCH");
     printf("Fetch / commit   : %" PRIu64 " / %" PRIu64 " (%s)\n", if_fetch, commit,
