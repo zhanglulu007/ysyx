@@ -371,7 +371,8 @@ cachesim-report: $(CACHESIM_BIN) cachesim-trace
 	@echo "======================================================================"
 
 # ---- 一键自动化: 隔离 NEMU 配置 -> 导出 trace -> 多进程探索 -> 打印报告 ----
-cachesim-eval: $(CACHESIM_BIN) cachesim-trace
+# 依赖由 cachesim-sweep 负责(它会构建 cachesim 并确保 trace 就绪), 这里不再重复声明
+cachesim-eval:
 	@$(MAKE) --no-print-directory -C $(PROJECT_DIR) cachesim-sweep SWEEP_QUIET=1
 	@$(MAKE) --no-print-directory -C $(PROJECT_DIR) cachesim-eval-report
 
@@ -382,7 +383,8 @@ cachesim-eval-report:
 	  echo "未找到扫描结果, 请先运行 make cachesim-sweep"; exit 1; \
 	fi; \
 	N=$$(ls $$D/*.csv | wc -l); \
-	BASE=$$(cat $$D/*.csv | awk -F, '$$1==16 && $$2==1 && $$3==4 {print $$6; exit}'); \
+	BASE_LINE=$$(cat $$D/*.csv | awk -F, '$$1==4 && $$2==1 && $$3==16 {print; exit}'); \
+	BASE=$$(echo "$$BASE_LINE" | cut -d, -f6); \
 	BEST=$$(cat $$D/*.csv | sort -t, -k6,6n | head -1); \
 	echo ""; \
 	echo "================== cachesim 设计空间探索报告 =================="; \
@@ -393,7 +395,7 @@ cachesim-eval-report:
 	printf "  缺失代价       : %s cycles/miss\n" "$(CACHESIM_PENALTY)"; \
 	echo ""; \
 	echo "[基线] 当前 RTL 实现: sets=16 ways=1 block=4B"; \
-	printf "  TMT            : %s cycles\n" "$$BASE"; \
+	echo "$$BASE_LINE" | awk -F, '{ printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6 }'; \
 	echo ""; \
 	echo "[结果 Top $(CACHESIM_TOP)] (按 TMT 升序)"; \
 	cat $$D/*.csv | sort -t, -k6,6n | head -$(CACHESIM_TOP) | \
@@ -418,7 +420,7 @@ cachesim-eval-report:
 	  PA=$$(grep -m1 'access / hit / miss' $(PERF_MICROBENCH_LOG) | awk '{print $$(NF-4)}'); \
 	  PM=$$(grep -m1 'access / hit / miss' $(PERF_MICROBENCH_LOG) | awk '{print $$NF}'); \
 	  printf "  perf     : access=%s  miss=%s\n" "$$PA" "$$PM"; \
-	  echo "  cachesim : 见上表 sets=16 ways=1 block=4B 行"; \
+	  echo "$$BASE_LINE" | awk -F, '{ printf "  cachesim : hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6 }'; \
 	  echo "  说明     : bypass 与 compulsory 与 perf 完全一致, 其余差异来自指令流长度"; \
 	else \
 	  echo "[与 NPC perf 对照] 未找到 $(PERF_MICROBENCH_LOG), 跳过 (可先运行 make perf)"; \

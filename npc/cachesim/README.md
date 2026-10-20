@@ -46,6 +46,38 @@ make                       # 产物 build/cachesim
 默认值 `sets=16 ways=1 block=4` 与当前 `npc/vsrc/ICache.v` 完全一致
 （16 块直接映射，每块 4 字节），因此可直接作为 NPC 性能计数器的参考。
 
+## 一键评估（推荐）
+
+```bash
+make -C npc cachesim-eval
+```
+
+一次完成三件事：
+
+1. **隔离并自动恢复 NEMU 配置**：导出 trace 前把 `nemu/.config`、`.config.old`、
+   `include/config`、`include/generated` 备份到 `npc/build/.cachesim-cfg-bak`，
+   切到 `riscv32-ysyxsoc_defconfig` 编译并导出 trace；结束后（**包括 Ctrl-C 或中途失败**）
+   由 `trap EXIT` 无条件还原，因此不会污染你原本的 NEMU 配置。
+2. **多进程并行探索**：按 `block × ways × sets` 网格以 `JOBS`（默认 CPU 核数）
+   并行调用 cachesim，每组结果落盘到 `npc/build/cachesim-sweep/*.csv`。
+3. **打印报告**：输出环境信息、当前实现的基线、按 TMT 升序的 Top N、最优组合及其
+   相对基线的改善，以及与 NPC perf 的参考对照。
+
+可调参数（均可在命令行覆盖）：
+
+| 变量 | 默认 | 含义 |
+| --- | --- | --- |
+| `JOBS` | CPU 核数 | 并行进程数 |
+| `CACHESIM_SWEEP_BLOCKS` | `4 8 16 32` | 块大小网格 |
+| `CACHESIM_SWEEP_WAYS` | `1 2 4` | 相联度网格 |
+| `CACHESIM_SWEEP_SETS` | `4 8 16 32` | 组数网格 |
+| `CACHESIM_TOP` | `8` | 报告展示的 Top N |
+| `CACHESIM_PENALTY` | `30` | 每次缺失的周期数 |
+| `FORCE` | 空 | 设为 `1` 强制重建 trace |
+
+拆开用的三个子目标：`cachesim-trace`（只导 trace）、`cachesim-sweep`（扫描并打印全表）、
+`cachesim-eval-report`（只按已有 CSV 重打印报告，不重新扫描）。
+
 ## 输出
 
 ```text
