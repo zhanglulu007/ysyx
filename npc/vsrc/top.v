@@ -179,6 +179,35 @@ module top(
   wire icache_miss_ar_wait;
   wire icache_miss_r_wait;
 
+  // IFU <-> ICache (cacheable fetches only)
+  wire icache_ifu_arvalid;
+  wire icache_ifu_arready;
+  wire icache_ifu_rvalid;
+  wire [1:0] icache_ifu_rresp;
+  wire [31:0] icache_ifu_rdata;
+  wire icache_ifu_rlast;
+  wire [3:0] icache_ifu_rid;
+
+  // IFU/ICache <-> Arbiter IFU port
+  wire arb_ifu_arvalid;
+  wire arb_ifu_arready;
+  wire [31:0] arb_ifu_araddr;
+  wire [3:0] arb_ifu_arid;
+  wire [7:0] arb_ifu_arlen;
+  wire [2:0] arb_ifu_arsize;
+  wire [1:0] arb_ifu_arburst;
+  wire arb_ifu_rvalid;
+  wire arb_ifu_rready;
+  wire [1:0] arb_ifu_rresp;
+  wire [31:0] arb_ifu_rdata;
+  wire arb_ifu_rlast;
+  wire [3:0] arb_ifu_rid;
+
+  // IFU fetch routing: FLASH/SDRAM go through ICache, others bypass it
+  wire ifu_cacheable;
+  reg cache_pending;
+  reg bypass_pending;
+
 `ifndef SOC_MODE
   wire mem_arvalid;
   wire mem_arready;
@@ -210,6 +239,57 @@ module top(
   wire [1:0] mem_bresp;
   wire [3:0] mem_bid;
 `endif
+
+  // Only FLASH [0x3000_0000, 0x3100_0000) and SDRAM [0xa000_0000, 0xa200_0000)
+  // are cacheable; other fetches bypass the ICache and go straight to the Arbiter.
+  assign ifu_cacheable = ((ifu_araddr >= 32'h3000_0000) &&
+                          (ifu_araddr <  32'h3100_0000)) ||
+                         ((ifu_araddr >= 32'ha000_0000) &&
+                          (ifu_araddr <  32'ha200_0000));
+
+  assign icache_ifu_arvalid = ifu_arvalid && ifu_cacheable;
+  assign ifu_arready        = ifu_cacheable ? icache_ifu_arready : arb_ifu_arready;
+
+  assign arb_ifu_arvalid = ifu_cacheable ? icache_arvalid : ifu_arvalid;
+  assign arb_ifu_araddr  = ifu_cacheable ? icache_araddr : ifu_araddr;
+  assign arb_ifu_arid    = ifu_cacheable ? icache_arid : ifu_arid;
+  assign arb_ifu_arlen   = ifu_cacheable ? icache_arlen : ifu_arlen;
+  assign arb_ifu_arsize  = ifu_cacheable ? icache_arsize : ifu_arsize;
+  assign arb_ifu_arburst = ifu_cacheable ? icache_arburst : ifu_arburst;
+
+  assign icache_arready = ifu_cacheable ? arb_ifu_arready : 1'b0;
+  assign icache_rvalid  = cache_pending ? arb_ifu_rvalid : 1'b0;
+  assign icache_rresp   = arb_ifu_rresp;
+  assign icache_rdata   = arb_ifu_rdata;
+  assign icache_rlast   = arb_ifu_rlast;
+  assign icache_rid     = arb_ifu_rid;
+  assign arb_ifu_rready = cache_pending ? icache_rready :
+                          (bypass_pending ? ifu_rready : 1'b0);
+
+  assign ifu_rvalid = cache_pending ? icache_ifu_rvalid :
+                      (bypass_pending ? arb_ifu_rvalid : 1'b0);
+  assign ifu_rresp  = cache_pending ? icache_ifu_rresp : arb_ifu_rresp;
+  assign ifu_rdata  = cache_pending ? icache_ifu_rdata : arb_ifu_rdata;
+  assign ifu_rlast  = cache_pending ? icache_ifu_rlast : arb_ifu_rlast;
+  assign ifu_rid    = cache_pending ? icache_ifu_rid : arb_ifu_rid;
+
+  // Track which path owns the outstanding IFU fetch.
+  always @(posedge clk) begin
+    if (rst) begin
+      cache_pending  <= 1'b0;
+      bypass_pending <= 1'b0;
+    end else if (ifu_arvalid && ifu_arready) begin
+      cache_pending  <= ifu_cacheable;
+      bypass_pending <= !ifu_cacheable;
+    end else begin
+      if (cache_pending && icache_ifu_rvalid && ifu_rready) begin
+        cache_pending <= 1'b0;
+      end
+      if (bypass_pending && arb_ifu_rvalid && ifu_rready) begin
+        bypass_pending <= 1'b0;
+      end
+    end
+  end
 
   wire commit = ifu_valid && (!mem_valid || lsu_done);
 
@@ -287,20 +367,20 @@ module top(
     .clk(clk),
     .rst(rst),
 
-    .ifu_arvalid(ifu_arvalid),
-    .ifu_arready(ifu_arready),
+    .ifu_arvalid(icache_ifu_arvalid),
+    .ifu_arready(icache_ifu_arready),
     .ifu_araddr(ifu_araddr),
     .ifu_arid(ifu_arid),
     .ifu_arlen(ifu_arlen),
     .ifu_arsize(ifu_arsize),
     .ifu_arburst(ifu_arburst),
 
-    .ifu_rvalid(ifu_rvalid),
+    .ifu_rvalid(icache_ifu_rvalid),
     .ifu_rready(ifu_rready),
-    .ifu_rresp(ifu_rresp),
-    .ifu_rdata(ifu_rdata),
-    .ifu_rlast(ifu_rlast),
-    .ifu_rid(ifu_rid),
+    .ifu_rresp(icache_ifu_rresp),
+    .ifu_rdata(icache_ifu_rdata),
+    .ifu_rlast(icache_ifu_rlast),
+    .ifu_rid(icache_ifu_rid),
 
     .arvalid(icache_arvalid),
     .arready(icache_arready),
@@ -516,19 +596,19 @@ module top(
   Arbiter u_arbiter(
     .clk(clk),
     .rst(rst),
-    .ifu_arvalid(icache_arvalid),
-    .ifu_arready(icache_arready),
-    .ifu_araddr(icache_araddr),
-    .ifu_arid(icache_arid),
-    .ifu_arlen(icache_arlen),
-    .ifu_arsize(icache_arsize),
-    .ifu_arburst(icache_arburst),
-    .ifu_rvalid(icache_rvalid),
-    .ifu_rready(icache_rready),
-    .ifu_rresp(icache_rresp),
-    .ifu_rdata(icache_rdata),
-    .ifu_rlast(icache_rlast),
-    .ifu_rid(icache_rid),
+    .ifu_arvalid(arb_ifu_arvalid),
+    .ifu_arready(arb_ifu_arready),
+    .ifu_araddr(arb_ifu_araddr),
+    .ifu_arid(arb_ifu_arid),
+    .ifu_arlen(arb_ifu_arlen),
+    .ifu_arsize(arb_ifu_arsize),
+    .ifu_arburst(arb_ifu_arburst),
+    .ifu_rvalid(arb_ifu_rvalid),
+    .ifu_rready(arb_ifu_rready),
+    .ifu_rresp(arb_ifu_rresp),
+    .ifu_rdata(arb_ifu_rdata),
+    .ifu_rlast(arb_ifu_rlast),
+    .ifu_rid(arb_ifu_rid),
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
