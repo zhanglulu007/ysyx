@@ -44,6 +44,7 @@ static char *diff_so_file = NULL;
 static char *img_file = NULL;
 static int difftest_port = 1234;
 static char *elf_file = NULL;       // ELF 文件路径（用于 ftrace）
+static char *cachesim_trace_file = NULL;  // cachesim 回放用的 PC 序列输出路径
 
 static long load_img() {
   if (img_file == NULL) {
@@ -74,18 +75,20 @@ static int parse_args(int argc, char *argv[]) {
     {"diff"     , required_argument, NULL, 'd'},
     {"port"     , required_argument, NULL, 'p'},
     {"elf"      , required_argument, NULL, 'e'},
+    {"cachesim-trace", required_argument, NULL, 'c'},
     {"help"     , no_argument      , NULL, 'h'},
     {0          , 0                , NULL,  0 },
   };
   int o;
-  // "-bhl:d:p:e:" 是短选项字符串，'-' 表示也处理非选项参数，':' 表示需要参数
-  while ( (o = getopt_long(argc, argv, "-bhl:d:p:e:", table, NULL)) != -1) {
+  // "-bhl:d:p:e:c:" 是短选项字符串，'-' 表示也处理非选项参数，':' 表示需要参数
+  while ( (o = getopt_long(argc, argv, "-bhl:d:p:e:c:", table, NULL)) != -1) {
     switch (o) {
       case 'b': sdb_set_batch_mode(); break;
       case 'p': sscanf(optarg, "%d", &difftest_port); break;
       case 'l': log_file = optarg; break;
       case 'd': diff_so_file = optarg; break;
       case 'e': elf_file = optarg; break;      // 保存 ELF 文件路径
+      case 'c': cachesim_trace_file = optarg; break;  // 导出 cachesim 用的 PC 序列
       case 1: img_file = optarg; return 0;
       default:
         printf("Usage: %s [OPTION...] IMAGE [args]\n\n", argv[0]);
@@ -94,6 +97,7 @@ static int parse_args(int argc, char *argv[]) {
         printf("\t-d,--diff=REF_SO        run DiffTest with reference REF_SO\n");
         printf("\t-p,--port=PORT          run DiffTest with port PORT\n");
         printf("\t-e,--elf=ELF_FILE       run ftrace with ELF file\n");
+        printf("\t-c,--cachesim-trace=FILE  dump the PC stream for cachesim\n");
         printf("\n");
         exit(0);
     }
@@ -112,6 +116,9 @@ void init_monitor(int argc, char *argv[]) {
 
   /* Open the log file. */
   init_log(log_file);
+
+  /* Open the cachesim PC stream if requested. */
+  init_cachesim_trace(cachesim_trace_file);
 
   /* Initialize memory. */
   init_mem();

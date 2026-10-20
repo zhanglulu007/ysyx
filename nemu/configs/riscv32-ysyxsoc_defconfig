@@ -1,0 +1,25 @@
+# ysyxSoC 镜像的可执行运行配置 (非 REF)。
+# 配合 make YSYXSOC_REF=1 使用: paddr.c/paddr.h 会切到 FLASH+SRAM+SDRAM 模型,
+# 复位向量为 FLASH_LEFT(0x30000000), 从而能直接跑 riscv32e-ysyxsoc 的镜像。
+CONFIG_ISA_riscv=y
+CONFIG_RVE=y
+CONFIG_TARGET_NATIVE_ELF=y
+CONFIG_CC_OPT="-O2"
+
+# 只保留串口: 其余设备的默认 MMIO 地址都落在 SDRAM 区间内,
+# 而 add_mmio_map 在 YSYXSOC_REF 下会因 overlap 直接 panic。
+CONFIG_DEVICE=y
+CONFIG_HAS_SERIAL=y
+CONFIG_SERIAL_MMIO=0x10000000
+# CONFIG_HAS_TIMER is not set
+# CONFIG_HAS_KEYBOARD is not set
+# CONFIG_HAS_VGA is not set
+# CONFIG_HAS_AUDIO is not set
+# CONFIG_HAS_DISK is not set
+
+# 关掉 tracer: ITRACE 会为每条指令构造含反汇编的日志行,
+# 而导出 cachesim 的 PC 序列只需写入 PC, 不需要这份开销。
+# CONFIG_TRACE is not set
+
+# 关掉内存随机化: 省去每次启动对 16MB FLASH/SDRAM 的填充。
+# CONFIG_MEM_RANDOM is not set

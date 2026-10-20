@@ -74,4 +74,13 @@ uint64_t get_time();
   } while (0)
 
 
+// ----------- cachesim PC trace -----------
+
+/* cachesim 回放用的指令流: 每条指令一个 uint32_t 的 PC, 按小端裸写.
+ * 与 log 完全分离 —— 不受 CONFIG_TRACE/CONFIG_ITRACE 门控, 也不做反汇编,
+ * 因此即使关掉 tracer 也能以接近 NEMU 原生速度导出. */
+extern FILE *cachesim_trace_fp;
+void init_cachesim_trace(const char *trace_file);
+
+
 #endif
