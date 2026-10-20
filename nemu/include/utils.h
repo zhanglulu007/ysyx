@@ -73,5 +73,7 @@ uint64_t get_time();
     log_write(__VA_ARGS__); \
   } while (0)
 
+extern FILE *cachesim_trace_fp;
+void init_cachesim_trace(const char *trace_file);
 
 #endif

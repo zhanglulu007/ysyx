@@ -31,14 +31,20 @@ static inline const char* reg_name(int idx) {
 }
 
 // CSR register access helper
+extern uint64_t g_nr_guest_inst;
+
 #define csr(addr) (*({ \
   word_t *__csr_ptr = NULL; \
-  switch (addr) { \
+  switch ((addr) & 0xfff) { \
     case 0x300: __csr_ptr = &cpu.mstatus; break;  \
     case 0x305: __csr_ptr = &cpu.mtvec; break;    \
     case 0x341: __csr_ptr = &cpu.mepc; break;     \
     case 0x342: __csr_ptr = &cpu.mcause; break;   \
-    default: panic("Unknown CSR register: 0x%x", addr); \
+    case 0xb00: cpu.mcycle  = (word_t)g_nr_guest_inst; \
+                __csr_ptr = &cpu.mcycle; break;   \
+    case 0xb80: cpu.mcycleh = (word_t)(g_nr_guest_inst >> 32); \
+                __csr_ptr = &cpu.mcycleh; break;  \
+    default: panic("Unknown CSR register: 0x%x", (addr) & 0xfff); \
   } \
   __csr_ptr; \
 }))

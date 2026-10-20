@@ -175,6 +175,8 @@ module top(
   wire icache_access;
   wire icache_hit;
   wire icache_miss;
+  wire icache_compulsory;
+  wire icache_replace;
   wire icache_refill;
   wire icache_miss_ar_wait;
   wire icache_miss_r_wait;
@@ -395,6 +397,8 @@ module top(
     .icache_access(icache_access),
     .icache_hit(icache_hit),
     .icache_miss(icache_miss),
+    .icache_compulsory(icache_compulsory),
+    .icache_replace(icache_replace),
     .icache_refill(icache_refill),
     .icache_miss_ar_wait(icache_miss_ar_wait),
     .icache_miss_r_wait(icache_miss_r_wait)
@@ -766,6 +770,7 @@ module top(
   // ========== 性能计数器探针 ==========
   // 仅在仿真(PERF=1)下启用: 事件脉冲经 DPI-C 上报, 计数/聚合/报告都在
   // 仿真环境 csrc/core/perf.cpp 中完成, 不参与综合(见 Makefile 的 PERF 变量).
+  // 事件编号必须与 csrc/core/perf.h 的 PerfEventId 保持一致.
   localparam PERF_COMMIT       = 0;   // 提交(动态)指令数
   localparam PERF_IF_FETCH     = 1;   // IFU 取到指令
   localparam PERF_IF_STALL_BUS = 2;   // IFU 等 ICache 接收请求
@@ -789,6 +794,30 @@ module top(
   localparam PERF_IC_REFILL    = 20;  // ICache 缺失时发起的总线 AR 数
   localparam PERF_IC_MISS_AR   = 21;  // ICache 缺失等待 AR 的周期数
   localparam PERF_IC_MISS_R    = 22;  // ICache 缺失等待 R 的周期数
+  localparam PERF_IF_BYPASS    = 23;  // 非缓存地址直连取指数
+  localparam PERF_BRANCH_TAKEN = 24;  // 条件分支 taken
+  localparam PERF_BRANCH_NOT_TAKEN = 25; // 条件分支 not taken
+  localparam PERF_JAL          = 26;  // jal
+  localparam PERF_JALR         = 27;  // jalr
+  localparam PERF_LD_BYTE      = 28;  // load byte
+  localparam PERF_LD_HALF      = 29;  // load half
+  localparam PERF_LD_WORD      = 30;  // load word
+  localparam PERF_ST_BYTE      = 31;  // store byte
+  localparam PERF_ST_HALF      = 32;  // store half
+  localparam PERF_ST_WORD      = 33;  // store word
+  localparam PERF_BUS_AR       = 34;  // 总线 AR 握手数
+  localparam PERF_BUS_R        = 35;  // 总线 R 握手数
+  localparam PERF_BUS_AW       = 36;  // 总线 AW 握手数
+  localparam PERF_BUS_W        = 37;  // 总线 W 握手数
+  localparam PERF_BUS_B        = 38;  // 总线 B 握手数
+  localparam PERF_BUS_AR_STALL = 39;  // AR 有效但未 ready 的周期数
+  localparam PERF_IC_COMPULSORY = 40; // ICache 强制缺失 (目标块原先无效)
+  localparam PERF_IC_REPLACE   = 41;  // ICache 替换缺失 (目标块原先有效)
+  localparam PERF_ALU_R        = 42;  // R 型 ALU 指令
+  localparam PERF_ALU_I        = 43;  // I 型 ALU 指令
+  localparam PERF_CSRRW        = 44;  // csrrw
+  localparam PERF_CSRRS        = 45;  // csrrs
+  localparam PERF_ST_WAIT      = 46;  // store 等待完成周期数
 
   import "DPI-C" function void perf_event(input int event_id);
 
@@ -800,9 +829,11 @@ module top(
   wire perf_if_fetch      = ifu_rvalid && ifu_rready && ifu_rlast;
   wire perf_if_stall_bus  = ifu_arvalid && !ifu_arready;
   wire perf_if_stall_mem  = ifu_rready && !ifu_rvalid;
+  wire perf_if_bypass     = ifu_arvalid && ifu_arready && !ifu_cacheable;
   wire perf_ld_done       = lsu_rvalid && lsu_rready && lsu_rlast;
   wire perf_st_done       = lsu_bvalid && lsu_bready;
   wire perf_ld_wait       = mem_valid && !mem_wen && !perf_ld_done;
+  wire perf_st_wait       = mem_valid &&  mem_wen && !perf_st_done;
 
   always @(posedge clk) begin
     if (!rst) begin
@@ -810,25 +841,62 @@ module top(
       if (perf_if_fetch)      perf_event(PERF_IF_FETCH);
       if (perf_if_stall_bus)  perf_event(PERF_IF_STALL_BUS);
       if (perf_if_stall_mem)  perf_event(PERF_IF_STALL_MEM);
+      if (perf_if_bypass)     perf_event(PERF_IF_BYPASS);
       if (perf_ld_done)       perf_event(PERF_LD_DONE);
       if (perf_st_done)       perf_event(PERF_ST_DONE);
       if (perf_ld_wait)       perf_event(PERF_LD_WAIT);
+      if (perf_st_wait)       perf_event(PERF_ST_WAIT);
 
       if (icache_access)       perf_event(PERF_IC_ACCESS);
       if (icache_hit)          perf_event(PERF_IC_HIT);
       if (icache_miss)         perf_event(PERF_IC_MISS);
+      if (icache_compulsory)   perf_event(PERF_IC_COMPULSORY);
+      if (icache_replace)      perf_event(PERF_IC_REPLACE);
       if (icache_refill)       perf_event(PERF_IC_REFILL);
       if (icache_miss_ar_wait) perf_event(PERF_IC_MISS_AR);
       if (icache_miss_r_wait)  perf_event(PERF_IC_MISS_R);
 
+      if (mem_arvalid && mem_arready)  perf_event(PERF_BUS_AR);
+      if (mem_rvalid  && mem_rready)   perf_event(PERF_BUS_R);
+      if (mem_awvalid && mem_awready)  perf_event(PERF_BUS_AW);
+      if (mem_wvalid  && mem_wready)   perf_event(PERF_BUS_W);
+      if (mem_bvalid  && mem_bready)   perf_event(PERF_BUS_B);
+      if (mem_arvalid && !mem_arready) perf_event(PERF_BUS_AR_STALL);
+
       if (commit) begin
-        if (perf_is_alu)    perf_event(PERF_ALU);
-        if (op_load)        perf_event(PERF_LOAD);
-        if (op_store)       perf_event(PERF_STORE);
-        if (perf_is_branch) perf_event(PERF_BRANCH);
-        if (is_jump)        perf_event(PERF_JUMP);
+        if (perf_is_alu) begin
+          perf_event(PERF_ALU);
+          if (op_r_type) perf_event(PERF_ALU_R);
+          else           perf_event(PERF_ALU_I);
+        end
+        if (op_load) begin
+          perf_event(PERF_LOAD);
+          if (is_lb || is_lbu)      perf_event(PERF_LD_BYTE);
+          else if (is_lh || is_lhu) perf_event(PERF_LD_HALF);
+          else if (is_lw)           perf_event(PERF_LD_WORD);
+        end
+        if (op_store) begin
+          perf_event(PERF_STORE);
+          if (is_sb)      perf_event(PERF_ST_BYTE);
+          else if (is_sh) perf_event(PERF_ST_HALF);
+          else if (is_sw) perf_event(PERF_ST_WORD);
+        end
+        if (perf_is_branch) begin
+          perf_event(PERF_BRANCH);
+          if (branch_taken) perf_event(PERF_BRANCH_TAKEN);
+          else              perf_event(PERF_BRANCH_NOT_TAKEN);
+        end
+        if (is_jump) begin
+          perf_event(PERF_JUMP);
+          if (is_jal)  perf_event(PERF_JAL);
+          if (is_jalr) perf_event(PERF_JALR);
+        end
         if (perf_is_upper)  perf_event(PERF_UPPER);
-        if (is_csr)         perf_event(PERF_CSR);
+        if (is_csr) begin
+          perf_event(PERF_CSR);
+          if (is_csrrw) perf_event(PERF_CSRRW);
+          if (is_csrrs) perf_event(PERF_CSRRS);
+        end
         if (is_ecall)       perf_event(PERF_ECALL);
         if (is_mret)        perf_event(PERF_MRET);
         if (is_ebreak)      perf_event(PERF_EBREAK);

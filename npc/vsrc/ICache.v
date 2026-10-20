@@ -39,6 +39,8 @@ module ICache (
   output icache_access,       // IFU 发出一次取指请求
   output icache_hit,          // 命中
   output icache_miss,         // 缺失
+  output icache_compulsory,   // 缺失且目标块原先无效 (首次填充)
+  output icache_replace,      // 缺失且目标块原先有效 (替换)
   output icache_refill,       // 缺失时发起一次总线 AR
   output icache_miss_ar_wait, // 缺失等待 AR 握手的周期
   output icache_miss_r_wait   // 缺失等待 R 数据的周期
@@ -87,6 +89,8 @@ module ICache (
   assign icache_access       = !rst && (state == IDLE) && ifu_arvalid && ifu_arready;
   assign icache_hit          = icache_access && hit;
   assign icache_miss         = icache_access && !hit;
+  assign icache_compulsory   = icache_miss && !cache_valid[req_index_in];
+  assign icache_replace      = icache_miss &&  cache_valid[req_index_in];
   assign icache_refill       = !rst && (state == MISS_AR) && arvalid && arready;
   assign icache_miss_ar_wait = !rst && (state == MISS_AR);
   assign icache_miss_r_wait  = !rst && (state == MISS_R);

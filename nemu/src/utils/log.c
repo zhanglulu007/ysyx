@@ -35,3 +35,15 @@ bool log_enable() {
          (g_nr_guest_inst <= CONFIG_TRACE_END), false);
 }
 #endif
+
+
+FILE *cachesim_trace_fp = NULL;
+static char cachesim_trace_buf[1 << 20];
+void init_cachesim_trace(const char *trace_file) {
+  if (trace_file == NULL) { return; }
+  FILE *fp = fopen(trace_file, "wb");
+  Assert(fp, "Can not open '%s'", trace_file);
+  setvbuf(fp, cachesim_trace_buf, _IOFBF, sizeof(cachesim_trace_buf));
+  cachesim_trace_fp = fp;
+  Log("Cachesim PC trace is written to %s", trace_file);
+}

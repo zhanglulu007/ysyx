@@ -85,6 +85,10 @@ void display_iringbuf() {
 }
 #endif
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
+  if (cachesim_trace_fp != NULL) {
+    uint32_t trace_pc = (uint32_t)_this->pc;
+    fwrite(&trace_pc, sizeof(trace_pc), 1, cachesim_trace_fp);
+  }
 
 #ifdef CONFIG_ITRACE_COND
   if (ITRACE_COND) { log_write("%s\n", _this->logbuf); }
