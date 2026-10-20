@@ -95,18 +95,14 @@ module ICache (
   always @(posedge clk) begin
     if (rst) begin
       cache_valid <= {BLOCKS{1'b0}};
-      state <= IDLE;
-      req_tag <= {TAG_BITS{1'b0}};
-      req_index <= {INDEX_BITS{1'b0}};
-    end
-  end
-
-  always @(posedge clk) begin
-    if (!rst)  begin
+      state       <= IDLE;
+      req_tag     <= {TAG_BITS{1'b0}};
+      req_index   <= {INDEX_BITS{1'b0}};
+    end else begin
       case (state)
         IDLE: begin
           if (ifu_arvalid && ifu_arready) begin
-            req_tag <= req_tag_in;
+            req_tag   <= req_tag_in;
             req_index <= req_index_in;
             if (hit) begin
               state <= RETURN;
@@ -124,9 +120,9 @@ module ICache (
 
         MISS_R: begin
           if (rvalid && rready && rlast) begin
-            cache[req_index] <= {req_tag, rdata};
+            cache[req_index]       <= {req_tag, rdata};
             cache_valid[req_index] <= 1'b1;
-            state <= RETURN;
+            state                  <= RETURN;
           end
         end
 
