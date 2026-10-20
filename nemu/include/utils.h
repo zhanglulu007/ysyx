@@ -34,6 +34,14 @@ extern NEMUState nemu_state;
 
 uint64_t get_time();
 
+// ----------- cache trace (for cachesim) -----------
+
+// Record the guest PC sequence into a compact binary file.
+// The file is a sequence of {uint32_t pc, uint32_t run_len} records.
+void init_cache_trace(const char *file);
+void cache_trace_pc(vaddr_t pc);
+void cache_trace_flush(void);
+
 // ----------- log -----------
 
 #define ANSI_FG_BLACK   "\33[1;30m"

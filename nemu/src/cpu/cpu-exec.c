@@ -16,6 +16,7 @@
 #include <cpu/cpu.h>
 #include <cpu/decode.h>
 #include <cpu/difftest.h>
+#include <utils.h>
 #include <locale.h>
 #include "../monitor/sdb/sdb.h" 
 
@@ -85,6 +86,7 @@ void display_iringbuf() {
 }
 #endif
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
+  cache_trace_pc(_this->pc);
 
 #ifdef CONFIG_ITRACE_COND
   if (ITRACE_COND) { log_write("%s\n", _this->logbuf); }
@@ -106,6 +108,10 @@ static void exec_once(Decode *s, vaddr_t pc) {
   s->snpc = pc;
   isa_exec_once(s);
   cpu.pc = s->dnpc;
+#ifdef CONFIG_ISA_riscv
+  cpu.mcycle ++;
+  if (cpu.mcycle == 0) cpu.mcycleh ++;
+#endif
 #ifdef CONFIG_ITRACE
   char *p = s->logbuf;
   p += snprintf(p, sizeof(s->logbuf), FMT_WORD ":", s->pc);
@@ -174,6 +180,7 @@ void cpu_exec(uint64_t n) {
   uint64_t timer_start = get_time();
 
   execute(n);
+  cache_trace_flush();
 
   uint64_t timer_end = get_time();
   g_timer += timer_end - timer_start;

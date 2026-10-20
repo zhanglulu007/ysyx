@@ -24,6 +24,24 @@ static uint8_t flash[FLASH_SIZE] PG_ALIGN = {};
 static uint8_t sram[SRAM_SIZE] PG_ALIGN = {};
 static uint8_t sdram[SDRAM_SIZE] PG_ALIGN = {};
 
+// SoC MMIO sink for trace generation.  The cachesim flow only needs the
+// instruction stream, so device accesses are ignored instead of panicking.
+// UART LSR (offset 5) reports THRE=1 so AM's putch() does not spin forever.
+#define SOC_IO_LEFT   0x10000000u
+#define SOC_IO_RIGHT  0x10020000u
+#define SOC_VGA_LEFT  0x21000000u
+#define SOC_VGA_RIGHT 0x22000000u
+
+static inline bool in_soc_io(paddr_t addr) {
+  return (addr - SOC_IO_LEFT < SOC_IO_RIGHT - SOC_IO_LEFT) ||
+         (addr - SOC_VGA_LEFT < SOC_VGA_RIGHT - SOC_VGA_LEFT);
+}
+
+static inline word_t soc_io_read(paddr_t addr) {
+  if (addr - SOC_IO_LEFT == 5) return 0x20;  // UART LSR.THRE
+  return 0;
+}
+
 uint8_t* guest_to_host(paddr_t paddr) { assert(in_flash(paddr)); return flash + (paddr - FLASH_LEFT); }
 paddr_t host_to_guest(uint8_t *haddr) { return haddr - flash + FLASH_LEFT; }
 
@@ -117,6 +135,7 @@ word_t paddr_read(paddr_t addr, int len) {
     IFDEF(CONFIG_MTRACE, mtrace_read(addr, len, ret));
     return ret;
   }
+  if (in_soc_io(addr)) return soc_io_read(addr);
 #else
   if (in_pmem(addr)) {
     word_t ret = pmem_read(addr, len);
@@ -135,6 +154,7 @@ void paddr_write(paddr_t addr, int len, word_t data) {
   if (in_flash(addr)) { return; }  // FLASH 只读 (XIP)
   if (in_sram(addr)) { host_write(sram_to_host(addr), len, data); return; }
   if (in_sdram(addr)) { host_write(sdram_to_host(addr), len, data); return; }
+  if (in_soc_io(addr)) return;
 #else
   if (in_pmem(addr)) { pmem_write(addr, len, data); return; }
 #endif

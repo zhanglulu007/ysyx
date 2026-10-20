@@ -76,7 +76,9 @@ DIFFTEST_SO_YSYXSOC   := $(NEMU_BUILD_DIR)/riscv32-nemu-interpreter-ysyxsoc-so
 DIFFTEST_CFG_FILES := .config .config.old include/config include/generated
 DIFFTEST_CFG_BAK   := $(NEMU_BUILD_DIR)/.difftest-cfg-bak
 
-.PHONY: difftest-so difftest-so-standalone difftest-so-ysyxsoc
+CACHESIM_NEMU := $(NEMU_BUILD_DIR)/riscv32-nemu-interpreter-ysyxsoc
+
+.PHONY: difftest-so difftest-so-standalone difftest-so-ysyxsoc cachesim-nemu
 
 difftest-so: difftest-so-standalone difftest-so-ysyxsoc
 	@echo "=== All NEMU REF .so ready ==="
@@ -128,3 +130,27 @@ difftest-so-ysyxsoc:
 	$(MAKE) -C $(NEMU_HOME) riscv32-ysyxsoc-so_defconfig; \
 	$(MAKE) -C $(NEMU_HOME) NAME=riscv32-nemu-interpreter-ysyxsoc YSYXSOC_REF=1 app; \
 	test -f "$(DIFFTEST_SO_YSYXSOC)"
+
+cachesim-nemu:
+	@echo "=== Building NEMU for cachesim trace (ysyxSoC) ==="
+	@set -e; \
+	B=$(NEMU_BUILD_DIR)/.cachesim-cfg-bak; \
+	rm -rf $$B; mkdir -p $$B; \
+	for f in $(DIFFTEST_CFG_FILES); do \
+	  if [ -e "$(NEMU_HOME)/$$f" ]; then cp -a "$(NEMU_HOME)/$$f" "$$B/$$(echo $$f | tr / _)"; fi; \
+	done; \
+	restore() { \
+	  [ -d "$$B" ] || return 0; \
+	  for f in $(DIFFTEST_CFG_FILES); do \
+	    rm -rf "$(NEMU_HOME)/$$f"; \
+	    b="$$B/$$(echo $$f | tr / _)"; \
+	    if [ -e "$$b" ]; then cp -a "$$b" "$(NEMU_HOME)/$$f"; fi; \
+	  done; \
+	  rm -rf $$B; \
+	  echo "=== NEMU config restored (cachesim) ==="; \
+	}; \
+	trap 'restore; exit 130' INT TERM; \
+	trap restore EXIT; \
+	$(MAKE) -C $(NEMU_HOME) riscv32-ysyxsoc_defconfig; \
+	$(MAKE) -C $(NEMU_HOME) NAME=riscv32-nemu-interpreter-ysyxsoc YSYXSOC_REF=1 app; \
+	test -x "$(CACHESIM_NEMU)"
