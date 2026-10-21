@@ -26,6 +26,11 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
+ICACHE_SIM ?= 0
+IC_BLOCK   ?= 16
+IC_SETS    ?= 4
+IC_WAYS    ?= 1
+IC_BURST   ?= 1
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0

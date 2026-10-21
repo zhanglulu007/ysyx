@@ -6,18 +6,13 @@ module Arbiter(
   input ifu_arvalid,
   output ifu_arready,
   input [31:0] ifu_araddr,
-  input [3:0] ifu_arid,
   input [7:0] ifu_arlen,
-  input [2:0] ifu_arsize,
-  input [1:0] ifu_arburst,
 
   // IFU AXI4 R
   output ifu_rvalid,
   input ifu_rready,
-  output [1:0] ifu_rresp,
   output [31:0] ifu_rdata,
   output ifu_rlast,
-  output [3:0] ifu_rid,
 
   // LSU AXI4 AR
   input lsu_arvalid,
@@ -118,24 +113,27 @@ module Arbiter(
   localparam AR_NONE = 2'b00, AR_IFU = 2'b01, AR_LSU = 2'b10;
   localparam IFU_ID = 4'b0001, LSU_ID = 4'b0010;
 
-  reg [1:0] ar_grant;
+  localparam [2:0] IFU_SIZE   = 3'b010;
+  localparam [1:0] IFU_BURST  = 2'b01;
+  reg [1:0] ar_grant;     
+  reg       rd_busy;       
 
-  wire ifu_ar_select = (ar_grant == AR_NONE) ? ifu_arvalid : (ar_grant == AR_IFU);
-  wire lsu_ar_select = (ar_grant == AR_NONE) ? (!ifu_arvalid && lsu_arvalid) : (ar_grant == AR_LSU);
+  wire ar_free = !rd_busy;
+
+  wire ifu_ar_select = ar_free && ((ar_grant == AR_NONE) ? ifu_arvalid : (ar_grant == AR_IFU));
+  wire lsu_ar_select = ar_free && ((ar_grant == AR_NONE) ? (!ifu_arvalid && lsu_arvalid) : (ar_grant == AR_LSU));
 
   assign mem_arvalid = ifu_ar_select || lsu_ar_select;
   assign mem_araddr = ifu_ar_select ? ifu_araddr : lsu_araddr;
-  assign mem_arid = ifu_ar_select ? ifu_arid : lsu_arid;
+  assign mem_arid = ifu_ar_select ? IFU_ID : lsu_arid;
   assign mem_arlen = ifu_ar_select ? ifu_arlen : lsu_arlen;
-  assign mem_arsize = ifu_ar_select ? ifu_arsize : lsu_arsize;
-  assign mem_arburst = ifu_ar_select ? ifu_arburst : lsu_arburst;
+  assign mem_arsize = ifu_ar_select ? IFU_SIZE : lsu_arsize;
+  assign mem_arburst = ifu_ar_select ? IFU_BURST : lsu_arburst;
 
   assign ifu_arready = ifu_ar_select && mem_arready;
   assign ifu_rvalid = mem_rvalid && (mem_rid == IFU_ID);
-  assign ifu_rresp = mem_rresp;
   assign ifu_rdata = mem_rdata;
   assign ifu_rlast = mem_rlast;
-  assign ifu_rid = mem_rid;
 
   assign lsu_arready = lsu_ar_select && mem_arready;
   assign lsu_rvalid = mem_rvalid && (mem_rid == LSU_ID);
@@ -147,10 +145,15 @@ module Arbiter(
   assign mem_rready = (mem_rid == IFU_ID) ? ifu_rready : lsu_rready;
 
   wire ar_fire = mem_arvalid && mem_arready;
+  wire r_fire  = mem_rvalid && mem_rready;
+
+  wire ar_open  = ar_fire && (mem_arlen != 8'd0);
+  wire rd_close = rd_busy && r_fire && mem_rlast;
 
   always @(posedge clk) begin
     if (rst) begin
       ar_grant <= AR_NONE;
+      rd_busy  <= 1'b0;
     end else begin
       if (ar_grant == AR_NONE && !ar_fire) begin
         if (ifu_arvalid) begin
@@ -160,6 +163,12 @@ module Arbiter(
         end
       end else if (ar_fire) begin
         ar_grant <= AR_NONE;
+      end
+
+      if (ar_open) begin
+        rd_busy <= 1'b1;
+      end else if (rd_close) begin
+        rd_busy <= 1'b0;
       end
     end
   end

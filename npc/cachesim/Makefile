@@ -33,11 +33,20 @@ MICROBENCH_BIN ?= $(MICROBENCH_DIR)/build/microbench-riscv32e-ysyxsoc.bin
 CSETS   ?= 16
 CWAYS   ?= 1
 CBLOCK  ?= 4
+C_BURST ?= 0
 PENALTY ?= 30
+# 缺失代价来源：默认用突发模型（讲义 B4 §8.4），PENALTY_GIVEN=1 时退回常数 PENALTY
+PENALTY_GIVEN ?= 0
+PENALTY_ARG := $(if $(filter 1,$(PENALTY_GIVEN)),--miss-penalty $(PENALTY),)
+BUS_BYTES   ?= 4
+# 缺失代价模型参数（CPU 周期），默认值由 F=51 下 4B/8B/16B 三组实测标定
+FIXED_COST  ?= 28
+BEAT_COST   ?= 5
 
 SWEEP_BLOCKS ?= 4 8 16 32
 SWEEP_WAYS   ?= 1 2 4
 SWEEP_SETS   ?= 4 8 16 32
+SWEEP_BURST  ?= 0 1
 SWEEP_DIR    := $(BUILD_DIR)/sweep
 
 JOBS ?= $(shell nproc 2>/dev/null || echo 4)
@@ -99,83 +108,108 @@ trace: $(MICROBENCH_BIN)
 
 # ---------- 单组评估 ----------
 run: $(TARGET) trace
-	@echo "=== cachesim 评估 [sets=$(CSETS) ways=$(CWAYS) block=$(CBLOCK)B penalty=$(PENALTY)] ==="
+	@echo "=== cachesim 评估 [sets=$(CSETS) ways=$(CWAYS) block=$(CBLOCK)B bus=$(BUS_BYTES)B burst=$(C_BURST)] ==="
 	@$(TARGET) --trace $(TRACE) --sets $(CSETS) --ways $(CWAYS) \
-	  --block $(CBLOCK) --miss-penalty $(PENALTY)
+	  --block $(CBLOCK) --bus-bytes $(BUS_BYTES) --burst $(C_BURST) \
+	  --fixed $(FIXED_COST) --beat $(BEAT_COST) $(PENALTY_ARG)
 
 # ---------- 并行探索 ----------
 sweep: $(TARGET) trace
 	@mkdir -p $(SWEEP_DIR)
 	@rm -f $(SWEEP_DIR)/*.csv
-	@echo "[cachesim] 参数扫描 blocks={$(SWEEP_BLOCKS)} ways={$(SWEEP_WAYS)} sets={$(SWEEP_SETS)} (并行 $(JOBS) 路)"
+	@echo "[cachesim] 参数扫描 blocks={$(SWEEP_BLOCKS)} ways={$(SWEEP_WAYS)} sets={$(SWEEP_SETS)} burst={$(SWEEP_BURST)} (并行 $(JOBS) 路)"
 	@for b in $(SWEEP_BLOCKS); do \
 	  for w in $(SWEEP_WAYS); do \
-	    for s in $(SWEEP_SETS); do echo "$$b $$w $$s"; done; \
+	    for s in $(SWEEP_SETS); do \
+	      for t in $(SWEEP_BURST); do echo "$$b $$w $$s $$t"; done; \
+	    done; \
 	  done; \
-	done | xargs -P $(JOBS) -n 3 sh -c '\
+	done | xargs -P $(JOBS) -n 4 sh -c '\
 	  $(TARGET) --csv --trace $(TRACE) \
-	    --block $$0 --ways $$1 --sets $$2 --miss-penalty $(PENALTY) \
-	    > $(SWEEP_DIR)/$${0}_$${1}_$${2}.csv'
+	    --block $$0 --ways $$1 --sets $$2 --burst $$3 --bus-bytes $(BUS_BYTES) \
+	    --fixed $(FIXED_COST) --beat $(BEAT_COST) $(PENALTY_ARG) \
+	    > $(SWEEP_DIR)/$${0}_$${1}_$${2}_$${3}.csv'
 	@if [ "$(SWEEP_QUIET)" != "1" ]; then \
 	  echo ""; \
-	  printf "%-6s %-5s %-5s %9s %12s %14s\n" block ways sets hit-rate miss TMT; \
-	  printf "%-6s %-5s %-5s %9s %12s %14s\n" ------ ----- ----- --------- ------------ --------------; \
-	  cat $(SWEEP_DIR)/*.csv | sort -t, -k1,1n -k2,2n -k3,3n | \
-	    awk -F, '{ printf "%-6s %-5s %-5s %8s%% %12s %14s\n", $$1, $$2, $$3, $$4, $$5, $$6 }'; \
+	  printf "%-6s %-5s %-5s %-7s %9s %12s %14s\n" block ways sets burst hit-rate miss TMT; \
+	  printf "%-6s %-5s %-5s %-7s %9s %12s %14s\n" ------ ----- ----- ------- --------- ------------ --------------; \
+	  cat $(SWEEP_DIR)/*.csv | sort -t, -k1,1n -k2,2n -k3,3n -k4,4n | \
+	    awk -F, '{ printf "%-6s %-5s %-5s %-7s %8s%% %12s %14s\n", $$1, $$2, $$3, ($$4==1?"burst":"indep"), $$5, $$6, $$7 }'; \
 	fi
 
 # ---------- 报告 ----------
+# CSV 有两种格式（旧扫描产物 vs 新增 burst 列），这里统一成 7 列再统计：
+#   block,ways,sets,burst,hit_rate,miss,tmt
 report:
 	@set -e; \
 	D="$(SWEEP_DIR)"; \
 	if [ -z "$$(ls $$D/*.csv 2>/dev/null)" ]; then \
 	  echo "未找到扫描结果, 请先运行 make sweep"; exit 1; \
 	fi; \
-	N=$$(ls $$D/*.csv | wc -l); \
-	BASE_LINE=$$(cat $$D/*.csv | awk -F, '$$1==4 && $$2==1 && $$3==16 {print; exit}'); \
-	BASE=$$(echo "$$BASE_LINE" | cut -d, -f6); \
-	BEST=$$(cat $$D/*.csv | sort -t, -k6,6n | head -1); \
+	NORM=$$(mktemp); \
+	cat $$D/*.csv | awk -F, 'NF>=6 { if (NF==6) print $$1","$$2","$$3",0,"$$4","$$5","$$6; \
+	                                  else      print $$1","$$2","$$3","$$4","$$5","$$6","$$7 }' \
+	                  | sort -t, -k1,1n -k2,2n -k3,3n -k4,4n -u > $$NORM; \
+	N=$$(wc -l < $$NORM); \
+	BASE_LINE=$$(awk -F, '$$1==4 && $$2==1 && $$3==16 && $$4==0 {print; exit}' $$NORM); \
+	BASE=$$(echo "$$BASE_LINE" | cut -d, -f7); \
+	BEST=$$(sort -t, -k7,7n $$NORM | head -1); \
 	echo ""; \
 	echo "================== cachesim 设计空间探索报告 =================="; \
 	echo "[环境]"; \
 	printf "  trace          : %s (%s)\n" "$(TRACE)" "$$(du -h $(TRACE) 2>/dev/null | cut -f1)"; \
 	printf "  参数组合       : %s\n" "$$N"; \
 	printf "  并行度         : %s\n" "$(JOBS)"; \
-	printf "  缺失代价       : %s cycles/miss\n" "$(PENALTY)"; \
+	if [ "$(PENALTY_GIVEN)" = "1" ]; then \
+	  printf "  缺失代价       : %s cycles/miss (常数)\n" "$(PENALTY)"; \
+	else \
+	  printf "  缺失代价       : 突发模型 n=block/%sB, lat=(%s)\n" "$(BUS_BYTES)" "$(LAT)"; \
+	fi; \
 	echo ""; \
-	echo "[基线] 当前 RTL 实现: sets=16 ways=1 block=4B"; \
-	echo "$$BASE_LINE" | awk -F, '{ printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6 }'; \
+	echo "[基线] 当前 RTL 实现: sets=16 ways=1 block=4B 独立事务"; \
+	echo "$$BASE_LINE" | awk -F, '{ printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$5, $$6, $$7 }'; \
 	echo ""; \
 	echo "[完整结果] (共 $$N 组, 按 TMT 升序)"; \
-	cat $$D/*.csv | sort -t, -k6,6n | \
+	sort -t, -k7,7n $$NORM | \
 	  awk -F, -v base="$$BASE" 'BEGIN { \
-	    printf "  %-4s %-6s %-5s %-5s %9s %12s %14s %9s\n", \
-	           "rank", "block", "ways", "sets", "hit-rate", "miss", "TMT", "vs_base"; \
-	    printf "  %-4s %-6s %-5s %-5s %9s %12s %14s %9s\n", \
-	           "----", "------", "-----", "-----", "---------", "------------", "--------------", "---------"; \
+	    printf "  %-4s %-6s %-5s %-5s %-7s %9s %12s %14s %9s\n", \
+	           "rank", "block", "ways", "sets", "mode", "hit-rate", "miss", "TMT", "vs_base"; \
+	    printf "  %-4s %-6s %-5s %-5s %-7s %9s %12s %14s %9s\n", \
+	           "----", "------", "-----", "-----", "-------", "---------", "------------", "--------------", "---------"; \
 	  } { \
-	    speed = ($$6 > 0) ? base / $$6 : 0; \
-	    printf "  %-4d %-6s %-5s %-5s %8s%% %12s %14s %8.1fx\n", \
-	           NR, $$1, $$2, $$3, $$4, $$5, $$6, speed; \
+	    speed = ($$7 > 0 && base > 0) ? base / $$7 : 0; \
+	    printf "  %-4d %-6s %-5s %-5s %-7s %8s%% %12s %14s %8.1fx\n", \
+	           NR, $$1, $$2, $$3, ($$4==1?"burst":"indep"), $$5, $$6, $$7, speed; \
 	  }'; \
 	echo ""; \
 	echo "[最优组合]"; \
 	echo "$$BEST" | awk -F, -v base="$$BASE" '{ \
-	  printf "  sets=%s ways=%s block=%sB\n", $$3, $$2, $$1; \
-	  printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6; \
-	  if (base > 0 && $$6 > 0) printf "  TMT 相对当前实现降低 %.2f%%\n", (1 - $$6 / base) * 100; \
+	  printf "  sets=%s ways=%s block=%sB %s\n", $$3, $$2, $$1, ($$4==1?"burst":"indep"); \
+	  printf "  hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$5, $$6, $$7; \
+	  if (base > 0 && $$7 > 0) printf "  TMT 相对当前实现降低 %.2f%%\n", (1 - $$7 / base) * 100; \
 	}'; \
+	echo ""; \
+	echo "[突发 vs 独立事务, 同参数对照]"; \
+	awk -F, '{ key = $$1","$$2","$$3; \
+	           if ($$4 == 0) ind[key] = $$7; else bur[key] = $$7; } \
+	  END { printf "  %-6s %-5s %-5s %14s %14s %9s\n", "block", "ways", "sets", "TMT(indep)", "TMT(burst)", "gain"; \
+	        for (k in bur) if (k in ind) { \
+	          g = (ind[k] > 0) ? (1 - bur[k] / ind[k]) * 100 : 0; \
+	          split(k, p, ","); \
+	          printf "  %-6s %-5s %-5s %14d %14d %8.1f%%\n", p[1], p[2], p[3], ind[k], bur[k], g; \
+	        } }' $$NORM; \
 	echo ""; \
 	if [ -f "$(PERF_LOG)" ]; then \
 	  echo "[与 NPC perf 对照 (仅供参考)]"; \
 	  PA=$$(grep -m1 'access / hit / miss' $(PERF_LOG) | awk '{print $$(NF-4)}'); \
 	  PM=$$(grep -m1 'access / hit / miss' $(PERF_LOG) | awk '{print $$NF}'); \
 	  printf "  perf     : access=%s  miss=%s\n" "$$PA" "$$PM"; \
-	  echo "$$BASE_LINE" | awk -F, '{ printf "  cachesim : hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$4, $$5, $$6 }'; \
+	  echo "$$BASE_LINE" | awk -F, '{ printf "  cachesim : hit-rate=%s%%  miss=%s  TMT=%s cycles\n", $$5, $$6, $$7 }'; \
 	  echo "  说明     : bypass 与 compulsory 与 perf 完全一致, 其余差异来自指令流长度"; \
 	else \
 	  echo "[与 NPC perf 对照] 未找到 $(PERF_LOG), 跳过 (可先在 npc/ 下 make perf)"; \
 	fi; \
+	rm -f $$NORM; \
 	echo "=============================================================="
 
 # 依赖由 sweep 负责(它会构建 cachesim 并确保 trace 就绪), 这里不再重复声明
