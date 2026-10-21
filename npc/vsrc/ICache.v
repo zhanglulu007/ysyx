@@ -80,7 +80,7 @@ module ICache (
   wire hit = cache_valid[req_index_in] &&
              (cache_tag[req_index_in] == req_tag_in);
 
-  // 命中时按块内偏移选出要返回的那个 32 位字
+  // 命中时按块内偏移选出要返回的那个 32 位字：块 b 的第 w 字存放在 [b*BEATS + w]
   wire [31:0] hit_rdata = req_word ? cache_data[{req_index, 1'b1}]
                                    : cache_data[{req_index, 1'b0}];
 
