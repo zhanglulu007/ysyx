@@ -1,25 +1,3 @@
-/***************************************************************************************
-* ICachesim - 参数化指令缓存 (B4 突发传输实验用，仅用于仿真评估)
-*
-* 与 ICache.v 的关系：
-*   * ICache.v 是综合口径的固定实现（16 组 × 1 路 × 4B），本模块不做改动；
-*   * ICachesim.v 用同一套状态机语义，但把块大小 / 组数 / 相联度 / 突发方式
-*     全部参数化，用于设计空间探索；
-*   * 数据与元数据都用触发器实现（便于仿真，不追求面积）。
-*
-* 配置宏（均可由 npc/Makefile 的 -D 覆盖）：
-*   IC_BLOCK  cache 块大小 (字节, 2 的幂, >= 4)    默认 4
-*   IC_SETS   组数 (2 的幂; 1 即全相联)            默认 16
-*   IC_WAYS   每组的相联度 (2 的幂; 1 即直接映射)  默认 1
-*   IC_BURST  1 = 一次 AR 拉起整块 (突发)          默认 0
-*             0 = 每个 32 位字一次独立事务
-*
-* 三种组织方式统一用「组相联」实现：
-*   WAYS = 1        -> 直接映射
-*   SETS = 1        -> 全相联
-*   其余            -> w 路组相联
-***************************************************************************************/
-
 `ifndef IC_BLOCK
 `define IC_BLOCK 4
 `endif
@@ -58,17 +36,7 @@ module ICachesim(
   input         rvalid,
   output        rready,
   input  [31:0] rdata,
-  input         rlast,
-
-  // 性能观测信号：与 ICache.v 同名，使 top.v 的 PERF 探针无需分支
-  output icache_access,
-  output icache_hit,
-  output icache_miss,
-  output icache_compulsory,
-  output icache_replace,
-  output icache_refill,
-  output icache_miss_ar_wait,
-  output icache_miss_r_wait
+  input         rlast
 );
 
   // ------------------------------------------------------------------
@@ -198,20 +166,6 @@ module ICachesim(
 
   wire r_fire    = rvalid && rready;
   wire last_beat = BURST ? rlast : (beat_cnt == (BEATS - 1));
-
-  // ------------------------------------------------------------------
-  // 性能观测信号（语义与 ICache.v 对齐）
-  //   refill 统计的是「AR 握手次数」：突发模式下一次缺失 1 次，
-  //   独立事务模式下为 BEATS 次，故 refill == miss 只在突发模式下成立。
-  // ------------------------------------------------------------------
-  assign icache_access       = !rst && (state == S_IDLE) && ifu_arvalid && ifu_arready;
-  assign icache_hit          = icache_access && hit_r;
-  assign icache_miss         = icache_access && !hit_r;
-  assign icache_compulsory   = icache_miss && set_has_invalid;
-  assign icache_replace      = icache_miss && !set_has_invalid;
-  assign icache_refill       = !rst && (state == S_MISS_AR) && arvalid && arready;
-  assign icache_miss_ar_wait = !rst && (state == S_MISS_AR);
-  assign icache_miss_r_wait  = !rst && (state == S_MISS_R);
 
   // ------------------------------------------------------------------
   // 主状态更新

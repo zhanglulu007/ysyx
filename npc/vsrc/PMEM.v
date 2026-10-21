@@ -61,14 +61,10 @@ module PMEM(
   reg [31:0] wdata_reg;
   reg [3:0] wstrb_reg;
 
-  // 突发读：rd_left 记录本次事务「还剩几个后续 beat」。
-  // 单 beat（arlen==0）时 rd_left==0，行为与原实现完全一致。
   reg [7:0]  rd_left;
   reg [31:0] rd_addr;
 
   wire r_fire = mem_rvalid && mem_rready;
-  // 只有单 beat 完成的那一拍才允许背靠背接受新 AR（保持原性能）；
-  // 多 beat 未收完时 read_state==WAIT 且 rd_left!=0，不接受新 AR。
   wire read_ready = (read_state == IDLE) || (r_fire && (rd_left == 8'd0));
 
   assign mem_arready = !rst && read_ready;

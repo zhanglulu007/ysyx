@@ -34,8 +34,7 @@ PDK ?= icsprout55
 CLK_FREQ_MHZ ?= 1200
 CLK_PORT_NAME ?= clk
 # SYNTHESIS: 走 top.v 的合成用存储模型, 排除全部 DPI-C
-# ICACHE_RTL: 综合始终例化 ICache.v（ICachesim.v 仅用于仿真，见 npc/Makefile）
-DEFINES ?= SYNTHESIS ICACHE_RTL
+DEFINES ?= SYNTHESIS
 
 # 综合范围 = CPU + 总线仲裁 (PMEM.v 是仿真 DPI-C 内存模型, SYNTHESIS 下不被
 # 实例化; ysyx_26020070.v 是 SOC_MODE 专用的 SoC 顶层, 均不纳入)

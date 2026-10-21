@@ -4,13 +4,10 @@ module IFU(
   input commit,
   input [31:0] pc_next,
 
-  // 取指请求：只传地址与握手，arid/arlen/arsize/arburst 为恒定值，
-  // 由下游 ICache / Arbiter 在各自边界补齐（2024 B4 突发传输实验）。
   output ifu_arvalid,
   input  ifu_arready,
   output [31:0] ifu_araddr,
 
-  // 取指返回：IFU 每次只请求一条 4B 指令，故没有 rlast/rresp/rid 语义。
   input  ifu_rvalid,
   output ifu_rready,
   input  [31:0] ifu_rdata,

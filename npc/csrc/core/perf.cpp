@@ -59,11 +59,7 @@ void perf_report() {
     const uint64_t ic_access     = perf_count[PERF_IC_ACCESS];
     const uint64_t ic_hit        = perf_count[PERF_IC_HIT];
     const uint64_t ic_miss       = perf_count[PERF_IC_MISS];
-    const uint64_t ic_compulsory = perf_count[PERF_IC_COMPULSORY];
-    const uint64_t ic_replace    = perf_count[PERF_IC_REPLACE];
     const uint64_t ic_refill     = perf_count[PERF_IC_REFILL];
-    const uint64_t ic_miss_ar    = perf_count[PERF_IC_MISS_AR];
-    const uint64_t ic_miss_r     = perf_count[PERF_IC_MISS_R];
 
     const uint64_t alu     = perf_count[PERF_ALU];
     const uint64_t alu_r   = perf_count[PERF_ALU_R];
@@ -172,29 +168,11 @@ void perf_report() {
            ic_access, ic_hit, ic_miss);
     printf("  hit rate / miss rate: %.2f%% / %.2f%%\n",
            percent(ic_hit, ic_access), percent(ic_miss, ic_access));
-    printf("  compulsory / replace: %" PRIu64 " / %" PRIu64 " (%s)\n",
-           ic_compulsory, ic_replace,
-           ic_compulsory + ic_replace == ic_miss ? "OK" : "MISMATCH");
     printf("  refill AR          : %" PRIu64 " (%s)\n", ic_refill,
            (ic_miss == 0 || ic_refill % ic_miss == 0) ? "OK" : "MISMATCH");
     printf("  AR per miss        : %.2f (1.00 = 突发; block/4 = 独立事务)\n",
            ratio(ic_refill, ic_miss));
-    printf("  miss AR wait       : %" PRIu64 " cycles\n", ic_miss_ar);
-    printf("  miss R wait        : %" PRIu64 " cycles\n", ic_miss_r);
-    printf("  avg miss latency   : %.4f cycles\n", ratio(ic_miss_ar + ic_miss_r, ic_miss));
     printf("  misses per 1k inst : %.2f\n", ratio(ic_miss, commit) * 1000.0);
-    {
-        // AMAT = access_time + miss_rate x miss_penalty
-        // access_time 取 1 周期（命中时的 cache 访问时间）；
-        // miss_penalty 用实测的「平均每次缺失等待周期」。
-        const double miss_rate  = ratio(ic_miss, ic_access);
-        const double miss_pen   = ratio(ic_miss_ar + ic_miss_r, ic_miss);
-        const double amat       = 1.0 + miss_rate * miss_pen;
-        printf("  AMAT               : %.4f cycles (1 + %.4f x %.4f)\n",
-               amat, miss_rate, miss_pen);
-        printf("  TMT                : %" PRIu64 " cycles (miss AR+R wait)\n",
-               ic_miss_ar + ic_miss_r);
-    }
 
     printf("\n[LSU behavior]\n");
     printf("  load / store done  : %" PRIu64 " / %" PRIu64 "\n", ld_done, st_done);

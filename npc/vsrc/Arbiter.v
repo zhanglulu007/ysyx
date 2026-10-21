@@ -2,13 +2,13 @@ module Arbiter(
   input clk,
   input rst,
 
-  // IFU AXI4 AR：arid/arsize/arburst 为恒定值，只有 arlen 随 cache 块大小变化
+  // IFU AXI4 AR
   input ifu_arvalid,
   output ifu_arready,
   input [31:0] ifu_araddr,
   input [7:0] ifu_arlen,
 
-  // IFU AXI4 R：IFU 只收 4B 单拍，rresp/rid 由仲裁口按 id 分流后即恒定
+  // IFU AXI4 R
   output ifu_rvalid,
   input ifu_rready,
   output [31:0] ifu_rdata,
@@ -112,17 +112,12 @@ module Arbiter(
 
   localparam AR_NONE = 2'b00, AR_IFU = 2'b01, AR_LSU = 2'b10;
   localparam IFU_ID = 4'b0001, LSU_ID = 4'b0010;
-  // IFU 侧恒定语义：32 位机、单拍 AR size、INCR 突发
+
   localparam [2:0] IFU_SIZE   = 3'b010;
   localparam [1:0] IFU_BURST  = 2'b01;
+  reg [1:0] ar_grant;     
+  reg       rd_busy;       
 
-  reg [1:0] ar_grant;      // AR 归属（NONE/IFU/LSU）；握手后归还
-  reg       rd_busy;       // 总线上存在未完成的多 beat 读事务（突发）
-
-  // 只有多 beat 突发（arlen != 0）才需要在途保护：
-  //   突发进行到第 k 个 beat 时若接受新 AR，R 通道会按 rid 交织，数据错位。
-  // 单拍事务（arlen == 0，即 LSU 与 ICache 现有行为）保持原有的流水能力，
-  // 因此本改动对 ICache 版本与 LSU 的性能零影响。
   wire ar_free = !rd_busy;
 
   wire ifu_ar_select = ar_free && ((ar_grant == AR_NONE) ? ifu_arvalid : (ar_grant == AR_IFU));
@@ -152,8 +147,6 @@ module Arbiter(
   wire ar_fire = mem_arvalid && mem_arready;
   wire r_fire  = mem_rvalid && mem_rready;
 
-  // 多 beat 突发的在途标记：授予一个 arlen != 0 的 AR 时置位，
-  // 等到该事务的最后一拍（mem_rlast）握手后才释放。
   wire ar_open  = ar_fire && (mem_arlen != 8'd0);
   wire rd_close = rd_busy && r_fire && mem_rlast;
 

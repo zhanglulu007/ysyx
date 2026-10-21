@@ -39,7 +39,9 @@ PENALTY ?= 30
 PENALTY_GIVEN ?= 0
 PENALTY_ARG := $(if $(filter 1,$(PENALTY_GIVEN)),--miss-penalty $(PENALTY),)
 BUS_BYTES   ?= 4
-LAT         ?= 1,10,30,1
+# 缺失代价模型参数（CPU 周期），默认值由 F=51 下 4B/8B/16B 三组实测标定
+FIXED_COST  ?= 28
+BEAT_COST   ?= 5
 
 SWEEP_BLOCKS ?= 4 8 16 32
 SWEEP_WAYS   ?= 1 2 4
@@ -108,8 +110,8 @@ trace: $(MICROBENCH_BIN)
 run: $(TARGET) trace
 	@echo "=== cachesim 评估 [sets=$(CSETS) ways=$(CWAYS) block=$(CBLOCK)B bus=$(BUS_BYTES)B burst=$(C_BURST)] ==="
 	@$(TARGET) --trace $(TRACE) --sets $(CSETS) --ways $(CWAYS) \
-	  --block $(CBLOCK) --bus-bytes $(BUS_BYTES) --burst $(C_BURST) --lat $(LAT) \
-	  $(PENALTY_ARG)
+	  --block $(CBLOCK) --bus-bytes $(BUS_BYTES) --burst $(C_BURST) \
+	  --fixed $(FIXED_COST) --beat $(BEAT_COST) $(PENALTY_ARG)
 
 # ---------- 并行探索 ----------
 sweep: $(TARGET) trace
@@ -124,7 +126,8 @@ sweep: $(TARGET) trace
 	  done; \
 	done | xargs -P $(JOBS) -n 4 sh -c '\
 	  $(TARGET) --csv --trace $(TRACE) \
-	    --block $$0 --ways $$1 --sets $$2 --burst $$3 --bus-bytes $(BUS_BYTES) $(PENALTY_ARG) \
+	    --block $$0 --ways $$1 --sets $$2 --burst $$3 --bus-bytes $(BUS_BYTES) \
+	    --fixed $(FIXED_COST) --beat $(BEAT_COST) $(PENALTY_ARG) \
 	    > $(SWEEP_DIR)/$${0}_$${1}_$${2}_$${3}.csv'
 	@if [ "$(SWEEP_QUIET)" != "1" ]; then \
 	  echo ""; \

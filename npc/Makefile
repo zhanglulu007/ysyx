@@ -26,16 +26,11 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-
-# ---- 指令缓存选择与参数（B4 突发传输 / 设计空间探索）----------------------
-# ICACHE_RTL=1 : 例化 ICache.v（综合口径，固定 16 组 x 1 路 x 4B）
-# ICACHE_RTL=0 : 例化 ICachesim.v（参数化，仅用于仿真评估）
-# IC_BLOCK/IC_SETS/IC_WAYS/IC_BURST 只在 ICACHE_RTL=0 时生效
-ICACHE_RTL ?= 0
-IC_BLOCK   ?= 4
-IC_SETS    ?= 16
+ICACHE_SIM ?= 0
+IC_BLOCK   ?= 16
+IC_SETS    ?= 4
 IC_WAYS    ?= 1
-IC_BURST   ?= 0
+IC_BURST   ?= 1
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0
@@ -178,28 +173,6 @@ ifneq ($(strip $(F)),)
   endif
 endif
 
-# ---- ICache 宏 ------------------------------------------------------------
-ifeq ($(ICACHE_RTL),1)
-  VERILATOR_FLAGS += -DICACHE_RTL
-else
-  VERILATOR_FLAGS += -DIC_BLOCK=$(IC_BLOCK) -DIC_SETS=$(IC_SETS) \
-                     -DIC_WAYS=$(IC_WAYS) -DIC_BURST=$(IC_BURST)
-endif
-
-# Verilator 的增量构建不感知 -D 宏变化，配置一变就清理对象目录。
-IC_CFG_LINE := ICACHE_RTL=$(ICACHE_RTL) IC_BLOCK=$(IC_BLOCK) IC_SETS=$(IC_SETS) \
-               IC_WAYS=$(IC_WAYS) IC_BURST=$(IC_BURST)
-IC_CFG_STAMP := $(BUILD_DIR)/.icache-cfg
-
-icache-config-check:
-	@mkdir -p $(BUILD_DIR)
-	@printf '%s\n' '$(IC_CFG_LINE)' > $(IC_CFG_STAMP).tmp
-	@if [ -f $(IC_CFG_STAMP) ] && ! cmp -s $(IC_CFG_STAMP) $(IC_CFG_STAMP).tmp; then \
-	  echo "-- NPC: ICache 配置已变化，清理 $(OBJ_DIR) --"; \
-	  rm -rf $(OBJ_DIR); \
-	fi
-	@mv $(IC_CFG_STAMP).tmp $(IC_CFG_STAMP)
-
 SDL_CFLAGS := $(shell sdl2-config --cflags)
 SDL_LIBS := $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf
 
@@ -225,8 +198,6 @@ show-config:
 	@echo "OBJ_DIR=$(OBJ_DIR)"
 	@echo "FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH)"
 	@echo "PERF=$(PERF) NVBOARD=$(NVBOARD) F=$(F)"
-	@echo "ICACHE_RTL=$(ICACHE_RTL) IC_BLOCK=$(IC_BLOCK) IC_SETS=$(IC_SETS) IC_WAYS=$(IC_WAYS) IC_BURST=$(IC_BURST)"
-	@echo "IC_IMPL=$(if $(filter 1,$(ICACHE_RTL)),ICache.v (综合口径),ICachesim.v (仿真))"
 	@echo "PROG=$(PROG_ABS) ELF=$(ELF_ABS)"
 	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 
@@ -243,10 +214,9 @@ check-soc:
 lint: $(MODE_PREREQUISITE)
 	$(VERILATOR) --lint-only -Wno-fatal $(VERILATOR_FLAGS) $(RTL_SRCS)
 
-build: icache-config-check $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
+build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
 	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH)] --"
-	@echo "-- ICACHE    [$(IC_CFG_LINE)] --"
 	$(VERILATE_CMD)
 
 run: build

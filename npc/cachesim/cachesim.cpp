@@ -43,15 +43,10 @@ struct Config {
   uint32_t block = 4;
   uint32_t miss_penalty = 30;  // 一次缺失折算的周期数, 用于估算 TMT
   bool     miss_penalty_set = false;  // 命令行是否显式给了 --miss-penalty
-
-  // ---- 突发传输的缺失代价模型（讲义 B4 §8.3 / §8.4）------------------
-  // 一次缺失要搬运 n = block / bus_bytes 个字节组：
-  //   独立事务：n * (a + b + c + d)
-  //   突发传输：a + b + n*c + d
-  // 当 miss_penalty 未被显式指定时，用该模型算出每次缺失的周期数。
-  uint32_t bus_bytes = 4;   // 总线数据位宽（字节）
-  bool     burst     = false;
-  uint32_t lat_a = 1, lat_b = 10, lat_c = 30, lat_d = 1;  // SDRAM 四段开销
+  uint32_t bus_bytes  = 4;    // 总线数据位宽（字节）
+  bool     burst      = false;
+  uint32_t fixed_cost = 28;   // 突发的一次性开销（CPU 周期）
+  uint32_t beat_cost  = 5;    // 每个 beat 的边际成本（CPU 周期，≈ r）
 
   bool csv = false;         // 只输出一行 CSV, 供参数扫描脚本汇总
 };
@@ -101,12 +96,12 @@ class CacheSim {
     lru_[base + victim] = ++clock_;
   }
 
-  // 一次缺失的代价：显式给出的 --miss-penalty 优先，否则按突发模型计算
+  // 一次缺失的代价：显式给出的 --miss-penalty 优先，否则按实测标定的模型计算
   uint64_t penalty() const {
     if (cfg_.miss_penalty_set) return cfg_.miss_penalty;
     const uint64_t n = cfg_.block / cfg_.bus_bytes;
-    const uint64_t a = cfg_.lat_a, b = cfg_.lat_b, c = cfg_.lat_c, d = cfg_.lat_d;
-    return cfg_.burst ? (a + b + n * c + d) : (n * (a + b + c + d));
+    return cfg_.burst ? (cfg_.fixed_cost + n * cfg_.beat_cost)
+                      : (n * (cfg_.fixed_cost + cfg_.beat_cost));
   }
 
   void report(double elapsed_ms) const {
@@ -132,9 +127,9 @@ class CacheSim {
 
     printf("\n[Miss cost]\n");
     if (!cfg_.miss_penalty_set) {
-      printf("  model              : %s, n=%u beats, a=%u b=%u c=%u d=%u\n",
-             cfg_.burst ? "burst" : "independent",
-             cfg_.block / cfg_.bus_bytes, cfg_.lat_a, cfg_.lat_b, cfg_.lat_c, cfg_.lat_d);
+      printf("  model              : %s, n=%llu beats, fixed=%u, per-beat=%u (CPU cycles)\n",
+             cfg_.burst ? "burst" : "independent", u64(cfg_.block / cfg_.bus_bytes),
+             cfg_.fixed_cost, cfg_.beat_cost);
     }
     printf("  miss penalty        : %llu cycles\n", u64(pen));
     printf("  TMT                 : %llu cycles\n", u64(tmt));
@@ -174,12 +169,14 @@ void usage(const char *argv0) {
   printf("  --ways N           相联度, 2 的幂 (默认 1)\n");
   printf("  --block BYTES      块大小, 2 的幂且 >= 4 (默认 4)\n");
   printf("  --csv              只输出一行 CSV: block,ways,sets,burst,hit_rate,miss,tmt\n");
-  printf("\n缺失代价模型 (讲义 B4 §8.3/§8.4):\n");
+  printf("\n缺失代价模型 (CPU 周期, 由 ysyxSoC 实测标定):\n");
   printf("  --miss-penalty N   直接指定每次缺失的周期数 (指定后忽略下面的模型)\n");
   printf("  --bus-bytes N      总线数据位宽 (默认 4)\n");
   printf("  --burst 0|1        1 = 一次 AR 拉起整块 (默认 0 = 逐字独立事务)\n");
-  printf("  --lat A,B,C,D      SDRAM 四段开销 (默认 1,10,30,1)\n");
-  printf("                     独立事务: n*(a+b+c+d);  突发: a+b+n*c+d,  n=block/bus\n");
+  printf("  --fixed N          突发的一次性开销 (默认 28)\n");
+  printf("  --beat N           每多一个 beat 的边际成本 (默认 5)\n");
+  printf("                     突发: fixed + n*beat;  独立: n*(fixed+beat),  n=block/bus\n");
+  printf("                     默认值由 F=51 (r=5.1) 下 4B/8B/16B 三组实测标定\n");
   printf("\nExample: %s --trace ../build/microbench-train.pc --sets 16 --ways 1 --block 4\n",
          argv0);
 }
@@ -241,15 +238,8 @@ int main(int argc, char **argv) {
                                                   cfg.miss_penalty_set = true; }
     else if (strcmp(a, "--bus-bytes") == 0)    { cfg.bus_bytes = (uint32_t)strtoul(value(a), nullptr, 0); }
     else if (strcmp(a, "--burst") == 0)        { cfg.burst = (strtoul(value(a), nullptr, 0) != 0); }
-    else if (strcmp(a, "--lat") == 0) {
-      const char *v = value(a);
-      unsigned a1 = 0, b1 = 0, c1 = 0, d1 = 0;
-      if (sscanf(v, "%u,%u,%u,%u", &a1, &b1, &c1, &d1) != 4) {
-        fprintf(stderr, "Error: --lat expects A,B,C,D\n");
-        return 1;
-      }
-      cfg.lat_a = a1; cfg.lat_b = b1; cfg.lat_c = c1; cfg.lat_d = d1;
-    }
+    else if (strcmp(a, "--fixed") == 0)        { cfg.fixed_cost = (uint32_t)strtoul(value(a), nullptr, 0); }
+    else if (strcmp(a, "--beat") == 0)         { cfg.beat_cost = (uint32_t)strtoul(value(a), nullptr, 0); }
     else {
       fprintf(stderr, "Error: unknown argument '%s'\n", a);
       usage(argv[0]);
