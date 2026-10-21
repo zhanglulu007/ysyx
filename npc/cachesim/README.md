@@ -19,7 +19,7 @@ make YSYXSOC_REF=1 NAME=riscv32-nemu-interpreter-ysyxsoc -j
 
 # 导出 microbench train 的 PC 序列（-c 必须在镜像位置参数之前）
 ./build/riscv32-nemu-interpreter-ysyxsoc -b \
-    -c ../npc/build/microbench-train.pc \
+    -c ../npc/cachesim/build/microbench-train.pc \
     ../am-kernels/benchmarks/microbench/build/microbench-riscv32e-ysyxsoc.bin
 ```
 
@@ -31,8 +31,8 @@ FLASH + SRAM + SDRAM，复位向量指向 `0x30000000`，从而能直接运行
 
 ```bash
 make                       # 产物 build/cachesim
-./build/cachesim --trace ../build/microbench-train.pc \
-                 --sets 16 --ways 1 --block 4 --miss-penalty 30
+./build/cachesim --trace build/microbench-train.pc \
+                 --sets 16 --ways 1 --block 16 --bus-bytes 4 --burst 1 --lat 1,10,30,1
 ```
 
 | 参数 | 含义 |
@@ -41,42 +41,66 @@ make                       # 产物 build/cachesim
 | `--sets N` | 组数，2 的幂，默认 16 |
 | `--block BYTES` | 块大小，2 的幂且 ≥ 4，默认 4 |
 | `--ways N` | 相联度，2 的幂，默认 1 |
-| `--miss-penalty N` | 每次缺失折算的周期数，默认 30 |
+| `--miss-penalty N` | 直接指定每次缺失的周期数；**指定后忽略下面的模型** |
+| `--bus-bytes N` | 总线数据位宽，默认 4 |
+| `--burst 0\|1` | 1 = 一次 AR 拉起整块（默认 0 = 逐字独立事务） |
+| `--lat A,B,C,D` | SDRAM 四段开销，默认 `1,10,30,1` |
 
 默认值 `sets=16 ways=1 block=4` 与当前 `npc/vsrc/ICache.v` 完全一致
 （16 块直接映射，每块 4 字节），因此可直接作为 NPC 性能计数器的参考。
 
+### 缺失代价模型（讲义 B4 §8.3 / §8.4）
+
+块大小为 `block`、总线位宽为 `bus_bytes` 时，一次缺失需搬运 `n = block / bus_bytes`
+个字节组：
+
+| 传输方式 | 每次缺失的代价 |
+| --- | --- |
+| 独立事务（`--burst 0`） | `n × (a + b + c + d)` |
+| 突发传输（`--burst 1`） | `a + b + n × c + d` |
+
+四项分别对应 AR 有效到握手（a）、发 READ 命令（b）、SDRAM 返回数据（c）、
+R 通道握手（d）。以 `block=16`、默认 `lat` 为例：独立事务 `4×42 = 168` 周期，
+突发 `1+10+4×30+1 = 132` 周期，TMT 降低 21.4%；`block=32` 时突发可降 25.0%。
+这一模型给出的是 **SDRAM 控制器视角**的开销，未经 `axi4_delayer` 校准；
+真实周期数应在 ysyxSoC 中实测（见 `npc` 的 `[ICache behavior]` 段）。
+
 ## 一键评估（推荐）
 
 ```bash
-make -C npc cachesim-eval
+make -C npc/cachesim eval
 ```
+
+cachesim 自带完整流程，`npc/Makefile` 不参与；全部产物落在本目录 `build/` 下。
 
 一次完成三件事：
 
 1. **隔离并自动恢复 NEMU 配置**：导出 trace 前把 `nemu/.config`、`.config.old`、
-   `include/config`、`include/generated` 备份到 `npc/build/.cachesim-cfg-bak`，
+   `include/config`、`include/generated` 备份到 `npc/cachesim/build/.nemu-cfg-bak`，
    切到 `riscv32-ysyxsoc_defconfig` 编译并导出 trace；结束后（**包括 Ctrl-C 或中途失败**）
    由 `trap EXIT` 无条件还原，因此不会污染你原本的 NEMU 配置。
 2. **多进程并行探索**：按 `block × ways × sets` 网格以 `JOBS`（默认 CPU 核数）
-   并行调用 cachesim，每组结果落盘到 `npc/build/cachesim-sweep/*.csv`。
-3. **打印报告**：输出环境信息、当前实现的基线、按 TMT 升序的 Top N、最优组合及其
-   相对基线的改善，以及与 NPC perf 的参考对照。
+   并行调用 cachesim，每组结果落盘到 `npc/cachesim/build/sweep/*.csv`。
+3. **打印报告**：输出环境信息、当前实现的基线、**全部组合**的完整结果表（按 TMT 升序）、
+   最优组合及其相对基线的改善，以及与 NPC perf 的参考对照。
 
 可调参数（均可在命令行覆盖）：
 
 | 变量 | 默认 | 含义 |
 | --- | --- | --- |
 | `JOBS` | CPU 核数 | 并行进程数 |
-| `CACHESIM_SWEEP_BLOCKS` | `4 8 16 32` | 块大小网格 |
-| `CACHESIM_SWEEP_WAYS` | `1 2 4` | 相联度网格 |
-| `CACHESIM_SWEEP_SETS` | `4 8 16 32` | 组数网格 |
-| `CACHESIM_TOP` | `8` | 报告展示的 Top N |
-| `CACHESIM_PENALTY` | `30` | 每次缺失的周期数 |
+| `SWEEP_BLOCKS` | `4 8 16 32` | 块大小网格 |
+| `SWEEP_WAYS` | `1 2 4` | 相联度网格 |
+| `SWEEP_SETS` | `4 8 16 32` | 组数网格 |
+| `PENALTY` | `30` | 每次缺失的周期数 |
 | `FORCE` | 空 | 设为 `1` 强制重建 trace |
 
-拆开用的三个子目标：`cachesim-trace`（只导 trace）、`cachesim-sweep`（扫描并打印全表）、
-`cachesim-eval-report`（只按已有 CSV 重打印报告，不重新扫描）。
+拆开用的子目标：`make trace`（只导 trace）、`make sweep`（扫描并打印全表）、
+`make report`（只按已有 CSV 重打印完整报告）、`make run`（单组评估）。
+
+例：`make eval SWEEP_WAYS="1 2 4 8" PENALTY=34`
+
+报告不截断结果，组合数较多时输出会较长；只想看全表可单独跑 `make sweep`。
 
 ## 输出
 
@@ -92,15 +116,17 @@ make -C npc cachesim-eval
   total fetched       : 195296071
 
 [Miss cost]
-  miss penalty        : 30 cycles
-  TMT                 : 1534225200 cycles
+  model              : burst, n=4 beats, a=1 b=10 c=30 d=1
+  miss penalty        : 132 cycles
+  TMT                 : 510032820 cycles
 ```
 
 - `access` 只统计落在可缓存区间的取指；区间外计入 `bypass`。区间判定
   （`0x3000_0000~0x3100_0000` 与 `0xa000_0000~0xa200_0000`）照抄
   `npc/vsrc/top.v` 的 `ifu_cacheable`，这是能与 NPC 对上的前提。
 - `compulsory` = 组内有无效路的缺失；`replace` = 组内全有效时的替换。
-- `TMT = miss × miss_penalty`，按讲义用常数缺失代价估算。
+- `TMT = miss × miss penalty`；缺失代价优先取 `--miss-penalty`，否则按上面的
+  突发模型计算（`model` 行会打印实际采用的公式参数）。
 
 ## 与 NPC 性能计数器的对照（仅供参考）
 

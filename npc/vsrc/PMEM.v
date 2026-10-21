@@ -61,14 +61,21 @@ module PMEM(
   reg [31:0] wdata_reg;
   reg [3:0] wstrb_reg;
 
+  // 突发读：rd_left 记录本次事务「还剩几个后续 beat」。
+  // 单 beat（arlen==0）时 rd_left==0，行为与原实现完全一致。
+  reg [7:0]  rd_left;
+  reg [31:0] rd_addr;
+
   wire r_fire = mem_rvalid && mem_rready;
-  wire read_ready = (read_state == IDLE) || r_fire;
+  // 只有单 beat 完成的那一拍才允许背靠背接受新 AR（保持原性能）；
+  // 多 beat 未收完时 read_state==WAIT 且 rd_left!=0，不接受新 AR。
+  wire read_ready = (read_state == IDLE) || (r_fire && (rd_left == 8'd0));
 
   assign mem_arready = !rst && read_ready;
   assign mem_rvalid = !rst && (read_state == WAIT);
   assign mem_rresp = 2'b00;
   assign mem_rdata = rdata_reg;
-  assign mem_rlast = mem_rvalid;
+  assign mem_rlast = !rst && (read_state == WAIT) && (rd_left == 8'd0);
   assign mem_rid = rid_reg;
 
   assign mem_awready = !rst && (write_state == IDLE) && !aw_done;
@@ -97,21 +104,33 @@ module PMEM(
       awid_reg <= 4'b0;
       wdata_reg <= 32'b0;
       wstrb_reg <= 4'b0;
+      rd_left <= 8'd0;
+      rd_addr <= 32'b0;
     end else begin
       // 读通道独立工作，允许与写通道并行
       case (read_state)
         IDLE: begin
           if (ar_fire) begin
             rdata_reg <= pmem_read(mem_araddr);
-            rid_reg <= mem_arid;
+            rid_reg   <= mem_arid;
+            rd_addr   <= mem_araddr;
+            rd_left   <= mem_arlen;      // 后续还需要的 beat 数
             read_state <= WAIT;
           end
         end
         WAIT: begin
           if (r_fire) begin
-            if (ar_fire) begin
+            if (rd_left != 8'd0) begin
+              // 多 beat 突发：继续返回下一个 32 位字，保持 WAIT
+              rdata_reg <= pmem_read(rd_addr + 32'd4);
+              rd_addr   <= rd_addr + 32'd4;
+              rd_left   <= rd_left - 8'd1;
+            end else if (ar_fire) begin
+              // 单 beat 完成且总线已给出下一个 AR：背靠背受理
               rdata_reg <= pmem_read(mem_araddr);
-              rid_reg <= mem_arid;
+              rid_reg   <= mem_arid;
+              rd_addr   <= mem_araddr;
+              rd_left   <= mem_arlen;
               read_state <= WAIT;
             end else begin
               read_state <= IDLE;

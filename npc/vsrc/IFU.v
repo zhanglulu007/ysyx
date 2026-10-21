@@ -4,22 +4,16 @@ module IFU(
   input commit,
   input [31:0] pc_next,
 
-  // AXI4 AR 
+  // 取指请求：只传地址与握手，arid/arlen/arsize/arburst 为恒定值，
+  // 由下游 ICache / Arbiter 在各自边界补齐（2024 B4 突发传输实验）。
   output ifu_arvalid,
-  input ifu_arready,
+  input  ifu_arready,
   output [31:0] ifu_araddr,
-  output [3:0] ifu_arid,
-  output [7:0] ifu_arlen,
-  output [2:0] ifu_arsize,
-  output [1:0] ifu_arburst,
 
-  // AXI4 R 
-  input ifu_rvalid,
+  // 取指返回：IFU 每次只请求一条 4B 指令，故没有 rlast/rresp/rid 语义。
+  input  ifu_rvalid,
   output ifu_rready,
-  input [1:0] ifu_rresp,
-  input [31:0] ifu_rdata,
-  input ifu_rlast,
-  input [3:0] ifu_rid,
+  input  [31:0] ifu_rdata,
 
   output reg [31:0] pc,
   output [31:0] inst,
@@ -34,14 +28,10 @@ module IFU(
 
   assign ifu_arvalid = !rst && (state == IDLE);
   assign ifu_araddr = pc;
-  assign ifu_arid = 4'b0001;
-  assign ifu_arlen = 8'b0;
-  assign ifu_arsize = 3'b010;
-  assign ifu_arburst = 2'b01;
 
   assign ifu_rready = !rst && (state == WAIT) && !inst_valid;
   assign inst = (ifu_rvalid && ifu_rready) ? ifu_rdata : inst_reg;
-  assign ifu_valid = !rst && (inst_valid || (ifu_rvalid && ifu_rready && ifu_rlast));
+  assign ifu_valid = !rst && (inst_valid || (ifu_rvalid && ifu_rready));
 
   always @(posedge clk) begin
     if (rst) begin
@@ -61,7 +51,7 @@ module IFU(
           end
         end
         WAIT: begin
-          if (ifu_rvalid && ifu_rready && ifu_rlast) begin
+          if (ifu_rvalid && ifu_rready) begin
             inst_reg <= ifu_rdata;
             inst_valid <= 1'b1;
           end

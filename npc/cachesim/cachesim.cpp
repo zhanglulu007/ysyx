@@ -42,7 +42,18 @@ struct Config {
   uint32_t ways = 1;
   uint32_t block = 4;
   uint32_t miss_penalty = 30;  // 一次缺失折算的周期数, 用于估算 TMT
-  bool csv = false;            // 只输出一行 CSV, 供参数扫描脚本汇总
+  bool     miss_penalty_set = false;  // 命令行是否显式给了 --miss-penalty
+
+  // ---- 突发传输的缺失代价模型（讲义 B4 §8.3 / §8.4）------------------
+  // 一次缺失要搬运 n = block / bus_bytes 个字节组：
+  //   独立事务：n * (a + b + c + d)
+  //   突发传输：a + b + n*c + d
+  // 当 miss_penalty 未被显式指定时，用该模型算出每次缺失的周期数。
+  uint32_t bus_bytes = 4;   // 总线数据位宽（字节）
+  bool     burst     = false;
+  uint32_t lat_a = 1, lat_b = 10, lat_c = 30, lat_d = 1;  // SDRAM 四段开销
+
+  bool csv = false;         // 只输出一行 CSV, 供参数扫描脚本汇总
 };
 
 class CacheSim {
@@ -90,12 +101,23 @@ class CacheSim {
     lru_[base + victim] = ++clock_;
   }
 
+  // 一次缺失的代价：显式给出的 --miss-penalty 优先，否则按突发模型计算
+  uint64_t penalty() const {
+    if (cfg_.miss_penalty_set) return cfg_.miss_penalty;
+    const uint64_t n = cfg_.block / cfg_.bus_bytes;
+    const uint64_t a = cfg_.lat_a, b = cfg_.lat_b, c = cfg_.lat_c, d = cfg_.lat_d;
+    return cfg_.burst ? (a + b + n * c + d) : (n * (a + b + c + d));
+  }
+
   void report(double elapsed_ms) const {
     const uint64_t fetched = access_ + bypass_;
-    const uint64_t tmt = miss_ * cfg_.miss_penalty;
+    const uint64_t pen     = penalty();
+    const uint64_t tmt     = miss_ * pen;
 
-    printf("config: sets=%u ways=%u block=%uB miss_penalty=%u\n",
-           cfg_.sets, cfg_.ways, cfg_.block, cfg_.miss_penalty);
+    printf("config: sets=%u ways=%u block=%uB bus=%uB %s miss_penalty=%llu%s\n",
+           cfg_.sets, cfg_.ways, cfg_.block, cfg_.bus_bytes,
+           cfg_.burst ? "burst" : "independent", u64(pen),
+           cfg_.miss_penalty_set ? " (explicit)" : " (model)");
     printf("\n[ICache behavior]\n");
     printf("  access / hit / miss: %llu / %llu / %llu\n",
            u64(access_), u64(hit_), u64(miss_));
@@ -109,7 +131,12 @@ class CacheSim {
     printf("  total fetched       : %llu\n", u64(fetched));
 
     printf("\n[Miss cost]\n");
-    printf("  miss penalty        : %u cycles\n", cfg_.miss_penalty);
+    if (!cfg_.miss_penalty_set) {
+      printf("  model              : %s, n=%u beats, a=%u b=%u c=%u d=%u\n",
+             cfg_.burst ? "burst" : "independent",
+             cfg_.block / cfg_.bus_bytes, cfg_.lat_a, cfg_.lat_b, cfg_.lat_c, cfg_.lat_d);
+    }
+    printf("  miss penalty        : %llu cycles\n", u64(pen));
     printf("  TMT                 : %llu cycles\n", u64(tmt));
     printf("  misses per 1k inst  : %.2f\n", fetched ? double(miss_) * 1000.0 / double(fetched) : 0.0);
 
@@ -118,10 +145,10 @@ class CacheSim {
     printf("  wall time           : %.1f ms\n", elapsed_ms);
   }
 
-  // 单行 CSV: block,ways,sets,hit_rate,miss,tmt —— 供 Makefile 并行扫描直接排序汇总
+  // 单行 CSV: block,ways,sets,burst,hit_rate,miss,tmt
   void report_csv() const {
-    printf("%u,%u,%u,%.2f,%llu,%llu\n", cfg_.block, cfg_.ways, cfg_.sets,
-           pct(hit_, access_), u64(miss_), u64(miss_ * cfg_.miss_penalty));
+    printf("%u,%u,%u,%u,%.2f,%llu,%llu\n", cfg_.block, cfg_.ways, cfg_.sets,
+           cfg_.burst ? 1u : 0u, pct(hit_, access_), u64(miss_), u64(miss_ * penalty()));
   }
 
  private:
@@ -146,8 +173,13 @@ void usage(const char *argv0) {
   printf("  --sets N           组数, 2 的幂 (默认 16)\n");
   printf("  --ways N           相联度, 2 的幂 (默认 1)\n");
   printf("  --block BYTES      块大小, 2 的幂且 >= 4 (默认 4)\n");
-  printf("  --miss-penalty N   每次缺失的周期数 (默认 30)\n");
-  printf("  --csv              只输出一行 CSV: block,ways,sets,hit_rate,miss,tmt\n");
+  printf("  --csv              只输出一行 CSV: block,ways,sets,burst,hit_rate,miss,tmt\n");
+  printf("\n缺失代价模型 (讲义 B4 §8.3/§8.4):\n");
+  printf("  --miss-penalty N   直接指定每次缺失的周期数 (指定后忽略下面的模型)\n");
+  printf("  --bus-bytes N      总线数据位宽 (默认 4)\n");
+  printf("  --burst 0|1        1 = 一次 AR 拉起整块 (默认 0 = 逐字独立事务)\n");
+  printf("  --lat A,B,C,D      SDRAM 四段开销 (默认 1,10,30,1)\n");
+  printf("                     独立事务: n*(a+b+c+d);  突发: a+b+n*c+d,  n=block/bus\n");
   printf("\nExample: %s --trace ../build/microbench-train.pc --sets 16 --ways 1 --block 4\n",
          argv0);
 }
@@ -205,7 +237,19 @@ int main(int argc, char **argv) {
     else if (strcmp(a, "--sets") == 0)         { cfg.sets = (uint32_t)strtoul(value(a), nullptr, 0); }
     else if (strcmp(a, "--ways") == 0)         { cfg.ways = (uint32_t)strtoul(value(a), nullptr, 0); }
     else if (strcmp(a, "--block") == 0)        { cfg.block = (uint32_t)strtoul(value(a), nullptr, 0); }
-    else if (strcmp(a, "--miss-penalty") == 0) { cfg.miss_penalty = (uint32_t)strtoul(value(a), nullptr, 0); }
+    else if (strcmp(a, "--miss-penalty") == 0) { cfg.miss_penalty = (uint32_t)strtoul(value(a), nullptr, 0);
+                                                  cfg.miss_penalty_set = true; }
+    else if (strcmp(a, "--bus-bytes") == 0)    { cfg.bus_bytes = (uint32_t)strtoul(value(a), nullptr, 0); }
+    else if (strcmp(a, "--burst") == 0)        { cfg.burst = (strtoul(value(a), nullptr, 0) != 0); }
+    else if (strcmp(a, "--lat") == 0) {
+      const char *v = value(a);
+      unsigned a1 = 0, b1 = 0, c1 = 0, d1 = 0;
+      if (sscanf(v, "%u,%u,%u,%u", &a1, &b1, &c1, &d1) != 4) {
+        fprintf(stderr, "Error: --lat expects A,B,C,D\n");
+        return 1;
+      }
+      cfg.lat_a = a1; cfg.lat_b = b1; cfg.lat_c = c1; cfg.lat_d = d1;
+    }
     else {
       fprintf(stderr, "Error: unknown argument '%s'\n", a);
       usage(argv[0]);
@@ -216,6 +260,14 @@ int main(int argc, char **argv) {
   if (cfg.trace == nullptr) { usage(argv[0]); return 1; }
   if (!is_pow2(cfg.sets) || !is_pow2(cfg.ways) || !is_pow2(cfg.block) || cfg.block < 4) {
     fprintf(stderr, "Error: sets/ways must be powers of two, block must be a power of two >= 4\n");
+    return 1;
+  }
+  if (!is_pow2(cfg.bus_bytes) || cfg.bus_bytes < 4) {
+    fprintf(stderr, "Error: --bus-bytes must be a power of two >= 4\n");
+    return 1;
+  }
+  if (cfg.block < cfg.bus_bytes) {
+    fprintf(stderr, "Error: block (%u) must be >= bus width (%u)\n", cfg.block, cfg.bus_bytes);
     return 1;
   }
 

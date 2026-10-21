@@ -36,13 +36,9 @@ bool log_enable() {
 }
 #endif
 
-// ----------- cachesim PC trace -----------
 
 FILE *cachesim_trace_fp = NULL;
-
-// 1MB 输出缓冲: 使每条指令的 fwrite 退化为一次内存拷贝, 真正的系统调用极少.
 static char cachesim_trace_buf[1 << 20];
-
 void init_cachesim_trace(const char *trace_file) {
   if (trace_file == NULL) { return; }
   FILE *fp = fopen(trace_file, "wb");

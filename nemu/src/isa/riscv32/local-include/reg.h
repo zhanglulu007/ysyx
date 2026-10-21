@@ -31,8 +31,6 @@ static inline const char* reg_name(int idx) {
 }
 
 // CSR register access helper
-// 注意: 调用方传入的 addr 来自 immI(), 是被符号扩展过的 12 位立即数
-// (例如 mcycle 的 0xb00 会变成 0xfffffb00), 故这里先截到 12 位再比较.
 extern uint64_t g_nr_guest_inst;
 
 #define csr(addr) (*({ \
@@ -42,7 +40,6 @@ extern uint64_t g_nr_guest_inst;
     case 0x305: __csr_ptr = &cpu.mtvec; break;    \
     case 0x341: __csr_ptr = &cpu.mepc; break;     \
     case 0x342: __csr_ptr = &cpu.mcause; break;   \
-    /* 解释器下一指令即一周期, 用已提交指令数作为周期计数快照 */ \
     case 0xb00: cpu.mcycle  = (word_t)g_nr_guest_inst; \
                 __csr_ptr = &cpu.mcycle; break;   \
     case 0xb80: cpu.mcycleh = (word_t)(g_nr_guest_inst >> 32); \

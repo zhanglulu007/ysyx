@@ -85,8 +85,6 @@ void display_iringbuf() {
 }
 #endif
 static void trace_and_difftest(Decode *_this, vaddr_t dnpc) {
-
-  // cachesim: 只导出 PC 序列供回放, 不构造也反汇编 logbuf, 因此关掉 ITRACE 后依然可用
   if (cachesim_trace_fp != NULL) {
     uint32_t trace_pc = (uint32_t)_this->pc;
     fwrite(&trace_pc, sizeof(trace_pc), 1, cachesim_trace_fp);

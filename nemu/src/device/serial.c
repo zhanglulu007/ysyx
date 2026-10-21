@@ -19,11 +19,8 @@
 /* http://en.wikibooks.org/wiki/Serial_Programming/8250_UART_Programming */
 // NOTE: this is compatible to 16550
 
-#define CH_OFFSET  0   // THR: 发送保持寄存器, 写入即输出
-#define LSR_OFFSET 5   // LSR: 线路状态寄存器, 驱动会轮询其就绪位
-
-// LSR bit5 = THRE(发送保持寄存器空), bit6 = TEMT(发送器空闲).
-// 仿真中发送即时完成, 故恒置位, 让 16550 驱动的 "等待可发送" 轮询立刻通过.
+#define CH_OFFSET  0   
+#define LSR_OFFSET 5   
 #define LSR_TX_READY 0x60
 
 static uint8_t *serial_base = NULL;
@@ -36,11 +33,8 @@ static void serial_putc(char ch) {
 static void serial_io_handler(uint32_t offset, int len, bool is_write) {
   assert(len == 1);
   if (is_write) {
-    // 只有 THR 需要真正输出; LCR/IER/除数等配置寄存器在仿真中直接忽略,
-    // 这样 ysyxsoc 平台 uart_init() 的 DLAB/8N1 初始化也能安全通过.
     if (offset == CH_OFFSET) serial_putc(serial_base[CH_OFFSET]);
   } else {
-    // LSR 恒报发送就绪, 其余寄存器读作 0, 供驱动做能力探测.
     serial_base[offset] = (offset == LSR_OFFSET) ? LSR_TX_READY : 0;
   }
 }

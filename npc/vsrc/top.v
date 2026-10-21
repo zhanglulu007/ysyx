@@ -146,25 +146,20 @@ module top(
   wire ifu_arvalid;
   wire ifu_arready;
   wire [31:0] ifu_araddr;
-  wire [3:0] ifu_arid;
-  wire [7:0] ifu_arlen;
-  wire [2:0] ifu_arsize;
-  wire [1:0] ifu_arburst;
   wire ifu_rvalid;
   wire ifu_rready;
-  wire [1:0] ifu_rresp;
   wire [31:0] ifu_rdata;
-  wire ifu_rlast;
-  wire [3:0] ifu_rid;
   wire ifu_valid;
 
   wire icache_arvalid;
   wire icache_arready;
   wire [31:0] icache_araddr;
-  wire [3:0] icache_arid;
   wire [7:0] icache_arlen;
-  wire [2:0] icache_arsize;
-  wire [1:0] icache_arburst;
+  // ICache.v 目前仍输出这三个信号，但语义恒定；按用户要求先不改 ICache.v，
+  // 故在此接收后不使用（Arbiter 侧已自行补常量）。
+  wire [3:0] icache_arid_unused;
+  wire [2:0] icache_arsize_unused;
+  wire [1:0] icache_arburst_unused;
   wire icache_rvalid;
   wire icache_rready;
   wire [1:0] icache_rresp;
@@ -192,16 +187,11 @@ module top(
   wire arb_ifu_arvalid;
   wire arb_ifu_arready;
   wire [31:0] arb_ifu_araddr;
-  wire [3:0] arb_ifu_arid;
   wire [7:0] arb_ifu_arlen;
-  wire [2:0] arb_ifu_arsize;
-  wire [1:0] arb_ifu_arburst;
   wire arb_ifu_rvalid;
   wire arb_ifu_rready;
-  wire [1:0] arb_ifu_rresp;
   wire [31:0] arb_ifu_rdata;
   wire arb_ifu_rlast;
-  wire [3:0] arb_ifu_rid;
 
   wire ifu_cacheable;
   reg cache_pending;
@@ -249,26 +239,23 @@ module top(
 
   assign arb_ifu_arvalid = ifu_cacheable ? icache_arvalid : ifu_arvalid;
   assign arb_ifu_araddr  = ifu_cacheable ? icache_araddr : ifu_araddr;
-  assign arb_ifu_arid    = ifu_cacheable ? icache_arid : ifu_arid;
-  assign arb_ifu_arlen   = ifu_cacheable ? icache_arlen : ifu_arlen;
-  assign arb_ifu_arsize  = ifu_cacheable ? icache_arsize : ifu_arsize;
-  assign arb_ifu_arburst = ifu_cacheable ? icache_arburst : ifu_arburst;
+  // bypass 路径按单条 4B 指令取指；只有 cache 路径可能发出多 beat 突发。
+  assign arb_ifu_arlen   = ifu_cacheable ? icache_arlen : 8'b0;
 
   assign icache_arready = ifu_cacheable ? arb_ifu_arready : 1'b0;
   assign icache_rvalid  = cache_pending ? arb_ifu_rvalid : 1'b0;
-  assign icache_rresp   = arb_ifu_rresp;
+  // IFU 只按 4B 单拍取指，cache 只对 IFU 发 rapt 响应；总线上只有 IFU/LSU
+  // 两个 rid，而 Arbiter 已按 rid 分流，故 rresp/rid 在 cache 边界恒为常量。
+  assign icache_rresp   = 2'b00;
   assign icache_rdata   = arb_ifu_rdata;
   assign icache_rlast   = arb_ifu_rlast;
-  assign icache_rid     = arb_ifu_rid;
+  assign icache_rid     = 4'b0001;
   assign arb_ifu_rready = cache_pending ? icache_rready :
                           (bypass_pending ? ifu_rready : 1'b0);
 
   assign ifu_rvalid = cache_pending ? icache_ifu_rvalid :
                       (bypass_pending ? arb_ifu_rvalid : 1'b0);
-  assign ifu_rresp  = cache_pending ? icache_ifu_rresp : arb_ifu_rresp;
   assign ifu_rdata  = cache_pending ? icache_ifu_rdata : arb_ifu_rdata;
-  assign ifu_rlast  = cache_pending ? icache_ifu_rlast : arb_ifu_rlast;
-  assign ifu_rid    = cache_pending ? icache_ifu_rid : arb_ifu_rid;
 
   // Track which path owns the outstanding IFU fetch.
   always @(posedge clk) begin
@@ -344,22 +331,21 @@ module top(
     .ifu_arvalid(ifu_arvalid),
     .ifu_arready(ifu_arready),
     .ifu_araddr(ifu_araddr),
-    .ifu_arid(ifu_arid),
-    .ifu_arlen(ifu_arlen),
-    .ifu_arsize(ifu_arsize),
-    .ifu_arburst(ifu_arburst),
     .ifu_rvalid(ifu_rvalid),
     .ifu_rready(ifu_rready),
-    .ifu_rresp(ifu_rresp),
     .ifu_rdata(ifu_rdata),
-    .ifu_rlast(ifu_rlast),
-    .ifu_rid(ifu_rid),
     .pc(pc),
     .inst(inst),
     .ifu_valid(ifu_valid)
   );
 
-  // ICache - 指令缓存 (IFU -> ICache -> Arbiter)
+  // ------------------------------------------------------------------
+  // 指令缓存实现选择
+  //   ICACHE_RTL 定义   -> ICache.v   （综合口径，固定 16×1×4B）
+  //   ICACHE_RTL 未定义 -> ICachesim.v（参数化，仅仿真）
+  // 两者的 8 个观测信号同名同义，PERF 探针无需分支。
+  // ------------------------------------------------------------------
+`ifdef ICACHE_RTL
   ICache u_icache(
     .clk(clk),
     .rst(rst),
@@ -367,10 +353,10 @@ module top(
     .ifu_arvalid(icache_ifu_arvalid),
     .ifu_arready(icache_ifu_arready),
     .ifu_araddr(ifu_araddr),
-    .ifu_arid(ifu_arid),
-    .ifu_arlen(ifu_arlen),
-    .ifu_arsize(ifu_arsize),
-    .ifu_arburst(ifu_arburst),
+    .ifu_arid(4'b0001),
+    .ifu_arlen(8'b0),
+    .ifu_arsize(3'b010),
+    .ifu_arburst(2'b01),
 
     .ifu_rvalid(icache_ifu_rvalid),
     .ifu_rready(ifu_rready),
@@ -382,10 +368,10 @@ module top(
     .arvalid(icache_arvalid),
     .arready(icache_arready),
     .araddr(icache_araddr),
-    .arid(icache_arid),
+    .arid(icache_arid_unused),
     .arlen(icache_arlen),
-    .arsize(icache_arsize),
-    .arburst(icache_arburst),
+    .arsize(icache_arsize_unused),
+    .arburst(icache_arburst_unused),
 
     .rvalid(icache_rvalid),
     .rready(icache_rready),
@@ -403,6 +389,40 @@ module top(
     .icache_miss_ar_wait(icache_miss_ar_wait),
     .icache_miss_r_wait(icache_miss_r_wait)
   );
+`else
+  // ICachesim 的候选用简化接口，故 rresp/rlast/rid 在 top 侧只需常量补齐。
+  ICachesim u_icache(
+    .clk(clk),
+    .rst(rst),
+
+    .ifu_arvalid(icache_ifu_arvalid),
+    .ifu_arready(icache_ifu_arready),
+    .ifu_araddr(ifu_araddr),
+
+    .ifu_rvalid(icache_ifu_rvalid),
+    .ifu_rready(ifu_rready),
+    .ifu_rdata(icache_ifu_rdata),
+
+    .arvalid(icache_arvalid),
+    .arready(icache_arready),
+    .araddr(icache_araddr),
+    .arlen(icache_arlen),
+
+    .rvalid(icache_rvalid),
+    .rready(icache_rready),
+    .rdata(icache_rdata),
+    .rlast(icache_rlast),
+
+    .icache_access(icache_access),
+    .icache_hit(icache_hit),
+    .icache_miss(icache_miss),
+    .icache_compulsory(icache_compulsory),
+    .icache_replace(icache_replace),
+    .icache_refill(icache_refill),
+    .icache_miss_ar_wait(icache_miss_ar_wait),
+    .icache_miss_r_wait(icache_miss_r_wait)
+  );
+`endif
   
   // IDU - 译码单元
   IDU u_idu(
@@ -598,16 +618,11 @@ module top(
     .ifu_arvalid(arb_ifu_arvalid),
     .ifu_arready(arb_ifu_arready),
     .ifu_araddr(arb_ifu_araddr),
-    .ifu_arid(arb_ifu_arid),
     .ifu_arlen(arb_ifu_arlen),
-    .ifu_arsize(arb_ifu_arsize),
-    .ifu_arburst(arb_ifu_arburst),
     .ifu_rvalid(arb_ifu_rvalid),
     .ifu_rready(arb_ifu_rready),
-    .ifu_rresp(arb_ifu_rresp),
     .ifu_rdata(arb_ifu_rdata),
     .ifu_rlast(arb_ifu_rlast),
-    .ifu_rid(arb_ifu_rid),
     .lsu_arvalid(lsu_arvalid),
     .lsu_arready(lsu_arready),
     .lsu_araddr(lsu_araddr),
@@ -826,7 +841,7 @@ module top(
   wire perf_is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
   wire perf_is_upper  = is_lui || is_auipc;
 
-  wire perf_if_fetch      = ifu_rvalid && ifu_rready && ifu_rlast;
+  wire perf_if_fetch      = ifu_rvalid && ifu_rready;
   wire perf_if_stall_bus  = ifu_arvalid && !ifu_arready;
   wire perf_if_stall_mem  = ifu_rready && !ifu_rvalid;
   wire perf_if_bypass     = ifu_arvalid && ifu_arready && !ifu_cacheable;
