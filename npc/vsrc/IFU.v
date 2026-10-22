@@ -1,8 +1,14 @@
 module IFU(
   input clk,
   input rst,
-  input commit,
-  input [31:0] pc_next,
+
+  // IF/ID 握手：ready 表示 top 能接收当前指令
+  input ifu_ready,
+  // Stage B 正在执行控制指令时暂停取指，避免取到错误路径
+  input fetch_hold,
+  // 分支/trap 重定向
+  input redirect,
+  input [31:0] redirect_pc,
 
   output ifu_arvalid,
   input  ifu_arready,
@@ -13,25 +19,18 @@ module IFU(
   input  [31:0] ifu_rdata,
 
   output reg [31:0] pc,
-  output [31:0] inst,
-  output ifu_valid,
   output ifu_pre_valid
 );
 
-  localparam IDLE = 2'b00, WAIT = 2'b01, EXEC = 2'b10;
+  localparam IDLE = 1'b0, WAIT = 1'b1;
 
-  reg [1:0] state;
-  reg [31:0] inst_q;
+  reg state;
 
-  assign ifu_arvalid = !rst && (state == IDLE);
+  assign ifu_arvalid = !rst && (state == IDLE) && !fetch_hold;
   assign ifu_araddr  = pc;
 
-  // Miss/bypass data is accepted in WAIT; stateless hit is consumed in IDLE.
-  assign ifu_rready  = !rst && (state == WAIT);
-  assign inst        = inst_q;
-  assign ifu_valid   = !rst && (state == EXEC);
-
-  // Pre-read strobe: the instruction word is available this cycle.
+  // 命中当拍返回；miss/bypass 在 WAIT 收数
+  assign ifu_rready  = !rst && (state == WAIT) && ifu_ready;
   assign ifu_pre_valid = !rst && ifu_rvalid &&
                          ((state == IDLE) || (state == WAIT));
 
@@ -43,28 +42,25 @@ module IFU(
 `else
       pc <= 32'h80000000;
 `endif
-      inst_q <= 32'h00000013;
+    end else if (redirect) begin
+      pc    <= redirect_pc;
+      state <= IDLE;
     end else begin
       case (state)
         IDLE: begin
           if (ifu_rvalid) begin
-            inst_q <= ifu_rdata;       // stateless hit
-            state  <= EXEC;
+            // stateless hit：数据已在手边，等 top 接收后 PC 前进
+            if (ifu_ready) begin
+              pc <= pc + 32'd4;
+            end
           end else if (ifu_arvalid && ifu_arready) begin
-            state  <= WAIT;
+            state <= WAIT;
           end
         end
 
         WAIT: begin
-          if (ifu_rvalid) begin
-            inst_q <= ifu_rdata;
-            state  <= EXEC;
-          end
-        end
-
-        EXEC: begin
-          if (commit) begin
-            pc    <= pc_next;
+          if (ifu_rvalid && ifu_ready) begin
+            pc    <= pc + 32'd4;
             state <= IDLE;
           end
         end
