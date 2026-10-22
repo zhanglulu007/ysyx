@@ -13,6 +13,7 @@ module IDU(
   output is_lui, output is_auipc, output is_jal, output is_jalr,
   output is_ebreak, output is_ecall, output is_mret,
   output is_csrrw, output is_csrrs,
+  output is_fence_i,
   output reg_wen, output mem_valid, output mem_wen, output csr_wen,
 
   output op_r_type,
@@ -96,6 +97,7 @@ module IDU(
   assign is_mret = (inst == 32'h30200073);
   assign is_csrrw = op_system && (funct3 == 3'b001);
   assign is_csrrs = op_system && (funct3 == 3'b010);
+  assign is_fence_i = (inst == 32'h0000100F);
 
   assign reg_wen = ifu_valid && (op_r_type || op_i_arith || op_load ||
                                  is_jump || is_lui || is_auipc || op_system);

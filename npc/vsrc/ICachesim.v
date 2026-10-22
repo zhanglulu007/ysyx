@@ -17,6 +17,7 @@
 module ICachesim(
   input clk,
   input rst,
+  input flush,
 
   // IFU 侧：Phase 1 简化后的接口（地址 + 握手 + 32 位数据）
   input  ifu_arvalid,
@@ -186,6 +187,12 @@ module ICachesim(
         blk_tag[i]   <= 32'b0;
         blk_lru[i]   <= 32'b0;
       end
+    end else if (flush) begin
+      for (i = 0; i < BLOCKS; i = i + 1) begin
+        blk_valid[i] <= 1'b0;
+      end
+      state <= S_IDLE;
+      beat_cnt <= 32'b0;
     end else begin
       case (state)
         S_IDLE: begin

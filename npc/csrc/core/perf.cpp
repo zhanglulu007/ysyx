@@ -73,6 +73,7 @@ void perf_report() {
     const uint64_t ecall   = perf_count[PERF_ECALL];
     const uint64_t mret    = perf_count[PERF_MRET];
     const uint64_t ebreak  = perf_count[PERF_EBREAK];
+    const uint64_t fence_i = perf_count[PERF_FENCE_I];
 
     const uint64_t branch_taken     = perf_count[PERF_BRANCH_TAKEN];
     const uint64_t branch_not_taken = perf_count[PERF_BRANCH_NOT_TAKEN];
@@ -102,7 +103,7 @@ void perf_report() {
 
     // 各指令类别计数之和, 用于与动态指令数做一致性检查
     const uint64_t class_sum =
-        alu + load + store + branch + jump + upper + csr + ecall + mret + ebreak;
+        alu + load + store + branch + jump + upper + csr + ecall + mret + ebreak + fence_i;
 
     printf("\n=================== Performance Report ===================\n");
     printf("Cycles           : %" PRIu64 "\n", cycle);
@@ -130,6 +131,7 @@ void perf_report() {
     print_mix("ecall", ecall, commit);
     print_mix("mret", mret, commit);
     print_mix("ebreak", ebreak, commit);
+    print_mix("fence.i", fence_i, commit);
     printf("  %-14s %10" PRIu64 "  %s\n", "class sum", class_sum,
            class_sum == commit ? "OK" : "MISMATCH");
 

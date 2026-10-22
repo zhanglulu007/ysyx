@@ -1,6 +1,7 @@
 module ICache (
   input clk,
   input rst,
+  input flush,
 
   // IFU AXI4 AR
   input ifu_arvalid,
@@ -71,6 +72,10 @@ module ICache (
       req_tag <= {TAG_BITS{1'b0}};
       req_index <= {INDEX_BITS{1'b0}};
       req_word <= 2'b0;
+      beat_cnt <= 2'b0;
+    end else if (flush) begin
+      cache_valid <= {BLOCKS{1'b0}};
+      state <= IDLE;
       beat_cnt <= 2'b0;
     end else begin
       case (state)

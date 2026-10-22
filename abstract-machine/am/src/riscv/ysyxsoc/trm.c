@@ -56,6 +56,8 @@ void ssbl() {
 
   for (char *p = &_bss_start; p < &_bss_end; p++) *p = 0;
   for (char *p = &_bss_extra_start; p < &_bss_extra_end; p++) *p = 0;
+
+  asm volatile("fence.i" ::: "memory");
 }
 
 void _trm_init() {

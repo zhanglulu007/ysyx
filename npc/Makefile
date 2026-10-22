@@ -167,6 +167,14 @@ ifeq ($(PERF), 1)
   EXTRA_CFLAGS += -DENABLE_PERF
 endif
 
+ifeq ($(ICACHE_SIM), 1)
+  VERILATOR_FLAGS += -DICACHE_SIM \
+                     -DIC_BLOCK=$(IC_BLOCK) \
+                     -DIC_SETS=$(IC_SETS) \
+                     -DIC_WAYS=$(IC_WAYS) \
+                     -DIC_BURST=$(IC_BURST)
+endif
+
 ifneq ($(strip $(F)),)
   ifneq ($(strip $(F)),0)
     EXTRA_CFLAGS += -DF=$(strip $(F))
