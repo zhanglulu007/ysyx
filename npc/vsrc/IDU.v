@@ -14,7 +14,6 @@ module IDU(
   output is_ebreak, output is_ecall, output is_mret,
   output is_csrrw, output is_csrrs,
   output is_fence_i,
-  output uses_rs1, output uses_rs2,
   output reg_wen, output mem_valid, output mem_wen, output csr_wen,
 
   output op_r_type,
@@ -99,12 +98,6 @@ module IDU(
   assign is_csrrw = op_system && (funct3 == 3'b001);
   assign is_csrrs = op_system && (funct3 == 3'b010);
   assign is_fence_i = (inst == 32'h0000100F);
-
-  // 冒险检测：这条指令是否真的读取 rs1/rs2
-  assign uses_rs1 = ifu_valid && (op_r_type || op_i_arith || op_load ||
-                                  op_store || op_branch || op_jalr ||
-                                  is_csrrw || is_csrrs);
-  assign uses_rs2 = ifu_valid && (op_r_type || op_store || op_branch);
 
   assign reg_wen = ifu_valid && (op_r_type || op_i_arith || op_load ||
                                  is_jump || is_lui || is_auipc || op_system);

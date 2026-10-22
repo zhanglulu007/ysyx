@@ -28,10 +28,9 @@ module ICache (
 
   localparam BLOCKS = 4;
   localparam INDEX_BITS = 2;
-  // 只缓存 0x3000_0000/0xa000_0000 两个区间: tag={addr[31],addr[24:6]}
-  localparam TAG_BITS = 20;
+  localparam TAG_BITS = 26;
   localparam OFFSET_BITS = 4;
-  localparam BEATS = 4;
+  localparam BEATS = 4;              // 16B 块 / 4B 总线字
 
   localparam IDLE = 2'b00;
   localparam MISS_AR = 2'b01;
@@ -45,30 +44,23 @@ module ICache (
 
   reg [TAG_BITS-1:0] req_tag;
   reg [INDEX_BITS-1:0] req_index;
-  reg [1:0] req_word;
-  reg [1:0] beat_cnt;
-  reg [31:0] rdata_q;
+  reg [1:0] req_word;                // 请求落在块内第几个 32 位字（4 个字）
+  reg [1:0] beat_cnt;                // 缺失填充的节拍计数
 
   wire [INDEX_BITS-1:0] req_index_in = ifu_araddr[5:4];
-  wire [TAG_BITS-1:0] req_tag_in = {ifu_araddr[31], ifu_araddr[24:6]};
+  wire [TAG_BITS-1:0] req_tag_in = ifu_araddr[31:6];
   wire [1:0] req_word_in = ifu_araddr[3:2];
   wire hit = cache_valid[req_index_in] &&
              (cache_tag[req_index_in] == req_tag_in);
 
-  wire [31:0] hit_rdata = cache_data[req_index_in * BEATS + req_word_in];
+  wire [31:0] hit_rdata = cache_data[req_index * BEATS + req_word];
 
   assign ifu_arready = !rst && (state == IDLE);
-  assign ifu_rvalid  = !rst && ((state == IDLE && ifu_arvalid && hit) ||
-                                (state == RETURN));
-  assign ifu_rdata   = (state == IDLE) ? hit_rdata : rdata_q;
-
-  wire [31:0] refill_base = req_tag[TAG_BITS-1] ? 32'hA000_0000 : 32'h3000_0000;
-  wire [31:0] refill_tag  = {13'b0, req_tag[TAG_BITS-2:0]} << 6;
-  wire [31:0] refill_idx  = {30'b0, req_index} << OFFSET_BITS;
-  wire [31:0] refill_addr = refill_base | refill_tag | refill_idx;
+  assign ifu_rvalid  = !rst && (state == RETURN);
+  assign ifu_rdata   = hit_rdata;
 
   assign arvalid = !rst && (state == MISS_AR);
-  assign araddr  = refill_addr;
+  assign araddr  = {req_tag, req_index, {OFFSET_BITS{1'b0}}};
   assign arlen   = BEATS - 1;
 
   assign rready  = !rst && (state == MISS_R);
@@ -81,7 +73,6 @@ module ICache (
       req_index <= {INDEX_BITS{1'b0}};
       req_word <= 2'b0;
       beat_cnt <= 2'b0;
-      rdata_q <= 32'b0;
     end else if (flush) begin
       cache_valid <= {BLOCKS{1'b0}};
       state <= IDLE;
@@ -89,14 +80,17 @@ module ICache (
     end else begin
       case (state)
         IDLE: begin
-          if (ifu_arvalid && ifu_arready && !hit) begin
+          if (ifu_arvalid && ifu_arready) begin
             req_tag   <= req_tag_in;
             req_index <= req_index_in;
             req_word  <= req_word_in;
             beat_cnt  <= 2'b0;
-            state <= MISS_AR;
+            if (hit) begin
+              state <= RETURN;
+            end else begin
+              state <= MISS_AR;
+            end
           end
-          // hit: stay in IDLE, data is consumed combinationally by IFU
         end
 
         MISS_AR: begin
@@ -108,7 +102,6 @@ module ICache (
         MISS_R: begin
           if (rvalid && rready) begin
             cache_data[req_index * BEATS + beat_cnt] <= rdata;
-            if (beat_cnt == req_word) rdata_q <= rdata;
             beat_cnt <= beat_cnt + 2'd1;
             if (rlast) begin
               cache_tag[req_index]   <= req_tag;
@@ -119,7 +112,9 @@ module ICache (
         end
 
         RETURN: begin
-          if (ifu_rready) state <= IDLE;
+          if (ifu_rvalid && ifu_rready) begin
+            state <= IDLE;
+          end
         end
 
         default: state <= IDLE;
