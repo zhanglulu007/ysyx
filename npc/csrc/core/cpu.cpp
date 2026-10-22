@@ -82,9 +82,9 @@ bool init_cpu(int argc, char** argv) {
     Log("Trace: OFF");
 #endif
 #ifdef SOC_MODE
-    Log("Mode: ysyxSoC, 2-stage pipeline");
+    Log("Mode: ysyxSoC, 3-stage pipeline");
 #else
-    Log("Mode: AXI4 PMEM, 2-stage pipeline");
+    Log("Mode: AXI4 PMEM, 3-stage pipeline");
 #endif
 #ifdef ENABLE_NVBOARD
     nvboard_bind_all_pins(top);
@@ -98,7 +98,7 @@ bool init_cpu(int argc, char** argv) {
 }
 
 void reset_cpu() {
-    Log("Resetting 2-stage NPC...");
+    Log("Resetting 3-stage NPC...");
 #ifdef SOC_MODE
     top->reset = 1;
 #else

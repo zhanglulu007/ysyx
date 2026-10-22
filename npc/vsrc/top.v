@@ -48,20 +48,34 @@ module top(
   wire [4:0] rs1 = inst[19:15];
   wire [4:0] rs2 = inst[24:20];
   wire [31:0] imm_i = {{20{inst[31]}}, inst[31:20]};
-  wire [31:0] imm_s = {{20{inst[31]}}, inst[31:25], inst[11:7]};
-  wire [31:0] imm_b = {{19{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
-  wire [31:0] imm_u = {inst[31:12], 12'b0};
-  wire [31:0] imm_j = {{11{inst[31]}}, inst[31], inst[19:12], inst[20], inst[30:21], 1'b0};
 
-  // Stage A 预译码结果；打入 IF/ID 后成为 Stage B 的控制字
+  // Stage 2 的立即数来自 IF/ID 中的 if_inst
+  wire [31:0] if_imm_i = {{20{if_inst[31]}}, if_inst[31:20]};
+  wire [31:0] if_imm_s = {{20{if_inst[31]}}, if_inst[31:25], if_inst[11:7]};
+  wire [31:0] if_imm_b = {{19{if_inst[31]}}, if_inst[31], if_inst[7], if_inst[30:25], if_inst[11:8], 1'b0};
+  wire [31:0] if_imm_u = {if_inst[31:12], 12'b0};
+  wire [31:0] if_imm_j = {{11{if_inst[31]}}, if_inst[31], if_inst[19:12], if_inst[20], if_inst[30:21], 1'b0};
+
+  // Stage 2 译码结果；打入 ID/EX 后成为 Stage 3 的控制字
   wire [50:0] dec_ctrl;
+  wire if_uses_rs1, if_uses_rs2;
   reg  [50:0] id_ctrl;
 
-  // IF/ID：Stage A -> Stage B 的流水寄存器
+  // IF/ID：Stage 1 -> Stage 2 的取指寄存器
+  reg        if_valid;
+  reg [31:0] if_pc;
+  reg [31:0] if_inst;
+
+  // ID/EX：Stage 2 -> Stage 3 的流水寄存器
   reg        id_valid;
   reg [31:0] id_pc;
   reg [31:0] id_inst;
   reg [31:0] id_rs1, id_rs2;
+  reg [31:0] id_addr;
+  reg [31:0] id_fwd_data;
+  reg        id_fwd_valid;
+  reg        id_branch_taken;
+  reg [31:0] id_target;
 
   assign inst = id_inst;
   wire is_add = id_ctrl[0];
@@ -122,18 +136,29 @@ module top(
   wire [31:0] rs1_data, rs2_data;
   wire [31:0] a0_value;  // a0寄存器的值
   
-  // EXU输出
+  // Stage 2 EXU 输出
   wire [31:0] alu_result;
   wire [31:0] jump_target;
   wire [31:0] branch_target;
   wire branch_taken;
-  
-  // WBU输出
+
+  // Stage 3 写回值 / 下一 PC
   wire [31:0] rd_data;
-  wire [31:0] pc_next;
-  
-  // 访存地址计算
-  wire [31:0] addr = op_store ? (id_rs1 + imm_s) : (id_rs1 + imm_i);
+  wire [31:0] retire_pc_next;
+
+  // Stage 2：地址、写回候选值、跳转目标
+  wire [31:0] if_addr = dec_ctrl[44] ? (rs1_data_fwd + if_imm_s)
+                                     : (rs1_data_fwd + if_imm_i);
+  wire [31:0] if_rd_data = dec_ctrl[33] ? if_imm_u :
+                           dec_ctrl[34] ? (if_pc + if_imm_u) :
+                           dec_ctrl[45] ? (if_pc + 32'd4) :
+                           alu_result;
+  wire        if_fwd_valid = dec_ctrl[46] && !dec_ctrl[43] &&
+                             !(dec_ctrl[40] || dec_ctrl[41]);
+  wire [31:0] if_target = dec_ctrl[36] ? jump_target : branch_target;
+
+  // Stage 3 访存地址来自 ID/EX
+  wire [31:0] addr = id_addr;
   wire [31:0] rdata;
 
   // 写回级
@@ -141,18 +166,22 @@ module top(
   reg [4:0]  wb_rd;
   reg        wb_wen;
 
-  wire [31:0] rs1_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == ifu_pre_inst[19:15]))
+  wire [31:0] rs1_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == if_inst[19:15]))
                             ? wb_data : rs1_data;
-  wire [31:0] rs2_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == ifu_pre_inst[24:20]))
+  wire [31:0] rs2_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == if_inst[24:20]))
                             ? wb_data : rs2_data;
-  wire [31:0] a0_value_wb  = (wb_wen && (wb_rd == 5'd10)) ? wb_data : a0_value;
 
-  // Stage B 结果直接前递到 Stage A，解决相邻指令 RAW
-  wire stage2_reg_wen = id_valid && reg_wen && (rd != 5'd0);
-  wire [31:0] rs1_data_fwd = (stage2_reg_wen && (rd == ifu_pre_inst[19:15]))
-                             ? rd_data : rs1_data_wb;
-  wire [31:0] rs2_data_fwd = (stage2_reg_wen && (rd == ifu_pre_inst[24:20]))
-                             ? rd_data : rs2_data_wb;
+  // Stage 3 已寄存的结果前递到 Stage 2；load/CSR 走停顿 + wb 旁路
+  wire [31:0] rs1_data_fwd = (id_valid && id_ctrl[46] && id_fwd_valid &&
+                              (id_inst[11:7] != 5'd0) &&
+                              (id_inst[11:7] == if_inst[19:15]))
+                             ? id_fwd_data : rs1_data_wb;
+  wire [31:0] rs2_data_fwd = (id_valid && id_ctrl[46] && id_fwd_valid &&
+                              (id_inst[11:7] != 5'd0) &&
+                              (id_inst[11:7] == if_inst[24:20]))
+                             ? id_fwd_data : rs2_data_wb;
+
+  wire [31:0] a0_value_wb  = (wb_wen && (wb_rd == 5'd10)) ? wb_data : a0_value;
 
   always @(posedge clk) begin
     if (rst) wb_wen <= 1'b0;
@@ -211,7 +240,6 @@ module top(
   wire ifu_rready;
   wire [31:0] ifu_rdata;
   wire ifu_pre_valid;
-  wire [31:0] ifu_pre_inst = ifu_rdata;
 
   wire icache_arvalid;
   wire icache_arready;
@@ -320,19 +348,51 @@ module top(
   end
 
   wire is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
-  wire stage2_is_control = id_valid &&
-                           (is_jump || is_branch || is_ecall ||
-                            is_mret || is_fence_i || is_ebreak);
-  wire commit = id_valid && (!mem_valid || lsu_done);
 
-  // 最简版：Stage B 执行控制/访存指令时暂停 Stage A。
-  // 访存停取指是为了避免 IFU 预取占住总线、让 LSU 拿不到 AR
-  wire stage2_mem = id_valid && mem_valid;
-  wire fetch_hold = stage2_is_control || stage2_mem;
-  wire ifu_ready  = (!id_valid || commit) && !fetch_hold;
-  wire redirect   = commit && (is_jump || (is_branch && branch_taken) ||
-                               is_ecall || is_mret);
-  wire ifu_capture = ifu_pre_valid && ifu_ready && !redirect;
+  // Stage 2 的控制信号来自 IDU 对 if_inst 的译码
+  wire dec_is_branch = dec_ctrl[19] || dec_ctrl[20] || dec_ctrl[21] ||
+                       dec_ctrl[22] || dec_ctrl[23] || dec_ctrl[24];
+  wire dec_is_csr = dec_ctrl[40] || dec_ctrl[41];
+  wire dec_is_control = dec_ctrl[45] || dec_is_branch ||
+                        dec_ctrl[38] || dec_ctrl[39] ||
+                        dec_ctrl[50] || dec_ctrl[37];
+
+  wire stage2_is_control = if_valid && dec_is_control;
+  wire stage2_mem = if_valid && dec_ctrl[47];
+  wire stage3_late_control = id_valid &&
+                             (is_ecall || is_mret ||
+                              is_fence_i || is_ebreak);
+  wire stage3_mem = id_valid && mem_valid;
+
+  wire commit = id_valid && (!mem_valid || lsu_done);
+  wire stage3_ready = !id_valid || commit;
+
+  // load/CSR 的结果要等提交后走 wb 旁路；普通 ALU 结果从 ID/EX 寄存器前递
+  wire id_late = op_load || is_csr;
+  wire late_stall = if_valid && id_valid && reg_wen && id_late &&
+                    (rd != 5'd0) &&
+                    ((if_uses_rs1 && (rd == if_inst[19:15])) ||
+                     (if_uses_rs2 && (rd == if_inst[24:20])));
+  wire csr_stall = if_valid && id_valid && is_csr && dec_is_csr;
+
+  // 分支/jump 在 Stage 2 解析并重定向；ecall/mret/fence/ebreak 在 Stage 3 提交时处理
+  wire commit_redirect = commit && (is_ecall || is_mret ||
+                                    is_fence_i || is_ebreak);
+  wire stage2_capture = if_valid && stage3_ready &&
+                        !late_stall && !csr_stall && !commit_redirect;
+  wire branch_redirect = stage2_capture && (dec_ctrl[45] ||
+                                            (dec_is_branch && branch_taken));
+  wire redirect = branch_redirect || (commit && (is_ecall || is_mret));
+
+  wire [31:0] redirect_pc = branch_redirect ? if_target :
+                            is_ecall ? mtvec : mepc;
+
+  // Stage 2/3 的控制/访存指令暂停取指，避免错误路径和总线冲突
+  wire fetch_hold = stage2_is_control || stage2_mem ||
+                    stage3_late_control || stage3_mem;
+  wire ifu_ready  = (!if_valid || stage2_capture) && !fetch_hold &&
+                    !branch_redirect;
+  wire ifu_capture = ifu_pre_valid && ifu_ready;
 
   wire fence_i_flush = is_fence_i && commit;
 
@@ -381,7 +441,24 @@ module top(
 
   // ========== 模块实例化 ==========
   
-  // IF/ID 流水寄存器：Stage A 取指/预译码，Stage B 执行/提交
+  // IF/ID：Stage 1 取指 -> Stage 2 译码
+  always @(posedge clk) begin
+    if (rst) begin
+      if_valid <= 1'b0;
+      if_pc    <= 32'b0;
+      if_inst  <= 32'h00000013;
+    end else if (branch_redirect || commit_redirect) begin
+      if_valid <= 1'b0;
+    end else if (ifu_capture) begin
+      if_valid <= 1'b1;
+      if_pc    <= pc;
+      if_inst  <= ifu_rdata;
+    end else if (stage2_capture) begin
+      if_valid <= 1'b0;
+    end
+  end
+
+  // ID/EX：Stage 2 译码/读寄存器 -> Stage 3 执行/提交
   always @(posedge clk) begin
     if (rst) begin
       id_valid <= 1'b0;
@@ -390,16 +467,26 @@ module top(
       id_ctrl  <= 51'b0;
       id_rs1   <= 32'b0;
       id_rs2   <= 32'b0;
-    end else if (redirect) begin
+      id_addr  <= 32'b0;
+      id_fwd_data <= 32'b0;
+      id_fwd_valid <= 1'b0;
+      id_branch_taken <= 1'b0;
+      id_target <= 32'b0;
+    end else if (commit_redirect) begin
       id_valid <= 1'b0;
       id_ctrl  <= 51'b0;
-    end else if (ifu_capture) begin
+    end else if (stage2_capture) begin
       id_valid <= 1'b1;
-      id_pc    <= pc;
-      id_inst  <= ifu_rdata;
+      id_pc    <= if_pc;
+      id_inst  <= if_inst;
       id_ctrl  <= dec_ctrl;
       id_rs1   <= rs1_data_fwd;
       id_rs2   <= rs2_data_fwd;
+      id_addr  <= if_addr;
+      id_fwd_data <= if_rd_data;
+      id_fwd_valid <= if_fwd_valid;
+      id_branch_taken <= branch_taken;
+      id_target <= if_target;
     end else if (commit) begin
       id_valid <= 1'b0;
       id_ctrl  <= 51'b0;
@@ -413,7 +500,7 @@ module top(
     .ifu_ready(ifu_ready),
     .fetch_hold(fetch_hold),
     .redirect(redirect),
-    .redirect_pc(pc_next),
+    .redirect_pc(redirect_pc),
     .ifu_arvalid(ifu_arvalid),
     .ifu_arready(ifu_arready),
     .ifu_araddr(ifu_araddr),
@@ -453,8 +540,8 @@ module top(
   
   // IDU - 预读级译码（对取回指令译码，控制随操作数一起寄存）
   IDU u_idu(
-    .inst(ifu_pre_inst),
-    .ifu_valid(ifu_pre_valid),
+    .inst(if_inst),
+    .ifu_valid(if_valid),
     .rd(),
     .rs1(),
     .rs2(),
@@ -513,7 +600,9 @@ module top(
     .mem_valid(dec_ctrl[47]),
     .mem_wen(dec_ctrl[48]),
     .csr_wen(dec_ctrl[49]),
-    .is_fence_i(dec_ctrl[50])
+    .is_fence_i(dec_ctrl[50]),
+    .uses_rs1(if_uses_rs1),
+    .uses_rs2(if_uses_rs2)
   );
 
   // RegisterFile - 寄存器堆
@@ -523,52 +612,52 @@ module top(
     .waddr(wb_rd),
     .wdata(wb_data),
     .wen(wb_wen),
-    .raddr1(ifu_pre_inst[19:15]),
+    .raddr1(if_inst[19:15]),
     .rdata1(rs1_data),
-    .raddr2(ifu_pre_inst[24:20]),
+    .raddr2(if_inst[24:20]),
     .rdata2(rs2_data),
     .a0_value(a0_value)
   );
   
-  // EXU - 执行单元
+  // EXU - Stage 2 执行单元
   EXU u_exu(
-    .rs1_data(id_rs1),
-    .rs2_data(id_rs2),
-    .imm_i(imm_i),
-    .imm_b(imm_b),
-    .imm_j(imm_j),
-    .pc(id_pc),
+    .rs1_data(rs1_data_fwd),
+    .rs2_data(rs2_data_fwd),
+    .imm_i(if_imm_i),
+    .imm_b(if_imm_b),
+    .imm_j(if_imm_j),
+    .pc(if_pc),
     // R型指令
-    .is_add(is_add),
-    .is_sub(is_sub),
-    .is_and(is_and),
-    .is_or(is_or),
-    .is_xor(is_xor),
-    .is_sll(is_sll),
-    .is_srl(is_srl),
-    .is_sra(is_sra),
-    .is_slt(is_slt),
-    .is_sltu(is_sltu),
+    .is_add(dec_ctrl[0]),
+    .is_sub(dec_ctrl[1]),
+    .is_and(dec_ctrl[2]),
+    .is_or(dec_ctrl[3]),
+    .is_xor(dec_ctrl[4]),
+    .is_sll(dec_ctrl[5]),
+    .is_srl(dec_ctrl[6]),
+    .is_sra(dec_ctrl[7]),
+    .is_slt(dec_ctrl[8]),
+    .is_sltu(dec_ctrl[9]),
     // I型算术/逻辑指令
-    .is_addi(is_addi),
-    .is_slti(is_slti),
-    .is_sltiu(is_sltiu),
-    .is_xori(is_xori),
-    .is_ori(is_ori),
-    .is_andi(is_andi),
-    .is_slli(is_slli),
-    .is_srli(is_srli),
-    .is_srai(is_srai),
+    .is_addi(dec_ctrl[10]),
+    .is_slti(dec_ctrl[11]),
+    .is_sltiu(dec_ctrl[12]),
+    .is_xori(dec_ctrl[13]),
+    .is_ori(dec_ctrl[14]),
+    .is_andi(dec_ctrl[15]),
+    .is_slli(dec_ctrl[16]),
+    .is_srli(dec_ctrl[17]),
+    .is_srai(dec_ctrl[18]),
     // B型分支指令
-    .is_beq(is_beq),
-    .is_bne(is_bne),
-    .is_blt(is_blt),
-    .is_bge(is_bge),
-    .is_bltu(is_bltu),
-    .is_bgeu(is_bgeu),
+    .is_beq(dec_ctrl[19]),
+    .is_bne(dec_ctrl[20]),
+    .is_blt(dec_ctrl[21]),
+    .is_bge(dec_ctrl[22]),
+    .is_bltu(dec_ctrl[23]),
+    .is_bgeu(dec_ctrl[24]),
     // J型指令
-    .is_jal(is_jal),
-    .op_r_type(op_r_type),
+    .is_jal(dec_ctrl[35]),
+    .op_r_type(dec_ctrl[42]),
     // 输出
     .alu_result(alu_result),
     .jump_target(jump_target),
@@ -756,35 +845,17 @@ module top(
     .mcycle_hi_out(mcycle_hi)
   );
 
-  // WBU - 写回单元
-  WBU u_wbu(
-    .pc(id_pc),
-    .alu_result(alu_result),
-    .rdata(rdata),
-    .imm_u(imm_u),
-    .jump_target(jump_target),
-    .branch_target(branch_target),
-    .branch_taken(branch_taken),
-    .csr_rdata(csr_rdata),
-    .mepc(mepc),
-    .mtvec(mtvec),
-    // U型指令
-    .is_lui(is_lui),
-    .is_auipc(is_auipc),
-    // J型指令
-    .is_jal(is_jal),
-    .is_jalr(is_jalr),
-    // 系统指令
-    .is_ebreak(is_ebreak),
-    .is_ecall(is_ecall),
-    .is_mret(is_mret),
-    .is_csr(is_csr),
-    .op_load(op_load),
-    .is_jump(is_jump),
-    // 输出
-    .rd_data(rd_data),
-    .pc_next(pc_next)
-  );
+  // Stage 3 写回值：load 用总线数据，CSR 用 CSR 读值，其余用 Stage 2 寄存的结果
+  assign rd_data = op_load ? rdata :
+                   is_csr  ? csr_rdata :
+                   id_fwd_data;
+
+  // retire 时的下一条 PC，用于 difftest / trace
+  assign retire_pc_next = is_ecall ? mtvec :
+                          is_mret  ? mepc :
+                          is_jump  ? id_target :
+                          is_branch ? (id_branch_taken ? id_target : (id_pc + 32'd4)) :
+                          (id_pc + 32'd4);
   
   // ========== ebreak处理和trace ==========
   
@@ -929,7 +1000,7 @@ module top(
         end
         if (perf_is_branch) begin
           perf_event(PERF_BRANCH);
-          if (branch_taken) perf_event(PERF_BRANCH_TAKEN);
+          if (id_branch_taken) perf_event(PERF_BRANCH_TAKEN);
           else              perf_event(PERF_BRANCH_NOT_TAKEN);
         end
         if (is_jump) begin
@@ -964,7 +1035,7 @@ module top(
       update_csr_values(mstatus, mtvec, mepc, mcause, mcycle_lo, mcycle_hi);
 
       if (commit) begin
-        commit_instruction(id_pc, inst, pc_next);
+        commit_instruction(id_pc, inst, retire_pc_next);
         if (reg_wen) update_reg_value({27'b0, rd}, rd_data);
       end
 
@@ -988,7 +1059,7 @@ module top(
 
       if (is_jalr && commit) begin
         if (rd == 5'd1) begin
-          ftrace_call_handler(id_pc, jump_target);
+          ftrace_call_handler(id_pc, id_target);
         end
         else if (rd == 5'd0 && rs1 == 5'd1) begin
           ftrace_ret_handler(id_pc);
@@ -996,7 +1067,7 @@ module top(
       end
       
       if (is_jal && rd == 5'd1 && commit) begin
-        ftrace_call_handler(id_pc, branch_target);
+        ftrace_call_handler(id_pc, id_target);
       end
       
     end
