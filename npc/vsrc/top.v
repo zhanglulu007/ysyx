@@ -43,7 +43,7 @@ module top(
   // ========== 模块间连接信号 ==========
   
 
-  // 指令字段来自 EXEC 级 inst（IFU 保持到 commit）
+  // 指令字段来自 IF/ID（Stage B 正在执行的指令）
   wire [4:0] rd  = inst[11:7];
   wire [4:0] rs1 = inst[19:15];
   wire [4:0] rs2 = inst[24:20];
@@ -325,8 +325,8 @@ module top(
                             is_mret || is_fence_i || is_ebreak);
   wire commit = id_valid && (!mem_valid || lsu_done);
 
-  // Stage A 只有在 IF/ID 可写时才能接收；控制指令和访存指令暂停取指，
-  // 避免 IFU 预取占住总线、让 LSU 拿不到 AR
+  // 最简版：Stage B 执行控制/访存指令时暂停 Stage A。
+  // 访存停取指是为了避免 IFU 预取占住总线、让 LSU 拿不到 AR
   wire stage2_mem = id_valid && mem_valid;
   wire fetch_hold = stage2_is_control || stage2_mem;
   wire ifu_ready  = (!id_valid || commit) && !fetch_hold;
@@ -860,7 +860,7 @@ module top(
   wire perf_is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
   wire perf_is_upper  = is_lui || is_auipc;
 
-  wire perf_if_fetch      = ifu_pre_valid;
+  wire perf_if_fetch      = ifu_capture;
   wire perf_if_stall_bus  = ifu_arvalid && !ifu_arready;
   wire perf_if_stall_mem  = ifu_rready && !ifu_rvalid;
   wire perf_if_bypass     = ifu_arvalid && ifu_arready && !ifu_cacheable;
@@ -868,9 +868,10 @@ module top(
   wire perf_st_done       = lsu_bvalid && lsu_bready;
   wire perf_ld_wait       = mem_valid && !mem_wen && !perf_ld_done;
   wire perf_st_wait       = mem_valid &&  mem_wen && !perf_st_done;
-  wire perf_ic_access = ifu_arvalid && ifu_arready && ifu_cacheable;
+  wire perf_ic_access = ifu_arvalid && ifu_arready && ifu_cacheable && ifu_ready;
   wire perf_ic_refill = icache_arvalid && icache_arready;
-  wire perf_ic_ret    = icache_hit || (cache_pending && icache_ifu_rvalid && ifu_rready);
+  wire perf_ic_ret    = (icache_hit || (cache_pending && icache_ifu_rvalid && ifu_rready)) &&
+                        ifu_ready;
 
   // 本次 cacheable 取指是否发起过 AR（缺失必然经过 MISS_AR，命中直接返回）
   reg ic_saw_ar;

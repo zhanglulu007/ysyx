@@ -16,16 +16,9 @@ module RegisterFile(
 
   reg [31:0] rf [1:15];
 
-`ifndef SYNTHESIS
-  import "DPI-C" function void update_reg_value(input int idx, input int value);
-`endif
-
   always @(posedge clk) begin
     if (!rst && wen && (waddr != 5'b0)) begin
       rf[waddr[3:0]] <= wdata;
-`ifndef SYNTHESIS
-      update_reg_value({27'b0, waddr}, wdata);
-`endif
     end
   end
 

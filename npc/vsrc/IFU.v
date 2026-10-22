@@ -4,7 +4,7 @@ module IFU(
 
   // IF/ID 握手：ready 表示 top 能接收当前指令
   input ifu_ready,
-  // Stage B 正在执行控制指令时暂停取指，避免取到错误路径
+  // Stage B 正在执行控制/访存指令时暂停取指
   input fetch_hold,
   // 分支/trap 重定向
   input redirect,
