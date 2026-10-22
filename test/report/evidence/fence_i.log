@@ -1,0 +1,117 @@
+[INFO] [cyc=0 commit=0 time=0] [log.cpp:58 init_log] Log is appended to npc.log
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:133 main] Config: mode=standalone trace=off fst=off perf=on nvboard=off F=0
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:160 main] Images: program=/home/zhangshenlu/ysyx-workbench/test/prog/fence_i_test.bin elf=(none) ref=(none)
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:164 main] NPC - RISC-V processor simulator with Simple Debugger
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:165 main] Build time: 21:05:41, Oct 22 2026
+NPC - RISC-V processor simulator with Simple Debugger
+======================================================
+
+[INFO] [cyc=0 commit=0 time=0] [memory.cpp:209 load_program] Loaded 64 bytes from '/home/zhangshenlu/ysyx-workbench/test/prog/fence_i_test.bin' into memory at 0x80000000
+
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:76 init_cpu] FST: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:82 init_cpu] Trace: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:87 init_cpu] Mode: AXI4 PMEM, multi-cycle core
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:95 init_cpu] NVBoard: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:101 reset_cpu] Resetting multi-cycle NPC...
+[INFO] [cyc=0 commit=0 time=20] [cpu.cpp:119 reset_cpu] Reset complete
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:96 init_difftest_if_needed] DiffTest is disabled (no REF specified)
+DiffTest: OFF
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:192 main] Running in batch mode
+Running in batch mode...
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:198 main] Starting simulation from PC=0x80000000
+EBREAK detected at PC=0x80000034, a0=0x00000000
+
+*** HIT GOOD TRAP ***
+[INFO] [cyc=36 commit=15 time=93] [ebreak.cpp:21 ebreak_handler] HIT GOOD TRAP
+[INFO] [cyc=37 commit=15 time=94] [cpu.cpp:197 cpu_exec] Executed 15 instructions in 37 cycles, IPC=0.4054
+[INFO] [cyc=37 commit=15 time=94] [main.cpp:204 main] Simulation finished
+
+Simulation finished.
+[INFO] [cyc=37 commit=15 time=94] [main.cpp:109 print_exit_info] Exit reason: EBREAK instruction (program completed)
+[INFO] [cyc=37 commit=15 time=94] [main.cpp:110 print_exit_info] Exit code: 0
+Exit reason: EBREAK instruction (program completed)
+Exit code: 0
+
+=================== Performance Report ===================
+Cycles           : 37
+Instructions     : 15
+IPC              : 0.4054
+CPI              : 2.4667
+Commit (state)   : 15 (OK)
+Fetch / commit   : 18 / 15 (extra=3, squash=5)
+
+[Instruction mix]
+  category            count    share
+  -------------- ----------  -------
+  alu                     6    40.00%
+  load                    0     0.00%
+  store                   1     6.67%
+  branch                  1     6.67%
+  jump                    3    20.00%
+  upper                   2    13.33%
+  csr                     0     0.00%
+  ecall                   0     0.00%
+  mret                    0     0.00%
+  ebreak                  1     6.67%
+  fence.i                 1     6.67%
+  class sum              15  OK
+  ALU breakdown  : R=0, I=6 (OK)
+  Load width     : byte=0, half=0, word=0 (OK)
+  Store width    : byte=0, half=0, word=1 (OK)
+
+[Control flow]
+  conditional branch : 1
+  taken / not taken  : 0 / 1 (0.00% taken)
+  jal / jalr         : 2 / 1 (OK)
+  control transfer   : 26.67% of committed instructions
+  BTB mispredict     : 3 (75.00% of branches+jumps, 20.00% of commits)
+
+[IFU behavior]
+  fetched            : 18
+  uncached bypass    : 0 requests
+  stall (busy AR)    : 6 cycles
+  stall (wait R)     : 7 cycles
+  stall ratio        : 35.14% of cycles
+  avg R wait / fetch : 0.3889 cycles
+  fetch path check   : hit+miss+bypass = 18 (OK)
+
+[ICache behavior]
+  access / hit / miss: 18 / 7 / 11
+  hit rate / miss rate: 38.89% / 61.11%
+  refill AR          : 6
+  refill per 1k inst : 400.00
+  misses per 1k inst : 733.33
+
+[LSU behavior]
+  load / store done  : 0 / 1
+  load width         : byte=0, half=0, word=0
+  store width        : byte=0, half=0, word=1
+  load wait cycles   : 0
+  avg load latency   : 0.0000 cycles
+  store wait cycles  : 1
+  avg store latency  : 1.0000 cycles
+  load / store share : 0.00% / 6.67%
+  LSU vs commit      : load=OK, store=OK
+
+[Bus behavior]
+  AR / R             : 6 / 24
+  AW / W / B         : 1 / 1 / 1
+  AR stall cycles    : 0 (0.00% of cycles)
+  beats per read     : 4.00
+  beats per write    : 1.00
+  AR source check    : refill+bypass+load = 6 vs AR = 6 (OK)
+  write source check : store=1, AW=1, W=1, B=1 (OK)
+
+[System / CSR]
+  CSR total          : 0
+  csrrw / csrrs      : 0 / 0 (OK)
+  ecall / mret / ebreak: 0 / 0 / 1
+
+[Observation]
+  - ICache miss rate 61.11%; cache capacity/locality may be limiting fetch.
+  - IFU stall ratio 35.14%; fetch wait is a significant fraction of cycles.
+==========================================================
+[INFO] [cyc=37 commit=15 time=94] [perf.cpp:251 perf_report] Perf summary: cycles=37 inst=15 ipc=0.4054 cpi=2.4667 icache_access=18 icache_hit=7 icache_miss=11 icache_hit_rate=0.3889 if_bypass=0
+[INFO] [cyc=37 commit=15 time=94] [perf.cpp:256 perf_report] Perf memory: load=0 store=1 load_latency=0.0000 store_latency=1.0000 bus_ar=6 bus_aw=1 bus_ar_stall=0 branch_taken_rate=0.0000

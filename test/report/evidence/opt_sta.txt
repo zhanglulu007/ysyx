@@ -1,0 +1,15 @@
+========== NPCSynth 评估摘要 (PDK=icsprout55, 约束=1200MHz) ==========
+[面积]
+  Chip area for module '\NPCSynth': 23012.080000
+  of which used for sequential elements: 12061.280000 (52.41%)
+  标准单元: 6628 个, 单元面积合计 2.3E+04
+[时序] 约束周期预算: 0.8333 ns
+  最高可达频率: 790.143 MHz
+  WNS(最差 slack): -0.433 (等效周期 1.2656 ns)
+  关键路径终点: u_top.idex_alu_b_15__reg_p:D
+  (完整时序表: /home/zhangshenlu/ysyx-workbench/test/eval-opt/result/NPCSynth-1200MHz/NPCSynth.rpt)
+[功耗]
+  | Power Group   | Internal Power | Switch Power | Leakage Power | Total Power | (%)       |
+  Total Power   ==  1.706e-01 W
+[F] config: /home/zhangshenlu/ysyx-workbench/test/npc-opt/config/f_cpu = 79
+==========================================================

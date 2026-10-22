@@ -1,0 +1,25 @@
+== [1/5] build (PERF=1) ==
+build OK
+== [2/5] cpu-tests (33) ==
+cpu-tests: pass=33 fail=0
+== [3/5] fence.i 自修改代码测试 ==
+fence.i test: PASS
+== [4/5] microbench train (standalone) ==
+MicroBench PASS
+Cycles           : 274290016
+Instructions     : 195139485
+IPC              : 0.7114
+CPI              : 1.4056
+  BTB mispredict     : 13275638 (23.47% of branches+jumps, 6.80% of commits)
+  stall (busy AR)    : 15425181 cycles
+  stall (wait R)     : 9041626 cycles
+  refill AR          : 12692932
+  avg load latency   : 1.6497 cycles
+train exit=0
+== [5/5] microbench test + DiffTest ==
+MicroBench PASS
+*** HIT GOOD TRAP ***
+[INFO] [cyc=854162 commit=522211 time=1708345] [ebreak.cpp:21 ebreak_handler] HIT GOOD TRAP
+IPC              : 0.6114
+difftest exit=0
+logs: /home/zhangshenlu/ysyx-workbench/test/npc-opt/build/verify

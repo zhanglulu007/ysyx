@@ -1,0 +1,140 @@
+[INFO] [cyc=0 commit=0 time=0] [log.cpp:58 init_log] Log is appended to npc.log
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:133 main] Config: mode=standalone trace=off fst=off perf=on nvboard=off F=0
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:160 main] Images: program=/home/zhangshenlu/ysyx-workbench/test/prog/microbench-test.bin elf=(none) ref=/home/zhangshenlu/ysyx-workbench/nemu/build/riscv32-nemu-interpreter-standalone-so
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:164 main] NPC - RISC-V processor simulator with Simple Debugger
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:165 main] Build time: 21:05:41, Oct 22 2026
+NPC - RISC-V processor simulator with Simple Debugger
+======================================================
+
+[INFO] [cyc=0 commit=0 time=0] [memory.cpp:209 load_program] Loaded 29868 bytes from '/home/zhangshenlu/ysyx-workbench/test/prog/microbench-test.bin' into memory at 0x80000000
+
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:76 init_cpu] FST: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:82 init_cpu] Trace: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:87 init_cpu] Mode: AXI4 PMEM, multi-cycle core
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:95 init_cpu] NVBoard: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:101 reset_cpu] Resetting multi-cycle NPC...
+[INFO] [cyc=0 commit=0 time=20] [cpu.cpp:119 reset_cpu] Reset complete
+[1;34m[src/memory/paddr.c:99 init_mem] physical memory area [0x80000000, 0x87ffffff][0m
+[INFO] [cyc=0 commit=0 time=20] [difftest.cpp:92 init_difftest] Differential testing: ON
+[INFO] [cyc=0 commit=0 time=20] [difftest.cpp:93 init_difftest] The result of every instruction will be compared with NEMU.
+
+========================================
+  DiffTest: ON
+  REF: /home/zhangshenlu/ysyx-workbench/nemu/build/riscv32-nemu-interpreter-standalone-so
+========================================
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:192 main] Running in batch mode
+Running in batch mode...
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:198 main] Starting simulation from PC=0x80000000
+======= Running MicroBench [input *test*] =======
+[qsort] Quick sort: * Passed.
+[queen] Queen placement: * Passed.
+[bf] Brainf**k interpreter: * Passed.
+[fib] Fibonacci number: * Passed.
+[sieve] Eratosthenes sieve: * Passed.
+[15pz] A* 15-puzzle search: * Passed.
+[dinic] Dinic's maxflow algorithm: * Passed.
+[lzip] Lzip compression: * Passed.
+[ssort] Suffix sort: * Passed.
+[md5] MD5 digest: * Passed.
+==================================================
+MicroBench PASS
+Scored time: 82.824 ms
+Total  time: 112.877 ms
+EBREAK detected at PC=0x800055f0, a0=0x00000000
+
+*** HIT GOOD TRAP ***
+[INFO] [cyc=854162 commit=522211 time=1708345] [ebreak.cpp:21 ebreak_handler] HIT GOOD TRAP
+[INFO] [cyc=854163 commit=522211 time=1708346] [cpu.cpp:197 cpu_exec] Executed 522211 instructions in 854163 cycles, IPC=0.6114
+[INFO] [cyc=854163 commit=522211 time=1708346] [main.cpp:204 main] Simulation finished
+
+Simulation finished.
+[INFO] [cyc=854163 commit=522211 time=1708346] [main.cpp:109 print_exit_info] Exit reason: EBREAK instruction (program completed)
+[INFO] [cyc=854163 commit=522211 time=1708346] [main.cpp:110 print_exit_info] Exit code: 0
+Exit reason: EBREAK instruction (program completed)
+Exit code: 0
+
+=================== Performance Report ===================
+Cycles           : 854163
+Instructions     : 522211
+IPC              : 0.6114
+CPI              : 1.6357
+Commit (state)   : 522211 (OK)
+Fetch / commit   : 554859 / 522211 (extra=32648, squash=37270)
+
+[Instruction mix]
+  category            count    share
+  -------------- ----------  -------
+  alu                274577    52.58%
+  load                62836    12.03%
+  store               51359     9.83%
+  branch             101472    19.43%
+  jump                22506     4.31%
+  upper                9460     1.81%
+  csr                     0     0.00%
+  ecall                   0     0.00%
+  mret                    0     0.00%
+  ebreak                  1     0.00%
+  fence.i                 0     0.00%
+  class sum          522211  OK
+  ALU breakdown  : R=84606, I=189971 (OK)
+  Load width     : byte=4588, half=11025, word=47223 (OK)
+  Store width    : byte=4657, half=1652, word=45050 (OK)
+
+[Control flow]
+  conditional branch : 101472
+  taken / not taken  : 60655 / 40817 (59.78% taken)
+  jal / jalr         : 9764 / 12742 (OK)
+  control transfer   : 23.74% of committed instructions
+  BTB mispredict     : 37269 (30.06% of branches+jumps, 7.14% of commits)
+
+[IFU behavior]
+  fetched            : 554859
+  uncached bypass    : 0 requests
+  stall (busy AR)    : 67600 cycles
+  stall (wait R)     : 45478 cycles
+  stall ratio        : 13.24% of cycles
+  avg R wait / fetch : 0.0820 cycles
+  fetch path check   : hit+miss+bypass = 554859 (OK)
+
+[ICache behavior]
+  access / hit / miss: 554859 / 441731 / 113128
+  hit rate / miss rate: 79.61% / 20.39%
+  refill AR          : 58972
+  refill per 1k inst : 112.93
+  misses per 1k inst : 216.63
+
+[LSU behavior]
+  load / store done  : 62836 / 51359
+  load width         : byte=4588, half=11025, word=47223
+  store width        : byte=4657, half=1652, word=45050
+  load wait cycles   : 114967
+  avg load latency   : 1.8296 cycles
+  store wait cycles  : 51359
+  avg store latency  : 1.0000 cycles
+  load / store share : 12.03% / 9.83%
+  LSU vs commit      : load=OK, store=OK
+
+[Bus behavior]
+  AR / R             : 121808 / 298723
+  AW / W / B         : 51359 / 51359 / 51359
+  AR stall cycles    : 0 (0.00% of cycles)
+  beats per read     : 2.45
+  beats per write    : 1.00
+  AR source check    : refill+bypass+load = 121808 vs AR = 121808 (OK)
+  write source check : store=51359, AW=51359, W=51359, B=51359 (OK)
+
+[System / CSR]
+  CSR total          : 0
+  csrrw / csrrs      : 0 / 0 (OK)
+  ecall / mret / ebreak: 0 / 0 / 1
+
+[Observation]
+  - ICache miss rate 20.39%; cache capacity/locality may be limiting fetch.
+  - IFU stall ratio 13.24%; fetch wait is a significant fraction of cycles.
+  - load wait 13.46% of cycles; data-side memory latency is significant.
+  - taken branch ratio 59.78%; branch mispredict rate 7.14% of commits.
+==========================================================
+[INFO] [cyc=854163 commit=522211 time=1708346] [perf.cpp:251 perf_report] Perf summary: cycles=854163 inst=522211 ipc=0.6114 cpi=1.6357 icache_access=554859 icache_hit=441731 icache_miss=113128 icache_hit_rate=0.7961 if_bypass=0
+[INFO] [cyc=854163 commit=522211 time=1708346] [perf.cpp:256 perf_report] Perf memory: load=62836 store=51359 load_latency=1.8296 store_latency=1.0000 bus_ar=121808 bus_aw=51359 bus_ar_stall=0 branch_taken_rate=0.5978

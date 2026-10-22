@@ -1,0 +1,35 @@
+[INFO] [cyc=0 commit=0 time=0] [log.cpp:58 init_log] Log is appended to npc.log
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:133 main] Config: mode=soc trace=off fst=off perf=off nvboard=off F=0
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:160 main] Images: program=/home/zhangshenlu/ysyx-workbench/am-kernels/tests/cpu-tests/build/add-riscv32e-ysyxsoc.bin elf=(none) ref=(none)
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:164 main] NPC - RISC-V processor simulator with Simple Debugger
+[INFO] [cyc=0 commit=0 time=0] [main.cpp:165 main] Build time: 21:15:55, Oct 22 2026
+NPC - RISC-V processor simulator with Simple Debugger
+======================================================
+
+[INFO] [cyc=0 commit=0 time=0] [memory.cpp:50 flash_load] Loaded 1016 bytes from '/home/zhangshenlu/ysyx-workbench/am-kernels/tests/cpu-tests/build/add-riscv32e-ysyxsoc.bin' into flash at 0x30000000
+
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:76 init_cpu] FST: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:82 init_cpu] Trace: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:85 init_cpu] Mode: ysyxSoC, multi-cycle core
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:95 init_cpu] NVBoard: OFF
+[INFO] [cyc=0 commit=0 time=0] [cpu.cpp:101 reset_cpu] Resetting multi-cycle NPC...
+[INFO] [cyc=0 commit=0 time=20] [cpu.cpp:119 reset_cpu] Reset complete
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:96 init_difftest_if_needed] DiffTest is disabled (no REF specified)
+DiffTest: OFF
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:192 main] Running in batch mode
+Running in batch mode...
+
+[INFO] [cyc=0 commit=0 time=20] [main.cpp:198 main] Starting simulation from PC=0x30000000
+EBREAK detected at PC=0xa0000124, a0=0x00000000
+
+*** HIT GOOD TRAP ***
+[INFO] [cyc=278368 commit=5778 time=556757] [ebreak.cpp:21 ebreak_handler] HIT GOOD TRAP
+[INFO] [cyc=278369 commit=5778 time=556758] [cpu.cpp:197 cpu_exec] Executed 5778 instructions in 278369 cycles, IPC=0.0208
+[INFO] [cyc=278369 commit=5778 time=556758] [main.cpp:204 main] Simulation finished
+
+Simulation finished.
+[INFO] [cyc=278369 commit=5778 time=556758] [main.cpp:109 print_exit_info] Exit reason: EBREAK instruction (program completed)
+[INFO] [cyc=278369 commit=5778 time=556758] [main.cpp:110 print_exit_info] Exit code: 0
+Exit reason: EBREAK instruction (program completed)
+Exit code: 0

@@ -1,0 +1,81 @@
+=================== Performance Report ===================
+Cycles           : 274290016
+Instructions     : 195139485
+IPC              : 0.7114
+CPI              : 1.4056
+Commit (state)   : 195139485 (OK)
+Fetch / commit   : 207772336 / 195139485 (extra=12632851, squash=13275639)
+
+[Instruction mix]
+  category            count    share
+  -------------- ----------  -------
+  alu             114273996    58.56%
+  load             15587946     7.99%
+  store             7147228     3.66%
+  branch           52590963    26.95%
+  jump              3961567     2.03%
+  upper             1577784     0.81%
+  csr                     0     0.00%
+  ecall                   0     0.00%
+  mret                    0     0.00%
+  ebreak                  1     0.00%
+  fence.i                 0     0.00%
+  class sum       195139485  OK
+  ALU breakdown  : R=25984310, I=88289686 (OK)
+  Load width     : byte=1580979, half=827284, word=13179683 (OK)
+  Store width    : byte=757714, half=79835, word=6309679 (OK)
+
+[Control flow]
+  conditional branch : 52590963
+  taken / not taken  : 38685654 / 13905309 (73.56% taken)
+  jal / jalr         : 1928701 / 2032866 (OK)
+  control transfer   : 28.98% of committed instructions
+  BTB mispredict     : 13275638 (23.47% of branches+jumps, 6.80% of commits)
+
+[IFU behavior]
+  fetched            : 207772336
+  uncached bypass    : 0 requests
+  stall (busy AR)    : 15425181 cycles
+  stall (wait R)     : 9041626 cycles
+  stall ratio        : 8.92% of cycles
+  avg R wait / fetch : 0.0435 cycles
+  fetch path check   : hit+miss+bypass = 207772336 (OK)
+
+[ICache behavior]
+  access / hit / miss: 207772336 / 182310332 / 25462004
+  hit rate / miss rate: 87.75% / 12.25%
+  refill AR          : 12692932
+  refill per 1k inst : 65.05
+  misses per 1k inst : 130.48
+
+[LSU behavior]
+  load / store done  : 15587946 / 7147228
+  load width         : byte=1580979, half=827284, word=13179683
+  store width        : byte=757714, half=79835, word=6309679
+  load wait cycles   : 25714928
+  avg load latency   : 1.6497 cycles
+  store wait cycles  : 7147228
+  avg store latency  : 1.0000 cycles
+  load / store share : 7.99% / 3.66%
+  LSU vs commit      : load=OK, store=OK
+
+[Bus behavior]
+  AR / R             : 28280878 / 66359673
+  AW / W / B         : 7147228 / 7147228 / 7147228
+  AR stall cycles    : 0 (0.00% of cycles)
+  beats per read     : 2.35
+  beats per write    : 1.00
+  AR source check    : refill+bypass+load = 28280878 vs AR = 28280878 (OK)
+  write source check : store=7147228, AW=7147228, W=7147228, B=7147228 (OK)
+
+[System / CSR]
+  CSR total          : 0
+  csrrw / csrrs      : 0 / 0 (OK)
+  ecall / mret / ebreak: 0 / 0 / 1
+
+[Observation]
+  - ICache miss rate 12.25%; cache capacity/locality may be limiting fetch.
+  - taken branch ratio 73.56%; branch mispredict rate 6.80% of commits.
+==========================================================
+[INFO] [cyc=274290016 commit=195139485 time=548580052] [perf.cpp:251 perf_report] Perf summary: cycles=274290016 inst=195139485 ipc=0.7114 cpi=1.4056 icache_access=207772336 icache_hit=182310332 icache_miss=25462004 icache_hit_rate=0.8775 if_bypass=0
+[INFO] [cyc=274290016 commit=195139485 time=548580052] [perf.cpp:256 perf_report] Perf memory: load=15587946 store=7147228 load_latency=1.6497 store_latency=1.0000 bus_ar=28280878 bus_aw=7147228 bus_ar_stall=0 branch_taken_rate=0.7356

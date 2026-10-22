@@ -22,7 +22,7 @@ module CSR(
   //reg [31:0] mtvec;     // 0x305 
   //reg [31:0] mepc;      // 0x341 
   reg [31:0] mcause;    // 0x342 
-  reg [63:0] mcycle;    
+  reg [31:0] mcycle;    // 0xb00 (32 位; 本项目仿真规模不溢出)
   
   always @(*) begin
     case (csr_addr)
@@ -30,8 +30,8 @@ module CSR(
       12'h305: csr_rdata = mtvec;             
       12'h341: csr_rdata = mepc;              
       12'h342: csr_rdata = mcause;                      
-      12'hb00: csr_rdata = mcycle[31:0]; 
-      12'hb80: csr_rdata = mcycle[63:32];
+      12'hb00: csr_rdata = mcycle;                      
+      12'hb80: csr_rdata = 32'b0;                       
       default: csr_rdata = 32'b0;
     endcase
   end
@@ -42,9 +42,9 @@ module CSR(
       mtvec   <= 32'b0;
       mepc    <= 32'b0;
       mcause  <= 32'b0;
-      mcycle  <= 64'b0;
+      mcycle  <= 32'b0;
     end else begin
-      mcycle <= mcycle + 64'b1;
+      mcycle <= mcycle + 32'b1;
       if (is_ecall) begin
         mepc   <= pc;
         mcause <= 32'd11;
@@ -63,7 +63,7 @@ module CSR(
   
   assign mstatus_out = mstatus;
   assign mcause_out  = mcause;
-  assign mcycle_lo_out = mcycle[31:0];
-  assign mcycle_hi_out = mcycle[63:32];
+  assign mcycle_lo_out = mcycle;
+  assign mcycle_hi_out = 32'b0;
 
 endmodule
