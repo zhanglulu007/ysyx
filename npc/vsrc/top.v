@@ -49,12 +49,12 @@ module top(
   wire [4:0] rs2 = inst[24:20];
   wire [31:0] imm_i = {{20{inst[31]}}, inst[31:20]};
 
-  // Stage 2 的立即数来自 IF/ID 中的 if_inst
-  wire [31:0] if_imm_i = {{20{if_inst[31]}}, if_inst[31:20]};
-  wire [31:0] if_imm_s = {{20{if_inst[31]}}, if_inst[31:25], if_inst[11:7]};
-  wire [31:0] if_imm_b = {{19{if_inst[31]}}, if_inst[31], if_inst[7], if_inst[30:25], if_inst[11:8], 1'b0};
-  wire [31:0] if_imm_u = {if_inst[31:12], 12'b0};
-  wire [31:0] if_imm_j = {{11{if_inst[31]}}, if_inst[31], if_inst[19:12], if_inst[20], if_inst[30:21], 1'b0};
+  // Stage 3 的立即数来自 ID/EX 中的 ie_inst
+  wire [31:0] ie_imm_i = {{20{ie_inst[31]}}, ie_inst[31:20]};
+  wire [31:0] ie_imm_s = {{20{ie_inst[31]}}, ie_inst[31:25], ie_inst[11:7]};
+  wire [31:0] ie_imm_b = {{19{ie_inst[31]}}, ie_inst[31], ie_inst[7], ie_inst[30:25], ie_inst[11:8], 1'b0};
+  wire [31:0] ie_imm_u = {ie_inst[31:12], 12'b0};
+  wire [31:0] ie_imm_j = {{11{ie_inst[31]}}, ie_inst[31], ie_inst[19:12], ie_inst[20], ie_inst[30:21], 1'b0};
 
   // Stage 2 译码结果；打入 ID/EX 后成为 Stage 3 的控制字
   wire [50:0] dec_ctrl;
@@ -67,6 +67,14 @@ module top(
   reg [31:0] if_inst;
 
   // ID/EX：Stage 2 -> Stage 3 的流水寄存器
+  reg        ie_valid;
+  reg [31:0] ie_pc;
+  reg [31:0] ie_inst;
+  reg [50:0] ie_ctrl;
+  reg [31:0] ie_rs1, ie_rs2;
+  reg        ie_uses_rs1, ie_uses_rs2;
+
+  // EX/MEM：Stage 3 -> Stage 4 的流水寄存器
   reg        id_valid;
   reg [31:0] id_pc;
   reg [31:0] id_inst;
@@ -146,16 +154,30 @@ module top(
   wire [31:0] rd_data;
   wire [31:0] retire_pc_next;
 
-  // Stage 2：地址、写回候选值、跳转目标
-  wire [31:0] if_addr = dec_ctrl[44] ? (rs1_data_fwd + if_imm_s)
-                                     : (rs1_data_fwd + if_imm_i);
-  wire [31:0] if_rd_data = dec_ctrl[33] ? if_imm_u :
-                           dec_ctrl[34] ? (if_pc + if_imm_u) :
-                           dec_ctrl[45] ? (if_pc + 32'd4) :
+  // Stage 3：操作数前递（来源是 EX/MEM 或 WB 寄存器）
+  wire [31:0] ex_rs1 = (id_valid && id_ctrl[46] && id_fwd_valid &&
+                        (id_inst[11:7] != 5'd0) &&
+                        (id_inst[11:7] == ie_inst[19:15]))
+                       ? id_fwd_data :
+                       (wb_wen && (wb_rd != 5'd0) && (wb_rd == ie_inst[19:15]))
+                       ? wb_data : ie_rs1;
+  wire [31:0] ex_rs2 = (id_valid && id_ctrl[46] && id_fwd_valid &&
+                        (id_inst[11:7] != 5'd0) &&
+                        (id_inst[11:7] == ie_inst[24:20]))
+                       ? id_fwd_data :
+                       (wb_wen && (wb_rd != 5'd0) && (wb_rd == ie_inst[24:20]))
+                       ? wb_data : ie_rs2;
+
+  // Stage 3：地址、写回候选值、跳转目标
+  wire [31:0] ex_addr = ie_ctrl[44] ? (ex_rs1 + ie_imm_s)
+                                    : (ex_rs1 + ie_imm_i);
+  wire [31:0] ex_rd_data = ie_ctrl[33] ? ie_imm_u :
+                           ie_ctrl[34] ? (ie_pc + ie_imm_u) :
+                           ie_ctrl[45] ? (ie_pc + 32'd4) :
                            alu_result;
-  wire        if_fwd_valid = dec_ctrl[46] && !dec_ctrl[43] &&
-                             !(dec_ctrl[40] || dec_ctrl[41]);
-  wire [31:0] if_target = dec_ctrl[36] ? jump_target : branch_target;
+  wire        ex_fwd_valid = ie_ctrl[46] && !ie_ctrl[43] &&
+                             !(ie_ctrl[40] || ie_ctrl[41]);
+  wire [31:0] ex_target = ie_ctrl[36] ? jump_target : branch_target;
 
   // Stage 3 访存地址来自 ID/EX
   wire [31:0] addr = id_addr;
@@ -165,21 +187,6 @@ module top(
   reg [31:0] wb_data;
   reg [4:0]  wb_rd;
   reg        wb_wen;
-
-  wire [31:0] rs1_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == if_inst[19:15]))
-                            ? wb_data : rs1_data;
-  wire [31:0] rs2_data_wb = (wb_wen && (wb_rd != 5'd0) && (wb_rd == if_inst[24:20]))
-                            ? wb_data : rs2_data;
-
-  // Stage 3 已寄存的结果前递到 Stage 2；load/CSR 走停顿 + wb 旁路
-  wire [31:0] rs1_data_fwd = (id_valid && id_ctrl[46] && id_fwd_valid &&
-                              (id_inst[11:7] != 5'd0) &&
-                              (id_inst[11:7] == if_inst[19:15]))
-                             ? id_fwd_data : rs1_data_wb;
-  wire [31:0] rs2_data_fwd = (id_valid && id_ctrl[46] && id_fwd_valid &&
-                              (id_inst[11:7] != 5'd0) &&
-                              (id_inst[11:7] == if_inst[24:20]))
-                             ? id_fwd_data : rs2_data_wb;
 
   wire [31:0] a0_value_wb  = (wb_wen && (wb_rd == 5'd10)) ? wb_data : a0_value;
 
@@ -349,48 +356,65 @@ module top(
 
   wire is_branch = is_beq || is_bne || is_blt || is_bge || is_bltu || is_bgeu;
 
-  // Stage 2 的控制信号来自 IDU 对 if_inst 的译码
+  // Stage 2（ID）的控制信号来自 IDU 对 if_inst 的译码
   wire dec_is_branch = dec_ctrl[19] || dec_ctrl[20] || dec_ctrl[21] ||
                        dec_ctrl[22] || dec_ctrl[23] || dec_ctrl[24];
-  wire dec_is_csr = dec_ctrl[40] || dec_ctrl[41];
   wire dec_is_control = dec_ctrl[45] || dec_is_branch ||
                         dec_ctrl[38] || dec_ctrl[39] ||
                         dec_ctrl[50] || dec_ctrl[37];
 
-  wire stage2_is_control = if_valid && dec_is_control;
-  wire stage2_mem = if_valid && dec_ctrl[47];
-  wire stage3_late_control = id_valid &&
-                             (is_ecall || is_mret ||
-                              is_fence_i || is_ebreak);
-  wire stage3_mem = id_valid && mem_valid;
+  // Stage 3（EX）的控制信号来自 ie_ctrl
+  wire ie_is_branch = ie_ctrl[19] || ie_ctrl[20] || ie_ctrl[21] ||
+                      ie_ctrl[22] || ie_ctrl[23] || ie_ctrl[24];
+  wire ie_is_jump = ie_ctrl[45];
+  wire ie_is_csr = ie_ctrl[40] || ie_ctrl[41];
+  wire ie_is_control = ie_valid &&
+                       (ie_is_jump || ie_is_branch ||
+                        ie_ctrl[38] || ie_ctrl[39] ||
+                        ie_ctrl[50] || ie_ctrl[37]);
+
+  wire if_is_control = if_valid && dec_is_control;
+  wire if_mem = if_valid && dec_ctrl[47];
+  wire ie_mem = ie_valid && ie_ctrl[47];
+  wire id_late_control = id_valid &&
+                         (is_ecall || is_mret ||
+                          is_fence_i || is_ebreak);
+  wire id_mem = id_valid && mem_valid;
 
   wire commit = id_valid && (!mem_valid || lsu_done);
-  wire stage3_ready = !id_valid || commit;
+  wire id_ready = !id_valid || commit;
 
-  // load/CSR 的结果要等提交后走 wb 旁路；普通 ALU 结果从 ID/EX 寄存器前递
-  wire id_late = op_load || is_csr;
-  wire late_stall = if_valid && id_valid && reg_wen && id_late &&
-                    (rd != 5'd0) &&
-                    ((if_uses_rs1 && (rd == if_inst[19:15])) ||
-                     (if_uses_rs2 && (rd == if_inst[24:20])));
-  wire csr_stall = if_valid && id_valid && is_csr && dec_is_csr;
+  wire id_reg_wen = id_ctrl[46];
+  wire [4:0] id_rd;
+  wire id_late = id_ctrl[43] || is_csr;
 
-  // 分支/jump 在 Stage 2 解析并重定向；ecall/mret/fence/ebreak 在 Stage 3 提交时处理
+  assign id_rd = id_inst[11:7];
+
+  // EX 停顿：MEM/WB 忙，或者 load/CSR 相关，或者 CSR 顺序
+  wire ex_stall = ie_valid &&
+                  ((id_valid && !commit) ||
+                   (id_valid && id_reg_wen && id_late && (id_rd != 5'd0) &&
+                    ((ie_uses_rs1 && (id_rd == ie_inst[19:15])) ||
+                     (ie_uses_rs2 && (id_rd == ie_inst[24:20])))) ||
+                   (id_valid && is_csr && ie_is_csr));
+
   wire commit_redirect = commit && (is_ecall || is_mret ||
                                     is_fence_i || is_ebreak);
-  wire stage2_capture = if_valid && stage3_ready &&
-                        !late_stall && !csr_stall && !commit_redirect;
-  wire branch_redirect = stage2_capture && (dec_ctrl[45] ||
-                                            (dec_is_branch && branch_taken));
-  wire redirect = branch_redirect || (commit && (is_ecall || is_mret));
+  wire em_capture = ie_valid && !ex_stall && id_ready && !commit_redirect;
+  wire branch_redirect = em_capture && (ie_is_jump ||
+                                        (ie_is_branch && branch_taken));
+  wire ie_capture = if_valid && (!ie_valid || !ex_stall) &&
+                    !commit_redirect && !branch_redirect;
 
-  wire [31:0] redirect_pc = branch_redirect ? if_target :
+  wire redirect = branch_redirect || (commit && (is_ecall || is_mret));
+  wire [31:0] redirect_pc = branch_redirect ? ex_target :
                             is_ecall ? mtvec : mepc;
 
-  // Stage 2/3 的控制/访存指令暂停取指，避免错误路径和总线冲突
-  wire fetch_hold = stage2_is_control || stage2_mem ||
-                    stage3_late_control || stage3_mem;
-  wire ifu_ready  = (!if_valid || stage2_capture) && !fetch_hold &&
+  // ID/EX/MEM 的控制/访存指令暂停取指，避免错误路径和总线冲突
+  wire fetch_hold = if_is_control || if_mem ||
+                    ie_is_control || ie_mem ||
+                    id_late_control || id_mem;
+  wire ifu_ready  = (!if_valid || ie_capture) && !fetch_hold &&
                     !branch_redirect;
   wire ifu_capture = ifu_pre_valid && ifu_ready;
 
@@ -453,12 +477,41 @@ module top(
       if_valid <= 1'b1;
       if_pc    <= pc;
       if_inst  <= ifu_rdata;
-    end else if (stage2_capture) begin
+    end else if (ie_capture) begin
       if_valid <= 1'b0;
     end
   end
 
-  // ID/EX：Stage 2 译码/读寄存器 -> Stage 3 执行/提交
+  // ID/EX：Stage 2 译码/读寄存器 -> Stage 3 执行
+  always @(posedge clk) begin
+    if (rst) begin
+      ie_valid <= 1'b0;
+      ie_pc    <= 32'b0;
+      ie_inst  <= 32'h00000013;
+      ie_ctrl  <= 51'b0;
+      ie_rs1   <= 32'b0;
+      ie_rs2   <= 32'b0;
+      ie_uses_rs1 <= 1'b0;
+      ie_uses_rs2 <= 1'b0;
+    end else if (commit_redirect) begin
+      ie_valid <= 1'b0;
+      ie_ctrl  <= 51'b0;
+    end else if (ie_capture) begin
+      ie_valid <= 1'b1;
+      ie_pc    <= if_pc;
+      ie_inst  <= if_inst;
+      ie_ctrl  <= dec_ctrl;
+      ie_rs1   <= rs1_data;
+      ie_rs2   <= rs2_data;
+      ie_uses_rs1 <= if_uses_rs1;
+      ie_uses_rs2 <= if_uses_rs2;
+    end else if (em_capture) begin
+      ie_valid <= 1'b0;
+      ie_ctrl  <= 51'b0;
+    end
+  end
+
+  // EX/MEM：Stage 3 执行 -> Stage 4 访存/提交
   always @(posedge clk) begin
     if (rst) begin
       id_valid <= 1'b0;
@@ -475,18 +528,18 @@ module top(
     end else if (commit_redirect) begin
       id_valid <= 1'b0;
       id_ctrl  <= 51'b0;
-    end else if (stage2_capture) begin
+    end else if (em_capture) begin
       id_valid <= 1'b1;
-      id_pc    <= if_pc;
-      id_inst  <= if_inst;
-      id_ctrl  <= dec_ctrl;
-      id_rs1   <= rs1_data_fwd;
-      id_rs2   <= rs2_data_fwd;
-      id_addr  <= if_addr;
-      id_fwd_data <= if_rd_data;
-      id_fwd_valid <= if_fwd_valid;
+      id_pc    <= ie_pc;
+      id_inst  <= ie_inst;
+      id_ctrl  <= ie_ctrl;
+      id_rs1   <= ex_rs1;
+      id_rs2   <= ex_rs2;
+      id_addr  <= ex_addr;
+      id_fwd_data <= ex_rd_data;
+      id_fwd_valid <= ex_fwd_valid;
       id_branch_taken <= branch_taken;
-      id_target <= if_target;
+      id_target <= ex_target;
     end else if (commit) begin
       id_valid <= 1'b0;
       id_ctrl  <= 51'b0;
@@ -619,45 +672,45 @@ module top(
     .a0_value(a0_value)
   );
   
-  // EXU - Stage 2 执行单元
+  // EXU - Stage 3 执行单元
   EXU u_exu(
-    .rs1_data(rs1_data_fwd),
-    .rs2_data(rs2_data_fwd),
-    .imm_i(if_imm_i),
-    .imm_b(if_imm_b),
-    .imm_j(if_imm_j),
-    .pc(if_pc),
+    .rs1_data(ex_rs1),
+    .rs2_data(ex_rs2),
+    .imm_i(ie_imm_i),
+    .imm_b(ie_imm_b),
+    .imm_j(ie_imm_j),
+    .pc(ie_pc),
     // R型指令
-    .is_add(dec_ctrl[0]),
-    .is_sub(dec_ctrl[1]),
-    .is_and(dec_ctrl[2]),
-    .is_or(dec_ctrl[3]),
-    .is_xor(dec_ctrl[4]),
-    .is_sll(dec_ctrl[5]),
-    .is_srl(dec_ctrl[6]),
-    .is_sra(dec_ctrl[7]),
-    .is_slt(dec_ctrl[8]),
-    .is_sltu(dec_ctrl[9]),
+    .is_add(ie_ctrl[0]),
+    .is_sub(ie_ctrl[1]),
+    .is_and(ie_ctrl[2]),
+    .is_or(ie_ctrl[3]),
+    .is_xor(ie_ctrl[4]),
+    .is_sll(ie_ctrl[5]),
+    .is_srl(ie_ctrl[6]),
+    .is_sra(ie_ctrl[7]),
+    .is_slt(ie_ctrl[8]),
+    .is_sltu(ie_ctrl[9]),
     // I型算术/逻辑指令
-    .is_addi(dec_ctrl[10]),
-    .is_slti(dec_ctrl[11]),
-    .is_sltiu(dec_ctrl[12]),
-    .is_xori(dec_ctrl[13]),
-    .is_ori(dec_ctrl[14]),
-    .is_andi(dec_ctrl[15]),
-    .is_slli(dec_ctrl[16]),
-    .is_srli(dec_ctrl[17]),
-    .is_srai(dec_ctrl[18]),
+    .is_addi(ie_ctrl[10]),
+    .is_slti(ie_ctrl[11]),
+    .is_sltiu(ie_ctrl[12]),
+    .is_xori(ie_ctrl[13]),
+    .is_ori(ie_ctrl[14]),
+    .is_andi(ie_ctrl[15]),
+    .is_slli(ie_ctrl[16]),
+    .is_srli(ie_ctrl[17]),
+    .is_srai(ie_ctrl[18]),
     // B型分支指令
-    .is_beq(dec_ctrl[19]),
-    .is_bne(dec_ctrl[20]),
-    .is_blt(dec_ctrl[21]),
-    .is_bge(dec_ctrl[22]),
-    .is_bltu(dec_ctrl[23]),
-    .is_bgeu(dec_ctrl[24]),
+    .is_beq(ie_ctrl[19]),
+    .is_bne(ie_ctrl[20]),
+    .is_blt(ie_ctrl[21]),
+    .is_bge(ie_ctrl[22]),
+    .is_bltu(ie_ctrl[23]),
+    .is_bgeu(ie_ctrl[24]),
     // J型指令
-    .is_jal(dec_ctrl[35]),
-    .op_r_type(dec_ctrl[42]),
+    .is_jal(ie_ctrl[35]),
+    .op_r_type(ie_ctrl[42]),
     // 输出
     .alu_result(alu_result),
     .jump_target(jump_target),
