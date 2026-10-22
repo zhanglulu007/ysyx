@@ -14,21 +14,26 @@ module IFU(
 
   output reg [31:0] pc,
   output [31:0] inst,
-  output ifu_valid
+  output ifu_valid,
+  output ifu_pre_valid
 );
 
-  localparam IDLE = 1'b0, WAIT = 1'b1;
+  localparam IDLE = 2'b00, WAIT = 2'b01, EXEC = 2'b10;
 
-  reg state;
-  reg [31:0] inst_reg;
-  reg inst_valid;
+  reg [1:0] state;
+  reg [31:0] inst_q;
 
   assign ifu_arvalid = !rst && (state == IDLE);
-  assign ifu_araddr = pc;
+  assign ifu_araddr  = pc;
 
-  assign ifu_rready = !rst && (state == WAIT) && !inst_valid;
-  assign inst = (ifu_rvalid && ifu_rready) ? ifu_rdata : inst_reg;
-  assign ifu_valid = !rst && (inst_valid || (ifu_rvalid && ifu_rready));
+  // Miss/bypass data is accepted in WAIT; stateless hit is consumed in IDLE.
+  assign ifu_rready  = !rst && (state == WAIT);
+  assign inst        = inst_q;
+  assign ifu_valid   = !rst && (state == EXEC);
+
+  // Pre-read strobe: the instruction word is available this cycle.
+  assign ifu_pre_valid = !rst && ifu_rvalid &&
+                         ((state == IDLE) || (state == WAIT));
 
   always @(posedge clk) begin
     if (rst) begin
@@ -38,26 +43,32 @@ module IFU(
 `else
       pc <= 32'h80000000;
 `endif
-      inst_reg <= 32'h00000013;
-      inst_valid <= 1'b0;
+      inst_q <= 32'h00000013;
     end else begin
       case (state)
         IDLE: begin
-          if (ifu_arvalid && ifu_arready) begin
-            state <= WAIT;
+          if (ifu_rvalid) begin
+            inst_q <= ifu_rdata;       // stateless hit
+            state  <= EXEC;
+          end else if (ifu_arvalid && ifu_arready) begin
+            state  <= WAIT;
           end
         end
+
         WAIT: begin
-          if (ifu_rvalid && ifu_rready) begin
-            inst_reg <= ifu_rdata;
-            inst_valid <= 1'b1;
-          end
-          if (commit) begin
-            pc <= pc_next;
-            state <= IDLE;
-            inst_valid <= 1'b0;
+          if (ifu_rvalid) begin
+            inst_q <= ifu_rdata;
+            state  <= EXEC;
           end
         end
+
+        EXEC: begin
+          if (commit) begin
+            pc    <= pc_next;
+            state <= IDLE;
+          end
+        end
+
         default: state <= IDLE;
       endcase
     end
