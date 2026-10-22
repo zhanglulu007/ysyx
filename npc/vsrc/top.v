@@ -75,7 +75,7 @@ module top(
   // IDU输出 - 系统指令
   wire is_ebreak;
   wire is_ecall, is_mret;
-  wire is_csrrw, is_csrrs, csr_wen;
+  wire is_csrrw, is_csrrs, is_fence_i, csr_wen;
   wire is_csr = is_csrrw || is_csrrs;
   // IDU输出 - 控制信号
   wire reg_wen, mem_valid, mem_wen;
@@ -252,6 +252,7 @@ module top(
   end
 
   wire commit = ifu_valid && (!mem_valid || lsu_done);
+  wire fence_i_flush = is_fence_i && commit;
 
   assign imem_addr = ifu_araddr;
 
@@ -338,7 +339,8 @@ module top(
     .rvalid(icache_rvalid),
     .rready(icache_rready),
     .rdata(icache_rdata),
-    .rlast(icache_rlast)
+    .rlast(icache_rlast),
+    .flush(fence_i_flush)
   );
   
   // IDU - 译码单元
@@ -404,6 +406,7 @@ module top(
     .is_mret(is_mret),
     .is_csrrw(is_csrrw),
     .is_csrrs(is_csrrs),
+    .is_fence_i(is_fence_i),
     // 控制信号
     .reg_wen(reg_wen),
     .mem_valid(mem_valid),
@@ -750,6 +753,7 @@ module top(
   localparam PERF_CSRRW        = 44;  // csrrw
   localparam PERF_CSRRS        = 45;  // csrrs
   localparam PERF_ST_WAIT      = 46;  // store 等待完成周期数
+  localparam PERF_FENCE_I      = 47;  // fence.i
 
   import "DPI-C" function void perf_event(input int event_id);
 
@@ -843,6 +847,7 @@ module top(
         if (is_ecall)       perf_event(PERF_ECALL);
         if (is_mret)        perf_event(PERF_MRET);
         if (is_ebreak)      perf_event(PERF_EBREAK);
+        if (is_fence_i)     perf_event(PERF_FENCE_I);
       end
     end
   end

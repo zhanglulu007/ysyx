@@ -184,7 +184,10 @@ static int decode_exec(Decode *s) {
     Log(ANSI_FMT("[ETRACE] mret", ANSI_FG_CYAN) " @ " FMT_WORD " -> return to " FMT_WORD, s->pc, csr(0x341));
     #endif
     s->dnpc = csr(0x341));
-  
+
+  // fence.i-noop
+  INSTPAT("0000000 00000 00000 001 00000 00011 11", fence_i, N, (void)0);
+
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv    , N, INV(s->pc));
   INSTPAT_END();
 

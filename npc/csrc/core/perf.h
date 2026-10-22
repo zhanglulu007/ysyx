@@ -57,6 +57,7 @@ enum PerfEventId {
     PERF_CSRRW        = 44,  // csrrw
     PERF_CSRRS        = 45,  // csrrs
     PERF_ST_WAIT      = 46,  // store 等待完成周期数 (统计平均 store 延迟)
+    PERF_FENCE_I      = 47,  // fence.i
     PERF_EVENT_COUNT
 };
 
