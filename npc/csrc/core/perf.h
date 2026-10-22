@@ -58,11 +58,6 @@ enum PerfEventId {
     PERF_CSRRS        = 45,  // csrrs
     PERF_ST_WAIT      = 46,  // store 等待完成周期数 (统计平均 store 延迟)
     PERF_FENCE_I      = 47,  // fence.i
-    PERF_BTB_PRED     = 48,  // 取指时 BTB 预测 taken 的次数
-    PERF_BTB_MISP     = 49,  // BTB 预测错误次数
-    PERF_BTB_ALLOC    = 50,  // BTB 表项分配/更新次数
-    PERF_REDIRECT     = 51,  // E 段重定向次数
-    PERF_SQUASH       = 52,  // 被冲刷的已取指令数 (本实现每重定向 1 条)
     PERF_EVENT_COUNT
 };
 

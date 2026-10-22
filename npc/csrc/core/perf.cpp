@@ -60,8 +60,6 @@ void perf_report() {
     const uint64_t ic_hit        = perf_count[PERF_IC_HIT];
     const uint64_t ic_miss       = perf_count[PERF_IC_MISS];
     const uint64_t ic_refill     = perf_count[PERF_IC_REFILL];
-    const uint64_t ic_compulsory = perf_count[PERF_IC_COMPULSORY];
-    const uint64_t ic_replace    = perf_count[PERF_IC_REPLACE];
 
     const uint64_t alu     = perf_count[PERF_ALU];
     const uint64_t alu_r   = perf_count[PERF_ALU_R];
@@ -103,12 +101,6 @@ void perf_report() {
     const uint64_t csrrw = perf_count[PERF_CSRRW];
     const uint64_t csrrs = perf_count[PERF_CSRRS];
 
-    const uint64_t btb_pred  = perf_count[PERF_BTB_PRED];
-    const uint64_t btb_misp  = perf_count[PERF_BTB_MISP];
-    const uint64_t btb_alloc = perf_count[PERF_BTB_ALLOC];
-    const uint64_t redirect  = perf_count[PERF_REDIRECT];
-    const uint64_t squash    = perf_count[PERF_SQUASH];
-
     // 各指令类别计数之和, 用于与动态指令数做一致性检查
     const uint64_t class_sum =
         alu + load + store + branch + jump + upper + csr + ecall + mret + ebreak + fence_i;
@@ -124,7 +116,7 @@ void perf_report() {
     printf("Commit (state)   : %" PRIu64 " (%s)\n", state_commit,
            state_commit == commit ? "OK" : "MISMATCH");
     printf("Fetch / commit   : %" PRIu64 " / %" PRIu64 " (%s)\n", if_fetch, commit,
-           if_fetch >= commit ? "OK (speculative)" : "MISMATCH");
+           if_fetch == commit ? "OK" : "MISMATCH");
 
     printf("\n[Instruction mix]\n");
     printf("  %-14s %10s  %7s\n", "category", "count", "share");
@@ -169,19 +161,9 @@ void perf_report() {
     printf("  stall ratio        : %.2f%% of cycles\n",
            percent(if_stall_bus + if_stall_mem, cycle));
     printf("  avg R wait / fetch : %.4f cycles\n", ratio(if_stall_mem, if_fetch));
-    printf("  fetch path check   : hit+miss+bypass = %" PRIu64 " vs fetch %" PRIu64
-           " (drift=%" PRId64 ")\n",
-           ic_hit + ic_miss + if_bypass, if_fetch,
-           (int64_t)(ic_hit + ic_miss + if_bypass) - (int64_t)if_fetch);
-
-    printf("\n[Branch prediction]\n");
-    printf("  BTB predicted taken: %" PRIu64 "\n", btb_pred);
-    printf("  BTB mispredict     : %" PRIu64 "\n", btb_misp);
-    printf("  BTB alloc/update   : %" PRIu64 "\n", btb_alloc);
-    printf("  mispredict / pred  : %.2f%%\n", percent(btb_misp, btb_pred));
-    printf("  redirects          : %" PRIu64 " (%.2f%% of commits)\n",
-           redirect, percent(redirect, commit));
-    printf("  squashed fetches   : %" PRIu64 "\n", squash);
+    printf("  fetch path check   : hit+miss+bypass = %" PRIu64 " (%s)\n",
+           ic_hit + ic_miss + if_bypass,
+           ic_hit + ic_miss + if_bypass == if_fetch ? "OK" : "MISMATCH");
 
     printf("\n[ICache behavior]\n");
     printf("  access / hit / miss: %" PRIu64 " / %" PRIu64 " / %" PRIu64 "\n",
@@ -192,8 +174,6 @@ void perf_report() {
            (ic_miss == 0 || ic_refill % ic_miss == 0) ? "OK" : "MISMATCH");
     printf("  AR per miss        : %.2f (1.00 = 突发; block/4 = 独立事务)\n",
            ratio(ic_refill, ic_miss));
-    printf("  miss type          : compulsory=%" PRIu64 ", replace=%" PRIu64 "\n",
-           ic_compulsory, ic_replace);
     printf("  misses per 1k inst : %.2f\n", ratio(ic_miss, commit) * 1000.0);
 
     printf("\n[LSU behavior]\n");

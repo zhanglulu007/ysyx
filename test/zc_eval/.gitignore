@@ -1,7 +1,0 @@
-build/
-result/
-tests/smoke.o
-tests/smoke.elf
-tests/smoke.bin
-tests/smoke.txt
-*.log
