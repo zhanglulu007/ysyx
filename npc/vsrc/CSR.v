@@ -21,7 +21,7 @@ module CSR(
   reg [31:0] mstatus;   // 0x300 
   //reg [31:0] mtvec;     // 0x305 
   //reg [31:0] mepc;      // 0x341 
-  reg [31:0] mcause;    // 0x342
+  reg [31:0] mcause;    // 0x342 
   reg [31:0] mcycle_lo;
   
   always @(*) begin

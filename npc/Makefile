@@ -26,11 +26,8 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-ICACHE_SIM ?= 0
-IC_BLOCK   ?= 16
 IC_SETS    ?= 4
-IC_WAYS    ?= 1
-IC_BURST   ?= 1
+IC_WORDS   ?= 8
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0
@@ -167,13 +164,7 @@ ifeq ($(PERF), 1)
   EXTRA_CFLAGS += -DENABLE_PERF
 endif
 
-ifeq ($(ICACHE_SIM), 1)
-  VERILATOR_FLAGS += -DICACHE_SIM \
-                     -DIC_BLOCK=$(IC_BLOCK) \
-                     -DIC_SETS=$(IC_SETS) \
-                     -DIC_WAYS=$(IC_WAYS) \
-                     -DIC_BURST=$(IC_BURST)
-endif
+VERILATOR_FLAGS += -DIC_SETS=$(IC_SETS) -DIC_WORDS=$(IC_WORDS)
 
 ifneq ($(strip $(F)),)
   ifneq ($(strip $(F)),0)

@@ -4,7 +4,7 @@
 //   top + Core / ICache / LSU / Arbiter / CSR / RegisterFile
 //
 // 使用 -DSYNTHESIS 读取 RTL: 此时 top.v 走内部合成用存储模型
-// (synth_rvalid / synth_rdata, 见 top.v `ifndef SOC_MODE + `ifdef SYNTHESIS),
+// (syn_rvalid / syn_left / syn_rid, 见 top.v `ifndef SOC_MODE + `ifdef SYNTHESIS),
 // 仿真专用的 DPI-C (PMEM、trace、difftest、perf) 全部被排除;
 // 而总线请求/响应逻辑 (AXI AR/R/AW/W/B 通道与 Arbiter 仲裁) 仍留在
 // 面积与时序范围内。
