@@ -1,193 +1,120 @@
-//============================================================================
-// ICache.v - pipelined I-cache: 1 instruction/cycle on hit, burst refill
-// with streaming delivery (critical word first beat, following words stream
-// out of the fill as they arrive), uncached bypass.
-//============================================================================
-`ifndef IC_SETS
-`define IC_SETS 4
-`endif
-`ifndef IC_WORDS
-`define IC_WORDS 8
-`endif
+module ICache #(
+  parameter ADDR_W      = 32,
+  parameter BLOCKS      = 4,    // 必须是 2 的幂且 >= 2
+  parameter BLOCK_BYTES = 32,   // 2 的幂; 8 <= x <= 1024 (受 arlen 8bit 限制)
+  parameter BUS_BYTES   = 4
+)(
+  input  clk,
+  input  rst,
+  input  flush,
 
-module ICache(
-  input clk,
-  input rst,
-  input flush,
+  input                  ifu_arvalid,
+  output                 ifu_arready,
+  input  [ADDR_W-1:0]    ifu_araddr,
 
-  input  [31:0] cpu_addr,
-  input         cpu_req,
-  output        cpu_ready,
-  output [31:0] cpu_inst,
-  output        cpu_cacheable,
-  output        cpu_was_miss,
-  output        cpu_stall,
+  output                 ifu_rvalid,
+  input                  ifu_rready,
+  output [BUS_BYTES*8-1:0] ifu_rdata,
 
-  output        arvalid,
-  input         arready,
-  output [31:0] araddr,
-  output [7:0]  arlen,
-  output        ar_prefetch,
+  output                 arvalid,
+  input                  arready,
+  output [ADDR_W-1:0]    araddr,
+  output [7:0]           arlen,
 
-  input         rvalid,
-  output        rready,
-  input  [31:0] rdata,
-  input         rlast,
-
-  output        idle,
-  output        miss_replace_pulse,
-  output        miss_compulsory_pulse
+  input                  rvalid,
+  output                 rready,
+  input  [BUS_BYTES*8-1:0] rdata,
+  input                  rlast
 );
 
-  localparam SETS  = `IC_SETS;
-  localparam WORDS = `IC_WORDS;
-  localparam IDX_BITS  = $clog2(SETS);
-  localparam WORD_BITS = $clog2(WORDS);
-  localparam OFF_BITS  = 2 + WORD_BITS;
-  localparam TAG_BITS  = 32 - OFF_BITS - IDX_BITS;
+  localparam DATA_W      = BUS_BYTES * 8;
+  localparam BEATS       = BLOCK_BYTES / BUS_BYTES;
+  localparam OFFSET_BITS = $clog2(BLOCK_BYTES);
+  localparam INDEX_BITS  = $clog2(BLOCKS);
+  localparam WORD_BITS   = $clog2(BEATS);          // BEATS>=2 时 == CNT_BITS
+  localparam BYTE_BITS   = OFFSET_BITS - WORD_BITS;
+  localparam TAG_BITS    = ADDR_W - INDEX_BITS - OFFSET_BITS;
+  localparam ENTRIES     = BLOCKS * BEATS;
 
-  localparam S_IDLE    = 3'd0;
-  localparam S_FILL_AR = 3'd1;
-  localparam S_FILL_R  = 3'd2;
-  localparam S_BYP_AR  = 3'd3;
-  localparam S_BYP_R   = 3'd4;
+  // ---- 派生位宽自检 ----
+  // synopsys translate_off
+  initial begin
+    if (BEATS > 256)        $fatal(1, "arlen 只有 8bit, BLOCK_BYTES 最大 1024");
+    if (BLOCK_BYTES > 4096) $fatal(1, "AXI 突发不得跨 4KB 边界");
+    if (BLOCK_BYTES < 2*BUS_BYTES) $fatal(1, "BEATS 必须 >= 2");
+  end
+  // synopsys translate_on
 
-  reg [31:0] data [0:SETS*WORDS-1];
-  reg [TAG_BITS-1:0] tag [0:SETS-1];
-  reg [SETS-1:0] valid;
+  localparam IDLE = 2'b00, MISS_AR = 2'b01, MISS_R = 2'b10, RETURN = 2'b11;
 
-  reg [2:0] state;
-  reg [31:0] fill_line;
-  reg [IDX_BITS-1:0] fill_idx;
-  reg [TAG_BITS-1:0] fill_tag;
-  reg [WORD_BITS-1:0] fill_cnt;
-  reg [31:0] byp_addr;
-  reg req_was_miss;
+  reg [DATA_W-1:0]   cache_data [0:ENTRIES-1];
+  reg [TAG_BITS-1:0] cache_tag  [0:BLOCKS-1];
+  reg [BLOCKS-1:0]   cache_valid;
+  reg [1:0]          state;
 
-  wire [WORD_BITS-1:0] req_word = cpu_addr[2 +: WORD_BITS];
-  wire [IDX_BITS-1:0]  req_idx  = cpu_addr[OFF_BITS +: IDX_BITS];
-  wire [TAG_BITS-1:0]  req_tag  = cpu_addr[OFF_BITS+IDX_BITS +: TAG_BITS];
-  wire [31:0] req_line = {cpu_addr[31:OFF_BITS], {OFF_BITS{1'b0}}};
+  reg [TAG_BITS-1:0]   req_tag;
+  reg [INDEX_BITS-1:0] req_index;
+  reg [WORD_BITS-1:0]  req_word;
+  reg [WORD_BITS-1:0]  beat_cnt;
 
-  wire is_flash = (cpu_addr >= 32'h3000_0000) && (cpu_addr < 32'h3100_0000);
-  wire is_sdram = (cpu_addr >= 32'ha000_0000) && (cpu_addr < 32'ha200_0000);
-`ifndef SOC_MODE
-  wire is_pmem  = (cpu_addr >= 32'h8000_0000) && (cpu_addr < 32'h8800_0000);
-`else
-  wire is_pmem  = 1'b0;
-`endif
-  wire cacheable = is_flash || is_sdram || is_pmem;
-  assign cpu_cacheable = cacheable;
+  // ---- 地址切分：全部由参数推导，不再有魔法数字 ----
+  wire [BYTE_BITS-1:0]  byte_off = ifu_araddr[BYTE_BITS-1:0];
+  wire [WORD_BITS-1:0]  word_off = ifu_araddr[OFFSET_BITS-1 -: WORD_BITS];
+  wire [INDEX_BITS-1:0] index_in = ifu_araddr[OFFSET_BITS +: INDEX_BITS];
+  wire [TAG_BITS-1:0]   tag_in   = ifu_araddr[ADDR_W-1 -: TAG_BITS];
 
-  wire hit = valid[req_idx] && (tag[req_idx] == req_tag);
-  wire [31:0] hit_data = data[req_idx*WORDS + req_word];
+  wire hit = cache_valid[index_in] && (cache_tag[index_in] == tag_in);
 
-  // streaming fill: consume words as they arrive from the bus
-  wire fill_line_match = (state == S_FILL_R) && (req_line == fill_line);
-  wire fill_has_word   = fill_line_match &&
-                         ((req_word < fill_cnt) ||
-                          (rvalid && (req_word == fill_cnt)));
-  wire [31:0] fill_stream_data = (req_word == fill_cnt) ? rdata
-                                                         : data[req_idx*WORDS + req_word];
+  // BEATS 为 2 的幂时，{index, beat} 等价于 index*BEATS+beat，避免乘法器
+  wire [DATA_W-1:0] hit_rdata = cache_data[{req_index, req_word}];
 
-  assign cpu_ready = !rst && (cacheable ? (hit || fill_has_word)
-                                        : ((state == S_BYP_R) && rvalid &&
-                                           (cpu_addr == byp_addr)));
-  assign cpu_inst  = cacheable ? (hit ? hit_data : fill_stream_data) : rdata;
-  assign cpu_was_miss = req_was_miss;
-  assign cpu_stall = cpu_req && !cpu_ready;
+  assign ifu_arready = !rst && (state == IDLE);
+  assign ifu_rvalid  = !rst && (state == RETURN);
+  assign ifu_rdata   = hit_rdata;
 
-  wire demand_miss = cpu_req && cacheable && !hit;
-
-  assign arvalid = !rst && ((state == S_FILL_AR) || (state == S_BYP_AR));
-  assign araddr  = (state == S_BYP_AR) ? byp_addr : fill_line;
-  assign arlen   = (state == S_BYP_AR) ? 8'd0 : (WORDS - 1);
-  assign ar_prefetch = 1'b0;
-  assign rready  = !rst && ((state == S_FILL_R) || (state == S_BYP_R));
-  assign idle    = (state == S_IDLE);
-
-  wire ar_fire = arvalid && arready;
+  assign arvalid = !rst && (state == MISS_AR);
+  assign araddr  = {req_tag, req_index, {OFFSET_BITS{1'b0}}};
+  assign arlen   = BEATS[7:0] - 8'd1;      // BEATS<=256 已自检
+  assign rready  = !rst && (state == MISS_R);
 
   always @(posedge clk) begin
     if (rst) begin
-      state <= S_IDLE;
-      valid <= {SETS{1'b0}};
-      fill_cnt <= {WORD_BITS{1'b0}};
-      req_was_miss <= 1'b0;
+      cache_valid <= {BLOCKS{1'b0}};
+      state     <= IDLE;
+      req_tag   <= {TAG_BITS{1'b0}};
+      req_index <= {INDEX_BITS{1'b0}};
+      req_word  <= {WORD_BITS{1'b0}};
+      beat_cnt  <= {WORD_BITS{1'b0}};
     end else if (flush) begin
-      valid <= {SETS{1'b0}};
-      state <= S_IDLE;
-      fill_cnt <= {WORD_BITS{1'b0}};
-      req_was_miss <= 1'b0;
+      // 建议：只清 valid，不打断在途 AXI 突发（见下文"坑 4"）
+      cache_valid <= {BLOCKS{1'b0}};
+      state     <= IDLE;
     end else begin
       case (state)
-        S_IDLE: begin
-          if (cpu_req && !cacheable) begin
-            state <= S_BYP_AR;
-            byp_addr <= cpu_addr;
-            req_was_miss <= 1'b0;
-          end else if (demand_miss) begin
-            state <= S_FILL_AR;
-            fill_line <= req_line;
-            fill_idx  <= req_idx;
-            fill_tag  <= req_tag;
-            fill_cnt  <= {WORD_BITS{1'b0}};
-            valid[req_idx] <= 1'b0;
-            req_was_miss <= 1'b1;
+        IDLE: if (ifu_arvalid && ifu_arready) begin
+          req_tag   <= tag_in;
+          req_index <= index_in;
+          req_word  <= word_off;
+          beat_cnt  <= {WORD_BITS{1'b0}};
+          state     <= hit ? RETURN : MISS_AR;
+        end
+
+        MISS_AR: if (arvalid && arready) state <= MISS_R;
+
+        MISS_R: if (rvalid && rready) begin
+          cache_data[{req_index, beat_cnt}] <= rdata;
+          beat_cnt <= beat_cnt + 1'b1;
+          if (rlast) begin
+            cache_tag[req_index]   <= req_tag;
+            cache_valid[req_index] <= 1'b1;
+            state <= RETURN;
           end
         end
 
-        S_FILL_AR: begin
-          if (ar_fire) begin
-            state <= S_FILL_R;
-            fill_cnt <= {WORD_BITS{1'b0}};
-          end
-        end
+        RETURN: if (ifu_rvalid && ifu_rready) state <= IDLE;
 
-        S_FILL_R: begin
-          if (rvalid && rready) begin
-            data[fill_idx*WORDS + fill_cnt] <= rdata;
-            if (rlast) begin
-              tag[fill_idx]   <= fill_tag;
-              valid[fill_idx] <= 1'b1;
-              state <= S_IDLE;
-            end else begin
-              fill_cnt <= fill_cnt + 1'b1;
-            end
-          end
-        end
-
-        S_BYP_AR: begin
-          if (arvalid && arready) state <= S_BYP_R;
-        end
-
-        S_BYP_R: begin
-          if (rvalid && rready) state <= S_IDLE;
-        end
-
-        default: state <= S_IDLE;
+        default: state <= IDLE;
       endcase
-
-      if (cpu_req && cpu_ready && cacheable && req_was_miss)
-        req_was_miss <= 1'b0;
     end
   end
-
-  reg miss_replace_pulse_r, miss_compulsory_pulse_r;
-  always @(posedge clk) begin
-    if (rst) begin
-      miss_replace_pulse_r <= 1'b0;
-      miss_compulsory_pulse_r <= 1'b0;
-    end else begin
-      miss_replace_pulse_r <= 1'b0;
-      miss_compulsory_pulse_r <= 1'b0;
-      if ((state == S_IDLE) && demand_miss) begin
-        if (valid[req_idx]) miss_replace_pulse_r <= 1'b1;
-        else                miss_compulsory_pulse_r <= 1'b1;
-      end
-    end
-  end
-  assign miss_replace_pulse = miss_replace_pulse_r;
-  assign miss_compulsory_pulse = miss_compulsory_pulse_r;
-
 endmodule

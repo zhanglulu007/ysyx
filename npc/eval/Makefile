@@ -40,12 +40,15 @@ DEFINES ?= SYNTHESIS
 # 实例化; ysyx_26020070.v 是 SOC_MODE 专用的 SoC 顶层, 均不纳入)
 RTL_FILES := $(PROJ_PATH)/NPCSynth.v \
              $(NPC_VSRC)/top.v \
-             $(NPC_VSRC)/Core.v \
-             $(NPC_VSRC)/ICache.v \
-             $(NPC_VSRC)/LSU.v \
              $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/CSR.v \
-             $(NPC_VSRC)/RegisterFile.v
+             $(NPC_VSRC)/EXU.v \
+             $(NPC_VSRC)/ICache.v \
+             $(NPC_VSRC)/IDU.v \
+             $(NPC_VSRC)/IFU.v \
+             $(NPC_VSRC)/LSU.v \
+             $(NPC_VSRC)/RegisterFile.v \
+             $(NPC_VSRC)/WBU.v
 
 SDC_FILE ?= $(YOSYS_STA_HOME)/scripts/default.sdc
 
