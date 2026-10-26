@@ -26,11 +26,10 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-ICACHE_SIM ?= 0
-IC_BLOCK   ?= 16
+# ICache 参数化（对应 vsrc/ICache.v 的 `IC_SETS / `IC_WORDS 宏）
+# 默认值与 final_soc 架构一致：4 组 × 8 字（32 字节行）
 IC_SETS    ?= 4
-IC_WAYS    ?= 1
-IC_BURST   ?= 1
+IC_WORDS   ?= 8
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0
@@ -167,12 +166,8 @@ ifeq ($(PERF), 1)
   EXTRA_CFLAGS += -DENABLE_PERF
 endif
 
-ifeq ($(ICACHE_SIM), 1)
-  VERILATOR_FLAGS += -DICACHE_SIM \
-                     -DIC_BLOCK=$(IC_BLOCK) \
-                     -DIC_SETS=$(IC_SETS) \
-                     -DIC_WAYS=$(IC_WAYS) \
-                     -DIC_BURST=$(IC_BURST)
+ifneq ($(filter IC_SETS IC_WORDS,$(MAKEOVERRIDES)),)
+  VERILATOR_FLAGS += -DIC_SETS=$(IC_SETS) -DIC_WORDS=$(IC_WORDS)
 endif
 
 ifneq ($(strip $(F)),)
