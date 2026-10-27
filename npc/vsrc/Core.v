@@ -1,9 +1,3 @@
-//============================================================================
-// Core.v - compact 3-stage in-order pipeline (ID / EX / MEM+WB)
-//   * branches and jumps resolve in EX (short ID path, high clock)
-//   * EX/MEM -> ID forwarding, one interlock cycle on load-use
-//   * CSR/ecall/ebreak/mret/fence.i run serially in ID after drain
-//============================================================================
 module Core(
   input clk,
   input rst,
