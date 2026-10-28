@@ -131,8 +131,9 @@ module top(
   wire [31:0] mepc, mtvec, mstatus, mcause, mcycle_lo, mcycle_hi;
 
   // ---------------- core ----------------
-  wire [31:0] cur_pc, cur_inst, a0_value;
+  wire [31:0] cur_pc, cur_inst;
 `ifndef SYNTHESIS
+  wire [31:0] a0_value;
   wire        retire;
   wire [31:0] retire_pc, retire_inst, retire_next_pc, retire_addr, retire_wdata;
   wire        retire_is_mem, retire_is_store, retire_branch_taken;
@@ -148,9 +149,10 @@ module top(
     .csr_addr(csr_addr), .csr_wdata(csr_wdata), .csr_wen(csr_wen),
     .csr_ecall(csr_ecall), .csr_pc(csr_pc), .csr_rdata(csr_rdata),
     .mepc(mepc), .mtvec(mtvec), .icache_flush(icache_flush),
-    .cur_pc(cur_pc), .cur_inst(cur_inst), .a0_value(a0_value)
+    .cur_pc(cur_pc), .cur_inst(cur_inst)
 `ifndef SYNTHESIS
     ,
+    .a0_value(a0_value),
     .retire(retire), .retire_pc(retire_pc), .retire_inst(retire_inst),
     .retire_next_pc(retire_next_pc), .retire_addr(retire_addr),
     .retire_wdata(retire_wdata), .retire_is_mem(retire_is_mem),

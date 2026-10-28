@@ -47,12 +47,12 @@ module Core(
   output        icache_flush,
 
   output [31:0] cur_pc,
-  output [31:0] cur_inst,
-  output [31:0] a0_value
+  output [31:0] cur_inst
 `ifndef SYNTHESIS
   ,
   // Simulation-only observation ports.  They are not part of the
   // synthesizable interface at all when SYNTHESIS is defined.
+  output [31:0] a0_value,
   output        retire,
   output [31:0] retire_pc,
   output [31:0] retire_inst,
@@ -64,6 +64,12 @@ module Core(
   output        retire_branch_taken
 `endif
 );
+
+`ifdef SYNTHESIS
+  // RegisterFile still exposes a0 as a debug tap; in synthesis it is unused,
+  // so keep a local sink instead of a Core port.
+  wire [31:0] a0_value;
+`endif
 
   localparam [31:0] RESET_PC =
 `ifdef SOC_MODE
