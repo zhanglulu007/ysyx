@@ -164,6 +164,7 @@ module Arbiter(
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
 
+  integer dbg_cnt = 0;
   always @(posedge clk) begin
     if (rst) begin
       rd_busy_ifu <= 1'b0;
@@ -177,6 +178,12 @@ module Arbiter(
       if (ar_open_lsu)      rd_busy_lsu <= 1'b1;
       else if (rd_close_lsu) rd_busy_lsu <= 1'b0;
 
+      if ((mem_arvalid || ar_hold || rd_busy_ifu || rd_busy_lsu) && dbg_cnt < 60) begin
+        dbg_cnt = dbg_cnt + 1;
+        $display("[ARB] cyc=%0d arvalid=%b arready=%b hold=%b hold_ifu=%b busy_ifu=%b busy_lsu=%b sel_ifu=%b sel_lsu=%b ifu_v=%b lsu_v=%b arlen=%0d",
+                 $time/10, mem_arvalid, mem_arready, ar_hold, ar_hold_ifu,
+                 rd_busy_ifu, rd_busy_lsu, ifu_sel, lsu_sel, ifu_arvalid, lsu_arvalid, mem_arlen);
+      end
       if (ar_fire) begin
         ar_hold     <= 1'b0;
         ar_hold_ifu <= 1'b0;
