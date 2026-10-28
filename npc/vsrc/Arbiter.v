@@ -147,8 +147,18 @@ module Arbiter(
   // Simultaneous demand: I-fetch wins.  LSU only wins when it is a real
   // alternative, i.e. I-fetch is not asking, or it is a prefetch.
   wire lsu_first = lsu_grant && (!ifu_grant || ifu_ar_prefetch);
-  wire ifu_sel   = ifu_grant && !lsu_first;
-  wire lsu_sel   = lsu_grant && lsu_first;
+
+  // AR issue / hold.
+  // AXI4 forbids changing the payload (or dropping valid) while valid is
+  // asserted and ready has not come back.  With one lock per ID the grant could
+  // otherwise be re-evaluated every cycle, and a transferring-but-not-yet-
+  // accepted request would silently switch source mid-handshake.  So the
+  // winning side is latched until the transfer is actually accepted.
+  reg ar_hold;        // a transfer sits on the wire, not yet accepted
+  reg ar_hold_ifu;    // ... and it belongs to the I-fetch side
+
+  wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
+  wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
 
   assign mem_arvalid = ifu_sel || lsu_sel;
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
@@ -189,12 +199,24 @@ module Arbiter(
     if (rst) begin
       rd_busy_ifu <= 1'b0;
       rd_busy_lsu <= 1'b0;
+      ar_hold     <= 1'b0;
+      ar_hold_ifu <= 1'b0;
     end else begin
       if (ar_open_ifu)      rd_busy_ifu <= 1'b1;
       else if (rd_close_ifu) rd_busy_ifu <= 1'b0;
 
       if (ar_open_lsu)      rd_busy_lsu <= 1'b1;
       else if (rd_close_lsu) rd_busy_lsu <= 1'b0;
+
+      // Latch the winner while valid is asserted but not yet accepted, and
+      // release on the accepted transfer, so payload/valid stay stable.
+      if (ar_fire) begin
+        ar_hold     <= 1'b0;
+        ar_hold_ifu <= 1'b0;
+      end else if (mem_arvalid) begin
+        ar_hold     <= 1'b1;
+        ar_hold_ifu <= ifu_sel;
+      end
     end
   end
 
