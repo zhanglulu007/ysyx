@@ -107,17 +107,22 @@ module ICache(
   wire [31:0] hit_data = data[req_idx*WORDS + req_word];
 
   // Streaming fill: hand the instruction to the core as soon as its own word
-  // has landed, without waiting for the rest of the line.
+  // has landed, without waiting for the rest of the line.  With a WRAP burst
+  // the beats arrive in wrap order, so "already landed" must be expressed as a
+  // modular distance from the burst start rather than req_word < fill_cnt.
   wire fill_line_match = (state == S_FILL_R) && (req_line == fill_line);
+  wire [WORD_BITS-1:0] req_dist = req_word - fill_start;  // beats until req_word
   wire fill_has_word   = fill_line_match &&
-                         ((req_word < fill_cnt) ||
-                          (rvalid && (req_word == fill_cnt)));
-  wire [31:0] fill_stream_data = (req_word == fill_cnt) ? rdata
+                         ((req_dist < fill_cnt) ||
+                          (rvalid && (req_dist == fill_cnt)));
+  wire [31:0] fill_stream_data = (req_dist == fill_cnt) ? rdata
                                                          : data[req_idx*WORDS + req_word];
 
   assign cpu_ready = !rst && (!cacheable ||
                               (hit || fill_has_word));
-  assign cpu_inst  = (cacheable && hit) ? hit_data : rdata;
+  // Bypass reads drive the instruction straight from the bus; cached reads come
+  // from the array on a hit, or from the streaming fill while the line lands.
+  assign cpu_inst  = !cacheable ? rdata : (hit ? hit_data : fill_stream_data);
   assign cpu_was_miss = req_was_miss;
   assign cpu_stall = cpu_req && !cpu_ready;
 
