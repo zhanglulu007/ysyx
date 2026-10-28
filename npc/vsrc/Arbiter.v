@@ -1,11 +1,7 @@
 //============================================================================
 // Arbiter.v - AXI read arbitration between I-fetch and LSU.
-// Demand fetch wins over LSU when both are demanded at the same cycle.
-// Up to one outstanding read burst *per ID*: IFU and LSU each own their own
-// "burst in flight" lock, so an 8-beat I-cache refill no longer blocks an LSU
-// load.  When the downstream can only serve one read at a time (standalone
-// PMEM has a single read_state) mem_arready simply back-pressures the loser,
-// which degrades to the previous serial behaviour without breaking anything.
+// LSU (demand data) has priority over I-cache prefetch; demand fetch wins
+// over LSU when both are demanded. One outstanding read burst at a time.
 //============================================================================
 module Arbiter(
   input clk,
@@ -128,27 +124,13 @@ module Arbiter(
   assign lsu_bid     = mem_bid;
   assign mem_bready  = lsu_bready;
 
-  // read arbitration.
-  // One "burst in flight" lock per ID, instead of a single global lock: an
-  // IFU refill and an LSU load may then be outstanding at the same time.
-  // NOTE: LSU_ID / IFU_ID must stay in sync with the id actually driven on
-  // lsu_arid in LSU.v, and must never alias each other, because the R channel
-  // relies on them to demultiplex.
-  reg rd_busy_ifu, rd_busy_lsu;
-  wire ifu_free = !rd_busy_ifu;
-  wire lsu_free = !rd_busy_lsu;
+  // read arbitration
+  reg rd_busy;
+  wire ar_free = !rd_busy;
 
-  // Grant must be derived from "this source is free AND requesting".  Building
-  // the priority from raw arvalid (as a single global lock allowed) would let
-  // a busy LSU mask a free IFU, stalling I-fetch while nothing is granted.
-  wire ifu_grant = ifu_free && ifu_arvalid;
-  wire lsu_grant = lsu_free && lsu_arvalid;
-
-  // Simultaneous demand: I-fetch wins.  LSU only wins when it is a real
-  // alternative, i.e. I-fetch is not asking, or it is a prefetch.
-  wire lsu_first = lsu_grant && (!ifu_grant || ifu_ar_prefetch);
-  wire ifu_sel   = ifu_grant && !lsu_first;
-  wire lsu_sel   = lsu_grant && lsu_first;
+  wire lsu_first = lsu_arvalid && (!ifu_arvalid || ifu_ar_prefetch);
+  wire ifu_sel   = ar_free && ifu_arvalid && !lsu_first;
+  wire lsu_sel   = ar_free && lsu_first;
 
   assign mem_arvalid = ifu_sel || lsu_sel;
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
@@ -174,28 +156,13 @@ module Arbiter(
 
   wire ar_fire = mem_arvalid && mem_arready;
   wire r_fire  = mem_rvalid && mem_rready;
-
-  // A burst only needs a lock when it spans more than one beat.  Single-beat
-  // reads (every LSU load, and I-cache bypass reads) are closed by the
-  // downstream itself, so tracking them here would only cost a cycle.
-  wire ar_open_ifu = ar_fire && ifu_sel && (mem_arlen != 8'd0);
-  wire ar_open_lsu = ar_fire && lsu_sel && (mem_arlen != 8'd0);
-
-  // Close the lock of whichever ID the response belongs to.
-  wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
-  wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
+  wire ar_open = ar_fire && (mem_arlen != 8'd0);
+  wire rd_close = rd_busy && r_fire && mem_rlast;
 
   always @(posedge clk) begin
-    if (rst) begin
-      rd_busy_ifu <= 1'b0;
-      rd_busy_lsu <= 1'b0;
-    end else begin
-      if (ar_open_ifu)      rd_busy_ifu <= 1'b1;
-      else if (rd_close_ifu) rd_busy_ifu <= 1'b0;
-
-      if (ar_open_lsu)      rd_busy_lsu <= 1'b1;
-      else if (rd_close_lsu) rd_busy_lsu <= 1'b0;
-    end
+    if (rst) rd_busy <= 1'b0;
+    else if (ar_open) rd_busy <= 1'b1;
+    else if (rd_close) rd_busy <= 1'b0;
   end
 
 endmodule
