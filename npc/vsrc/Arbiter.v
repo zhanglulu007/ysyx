@@ -119,8 +119,9 @@ module Arbiter(
   assign mem_bready  = lsu_bready;
 
   reg rd_busy_ifu, rd_busy_lsu;
-  wire ifu_free = !rd_busy_ifu;
-  wire lsu_free = !rd_busy_lsu;
+  wire any_busy = rd_busy_ifu | rd_busy_lsu;
+  wire ifu_free = !any_busy;
+  wire lsu_free = !any_busy;
 
   wire ifu_grant = ifu_free && ifu_arvalid;
   wire lsu_grant = lsu_free && lsu_arvalid;
@@ -163,21 +164,6 @@ module Arbiter(
 
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
-
-  integer ev_ar = 0, ev_r = 0;
-  always @(posedge clk) begin
-    if (!rst) begin
-      if (ar_fire && ev_ar < 30) begin
-        ev_ar = ev_ar + 1;
-        $display("[AR] #%0d id=%0d len=%0d sel_ifu=%b sel_lsu=%b", ev_ar, mem_arid, mem_arlen, ifu_sel, lsu_sel);
-      end
-      if (r_fire && ev_r < 60) begin
-        ev_r = ev_r + 1;
-        $display("[R ] #%0d id=%0d last=%b ifu_rv=%b lsu_rv=%b rr_ifu=%b rr_lsu=%b",
-                 ev_r, mem_rid, mem_rlast, ifu_rvalid, lsu_rvalid, ifu_rready, lsu_rready);
-      end
-    end
-  end
 
   always @(posedge clk) begin
     if (rst) begin
