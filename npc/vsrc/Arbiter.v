@@ -22,7 +22,6 @@ module Arbiter(
   output       ifu_arready,
   input [31:0] ifu_araddr,
   input [7:0]  ifu_arlen,
-  input [1:0]  ifu_arburst,
   input        ifu_ar_prefetch,
 
   // IFU R
@@ -112,7 +111,8 @@ module Arbiter(
 
   localparam IFU_ID = 4'b0001;
   localparam LSU_ID = 4'b0010;
-  localparam [2:0] IFU_SIZE = 3'b010;
+  localparam [2:0] IFU_SIZE  = 3'b010;
+  localparam [1:0] IFU_BURST = 2'b01;
 
   // write path passes straight through
   assign mem_awvalid = lsu_awvalid;
@@ -210,7 +210,7 @@ module Arbiter(
   assign mem_arid    = ifu_sel ? IFU_ID : lsu_arid;
   assign mem_arlen   = ifu_sel ? ifu_arlen : lsu_arlen;
   assign mem_arsize  = ifu_sel ? IFU_SIZE : lsu_arsize;
-  assign mem_arburst = ifu_sel ? ifu_arburst : lsu_arburst;
+  assign mem_arburst = ifu_sel ? IFU_BURST : lsu_arburst;
 
   assign ifu_arready = ifu_sel && mem_arready;
   assign lsu_arready = lsu_sel && mem_arready;

@@ -85,7 +85,6 @@ module top(
   wire        ic_arvalid, ic_arready;
   wire [31:0] ic_araddr;
   wire [ 7:0] ic_arlen;
-  wire [ 1:0] ic_arburst;
   wire        ic_ar_prefetch;
   wire        ic_rvalid, ic_rready;
   wire [31:0] ic_rdata;
@@ -132,13 +131,10 @@ module top(
   wire [31:0] mepc, mtvec, mstatus, mcause, mcycle_lo, mcycle_hi;
 
   // ---------------- core ----------------
-  wire [31:0] cur_pc, cur_inst;
-`ifndef SYNTHESIS
-  wire [31:0] a0_value;
+  wire [31:0] cur_pc, cur_inst, a0_value;
   wire        retire;
   wire [31:0] retire_pc, retire_inst, retire_next_pc, retire_addr, retire_wdata;
   wire        retire_is_mem, retire_is_store, retire_branch_taken;
-`endif
 
   Core u_core(
     .clk(clk), .rst(rst),
@@ -150,15 +146,11 @@ module top(
     .csr_addr(csr_addr), .csr_wdata(csr_wdata), .csr_wen(csr_wen),
     .csr_ecall(csr_ecall), .csr_pc(csr_pc), .csr_rdata(csr_rdata),
     .mepc(mepc), .mtvec(mtvec), .icache_flush(icache_flush),
-    .cur_pc(cur_pc), .cur_inst(cur_inst)
-`ifndef SYNTHESIS
-    ,
-    .a0_value(a0_value),
+    .cur_pc(cur_pc), .cur_inst(cur_inst), .a0_value(a0_value),
     .retire(retire), .retire_pc(retire_pc), .retire_inst(retire_inst),
     .retire_next_pc(retire_next_pc), .retire_addr(retire_addr),
     .retire_wdata(retire_wdata), .retire_is_mem(retire_is_mem),
     .retire_is_store(retire_is_store), .retire_branch_taken(retire_branch_taken)
-`endif
   );
 
   ICache u_icache(
@@ -167,7 +159,7 @@ module top(
     .cpu_inst(fetch_inst), .cpu_cacheable(ic_cacheable),
     .cpu_was_miss(ic_was_miss), .cpu_stall(ic_stall),
     .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
-    .arlen(ic_arlen), .arburst(ic_arburst), .ar_prefetch(ic_ar_prefetch),
+    .arlen(ic_arlen), .ar_prefetch(ic_ar_prefetch),
     .rvalid(ic_rvalid), .rready(ic_rready), .rdata(ic_rdata), .rlast(ic_rlast),
     .idle(fetch_idle),
     .miss_replace_pulse(ic_miss_replace),
@@ -195,8 +187,7 @@ module top(
   Arbiter u_arbiter(
     .clk(clk), .rst(rst),
     .ifu_arvalid(ic_arvalid), .ifu_arready(ic_arready), .ifu_araddr(ic_araddr),
-    .ifu_arlen(ic_arlen), .ifu_arburst(ic_arburst),
-    .ifu_ar_prefetch(ic_ar_prefetch),
+    .ifu_arlen(ic_arlen), .ifu_ar_prefetch(ic_ar_prefetch),
     .ifu_rvalid(ic_rvalid), .ifu_rready(ic_rready), .ifu_rdata(ic_rdata),
     .ifu_rlast(ic_rlast),
     .lsu_arvalid(lsu_arvalid), .lsu_arready(lsu_arready), .lsu_araddr(lsu_araddr),

@@ -1,16 +1,7 @@
 //============================================================================
 // ICache.v - pipelined I-cache: 1 instruction/cycle on hit, burst refill
-// with streaming delivery and uncached bypass.
-//
-// Critical-word-first: the refill burst starts at the requested word and wraps
-// around the cache line (AXI4 WRAP, burst type 2'b10) instead of always
-// starting at word 0.  The requested instruction therefore arrives on the
-// first beat, cutting miss latency from up to WORDS beats down to 1.
-//
-// Only the SoC memory side splits a burst into beats (SDRAM hangs directly off
-// the AXI4Xbar and its controller implements WRAP); the standalone PMEM model
-// always increments by 4 and ignores the burst type, so non-SoC builds bypass
-// the cache entirely and never issue a refill.
+// with streaming delivery (critical word first beat, following words stream
+// out of the fill as they arrive), uncached bypass.
 //============================================================================
 `ifndef IC_SETS
 `define IC_SETS 4
@@ -36,7 +27,6 @@ module ICache(
   input         arready,
   output [31:0] araddr,
   output [7:0]  arlen,
-  output [1:0]  arburst,
   output        ar_prefetch,
 
   input         rvalid,
@@ -56,9 +46,6 @@ module ICache(
   localparam OFF_BITS  = 2 + WORD_BITS;
   localparam TAG_BITS  = 32 - OFF_BITS - IDX_BITS;
 
-  localparam [1:0] BURST_INCR = 2'b01;
-  localparam [1:0] BURST_WRAP = 2'b10;
-
   localparam S_IDLE    = 3'd0;
   localparam S_FILL_AR = 3'd1;
   localparam S_FILL_R  = 3'd2;
@@ -74,7 +61,6 @@ module ICache(
   reg [IDX_BITS-1:0] fill_idx;
   reg [TAG_BITS-1:0] fill_tag;
   reg [WORD_BITS-1:0] fill_cnt;
-  reg [WORD_BITS-1:0] fill_start;   // word offset the wrap burst begins at
   reg [31:0] byp_addr;
   reg req_was_miss;
 
@@ -83,57 +69,30 @@ module ICache(
   wire [TAG_BITS-1:0]  req_tag  = cpu_addr[OFF_BITS+IDX_BITS +: TAG_BITS];
   wire [31:0] req_line = {cpu_addr[31:OFF_BITS], {OFF_BITS{1'b0}}};
 
-  // Address handed to the bus for a refill.  With critical-word-first this is
-  // the requested word inside the line; without WRAP support (standalone PMEM)
-  // it must stay the line base because the burst always walks upward.
-`ifdef SOC_MODE
-  wire [31:0] fill_addr = fill_line + {27'b0, fill_start, 2'b00};
-  wire [WORD_BITS-1:0] fill_wr_word = fill_start + fill_cnt;
-`else
-  wire [31:0] fill_addr = fill_line;
-  wire [WORD_BITS-1:0] fill_wr_word = fill_cnt;
-`endif
-
   wire is_flash = (cpu_addr >= 32'h3000_0000) && (cpu_addr < 32'h3100_0000);
   wire is_sdram = (cpu_addr >= 32'ha000_0000) && (cpu_addr < 32'ha200_0000);
-`ifdef SOC_MODE
-  // SoC mode: only the SDRAM / XIP-flash windows are cacheable.  SDRAM hangs
-  // directly off the AXI4Xbar and its controller implements WRAP, so a
-  // critical-word-first refill is honoured there.
-  wire cacheable = is_flash || is_sdram;
+`ifndef SOC_MODE
+  wire is_pmem  = (cpu_addr >= 32'h8000_0000) && (cpu_addr < 32'h8800_0000);
 `else
-  // Standalone mode: the PMEM model walks a burst by adding 4 every beat and
-  // ignores the AXI burst type, so it cannot serve a WRAP line.  Keep caching
-  // (INCR refill from the line base) so nothing regresses.
-  wire is_pmem   = (cpu_addr >= 32'h8000_0000) && (cpu_addr < 32'h8800_0000);
-  wire cacheable = is_flash || is_sdram || is_pmem;
+  wire is_pmem  = 1'b0;
 `endif
+  wire cacheable = is_flash || is_sdram || is_pmem;
   assign cpu_cacheable = cacheable;
 
   wire hit = valid[req_idx] && (tag[req_idx] == req_tag);
   wire [31:0] hit_data = data[req_idx*WORDS + req_word];
 
-  // Streaming fill: hand the instruction to the core as soon as its own word
-  // has landed, without waiting for the rest of the line.  With a WRAP burst
-  // the beats arrive in wrap order, so "already landed" must be expressed as a
-  // modular distance from the burst start rather than req_word < fill_cnt.
+  // streaming fill: consume words as they arrive from the bus
   wire fill_line_match = (state == S_FILL_R) && (req_line == fill_line);
-`ifdef SOC_MODE
-  wire [WORD_BITS-1:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
-`else
-  wire [WORD_BITS-1:0] req_dist = req_word;               // INCR: burst starts at 0
-`endif
   wire fill_has_word   = fill_line_match &&
-                         ((req_dist < fill_cnt) ||
-                          (rvalid && (req_dist == fill_cnt)));
-  wire [31:0] fill_stream_data = (req_dist == fill_cnt) ? rdata
+                         ((req_word < fill_cnt) ||
+                          (rvalid && (req_word == fill_cnt)));
+  wire [31:0] fill_stream_data = (req_word == fill_cnt) ? rdata
                                                          : data[req_idx*WORDS + req_word];
 
   assign cpu_ready = !rst && (cacheable ? (hit || fill_has_word)
                                         : ((state == S_BYP_R) && rvalid &&
                                            (cpu_addr == byp_addr)));
-  // Bypass reads drive the instruction straight from the bus; cached reads come
-  // from the array on a hit, or from the streaming fill while the line lands.
   assign cpu_inst  = cacheable ? (hit ? hit_data : fill_stream_data) : rdata;
   assign cpu_was_miss = req_was_miss;
   assign cpu_stall = cpu_req && !cpu_ready;
@@ -141,16 +100,8 @@ module ICache(
   wire demand_miss = cpu_req && cacheable && !hit;
 
   assign arvalid = !rst && ((state == S_FILL_AR) || (state == S_BYP_AR));
-  assign araddr  = (state == S_BYP_AR) ? byp_addr : fill_addr;
+  assign araddr  = (state == S_BYP_AR) ? byp_addr : fill_line;
   assign arlen   = (state == S_BYP_AR) ? 8'd0 : (WORDS - 1);
-`ifdef SOC_MODE
-  // SDRAM implements WRAP, so the refill may start at the critical word.
-  assign arburst = (state == S_BYP_AR) ? BURST_INCR : BURST_WRAP;
-`else
-  // PMEM ignores the burst type and always adds 4, so INCR from the line base
-  // is the only thing it can serve.
-  assign arburst = BURST_INCR;
-`endif
   assign ar_prefetch = 1'b0;
   assign rready  = !rst && ((state == S_FILL_R) || (state == S_BYP_R));
   assign idle    = (state == S_IDLE);
@@ -162,13 +113,11 @@ module ICache(
       state <= S_IDLE;
       valid <= {SETS{1'b0}};
       fill_cnt <= {WORD_BITS{1'b0}};
-      fill_start <= {WORD_BITS{1'b0}};
       req_was_miss <= 1'b0;
     end else if (flush) begin
       valid <= {SETS{1'b0}};
       state <= S_IDLE;
       fill_cnt <= {WORD_BITS{1'b0}};
-      fill_start <= {WORD_BITS{1'b0}};
       req_was_miss <= 1'b0;
     end else begin
       case (state)
@@ -179,11 +128,10 @@ module ICache(
             req_was_miss <= 1'b0;
           end else if (demand_miss) begin
             state <= S_FILL_AR;
-            fill_line  <= req_line;
-            fill_idx   <= req_idx;
-            fill_tag   <= req_tag;
-            fill_start <= req_word;   // critical word first
-            fill_cnt   <= {WORD_BITS{1'b0}};
+            fill_line <= req_line;
+            fill_idx  <= req_idx;
+            fill_tag  <= req_tag;
+            fill_cnt  <= {WORD_BITS{1'b0}};
             valid[req_idx] <= 1'b0;
             req_was_miss <= 1'b1;
           end
@@ -198,7 +146,7 @@ module ICache(
 
         S_FILL_R: begin
           if (rvalid && rready) begin
-            data[fill_idx*WORDS + fill_wr_word] <= rdata;
+            data[fill_idx*WORDS + fill_cnt] <= rdata;
             if (rlast) begin
               tag[fill_idx]   <= fill_tag;
               valid[fill_idx] <= 1'b1;
