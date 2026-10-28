@@ -146,8 +146,9 @@ module Core(
   wire uses_rs1 = is_op || is_opimm || is_load || is_store || is_branch || is_jalr || is_csr;
   wire uses_rs2 = is_op || is_store || is_branch;
   // x0 writes are ignored inside RegisterFile; keep the intent decode-only.
+  // CSR writes do not use this path: they retire serially in ID via csr_wb.
   wire reg_wen  = is_op || is_opimm || is_load || is_lui ||
-                  is_auipc || is_jal || is_jalr || is_csr;
+                  is_auipc || is_jal || is_jalr;
 
   reg [3:0] alu_op;
   reg [1:0] alu_a_sel, alu_b_sel;
