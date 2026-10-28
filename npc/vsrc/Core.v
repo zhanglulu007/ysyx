@@ -10,10 +10,11 @@
 //   never consumed unless its corresponding valid bit is set.
 //
 // Observation boundary:
-//   The retire_* outputs are only used by simulation (commit log, ftrace,
-//   mtrace, DiffTest and top-level performance counters).  They are tied
-//   off under SYNTHESIS so the synthesizable datapath stays clean.  All
-//   performance event classification/counting lives in top.v.
+//   The retire_* and a0_value ports are only used by simulation (commit log,
+//   ftrace, mtrace, DiffTest and top-level performance counters).  They are
+//   conditionally compiled out of the interface under SYNTHESIS, so the
+//   synthesizable datapath and module boundary stay clean.  All performance
+//   event classification/counting lives in top.v.
 //============================================================================
 module Core(
   input clk,
