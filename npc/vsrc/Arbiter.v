@@ -164,16 +164,18 @@ module Arbiter(
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
 
-  integer dbg_ar = 0, dbg_r = 0, dbg_cyc = 0;
+  integer ev_ar = 0, ev_r = 0;
   always @(posedge clk) begin
     if (!rst) begin
-      dbg_cyc = dbg_cyc + 1;
-      if (ar_fire) dbg_ar = dbg_ar + 1;
-      if (r_fire)  dbg_r  = dbg_r + 1;
-      if (dbg_cyc % 20000 == 0)
-        $display("[ARB] cyc=%0d ar=%0d r=%0d bifu=%b blsu=%b av=%b rv=%b rr=%b rid=%0d ifu_v=%b lsu_v=%b",
-                 dbg_cyc, dbg_ar, dbg_r, rd_busy_ifu, rd_busy_lsu,
-                 mem_arvalid, mem_rvalid, mem_rready, mem_rid, ifu_arvalid, lsu_arvalid);
+      if (ar_fire && ev_ar < 30) begin
+        ev_ar = ev_ar + 1;
+        $display("[AR] #%0d id=%0d len=%0d sel_ifu=%b sel_lsu=%b", ev_ar, mem_arid, mem_arlen, ifu_sel, lsu_sel);
+      end
+      if (r_fire && ev_r < 60) begin
+        ev_r = ev_r + 1;
+        $display("[R ] #%0d id=%0d last=%b ifu_rv=%b lsu_rv=%b rr_ifu=%b rr_lsu=%b",
+                 ev_r, mem_rid, mem_rlast, ifu_rvalid, lsu_rvalid, ifu_rready, lsu_rready);
+      end
     end
   end
 
