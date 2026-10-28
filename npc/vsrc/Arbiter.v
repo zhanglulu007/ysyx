@@ -117,19 +117,13 @@ module Arbiter(
   assign lsu_bid     = mem_bid;
   assign mem_bready  = lsu_bready;
 
-  function dev_chan;
-    input [31:0] addr;
-    begin
 `ifdef SOC_MODE
-      dev_chan = (addr >= 32'ha000_0000) && (addr < 32'ha200_0000);
+  wire ifu_chan = (ifu_araddr >= 32'ha000_0000) && (ifu_araddr < 32'ha200_0000);
+  wire lsu_chan = (lsu_araddr >= 32'ha000_0000) && (lsu_araddr < 32'ha200_0000);
 `else
-      dev_chan = 1'b0;
+  wire ifu_chan = 1'b0;
+  wire lsu_chan = 1'b0;
 `endif
-    end
-  endfunction
-
-  wire ifu_chan = dev_chan(ifu_araddr);
-  wire lsu_chan = dev_chan(lsu_araddr);
 
   reg rd_busy_ifu, rd_busy_lsu;
   reg rd_chan_ifu, rd_chan_lsu;
@@ -142,26 +136,29 @@ module Arbiter(
   wire ifu_free = !(ifu_chan ? ch1_used : ch0_used);
   wire lsu_free = !(lsu_chan ? ch1_used : ch0_used);
 
-  wire ifu_grant = ifu_free && ifu_arvalid;
-  wire lsu_grant = lsu_free && lsu_arvalid;
+  wire ifu_req = ifu_arvalid && ifu_free;
+  wire lsu_req = lsu_arvalid && lsu_free;
 
-  wire lsu_first = lsu_grant && !ifu_grant;
+  localparam [1:0] S_IDLE = 2'd0, S_IFU  = 2'd1, S_LSU  = 2'd2;
 
-  reg ar_hold;
-  reg ar_hold_ifu;
+  reg [1:0] state;
+  reg rr_ifu;
 
-  wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
-  wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
+  wire pick_ifu = ifu_req && (!lsu_req || rr_ifu);
+  wire pick_lsu = lsu_req && (!ifu_req || !rr_ifu);
 
-  assign mem_arvalid = (ifu_sel && ifu_arvalid) || (lsu_sel && lsu_arvalid);
-  assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
-  assign mem_arid    = ifu_sel ? IFU_ID : lsu_arid;
-  assign mem_arlen   = ifu_sel ? ifu_arlen : lsu_arlen;
-  assign mem_arsize  = ifu_sel ? IFU_SIZE : lsu_arsize;
-  assign mem_arburst = ifu_sel ? ifu_arburst : lsu_arburst;
+  wire sel_ifu = (state == S_IFU) || ((state == S_IDLE) && pick_ifu);
+  wire sel_lsu = (state == S_LSU) || ((state == S_IDLE) && pick_lsu);
 
-  assign ifu_arready = ifu_sel && mem_arready;
-  assign lsu_arready = lsu_sel && mem_arready;
+  assign mem_arvalid = (sel_ifu && ifu_arvalid) || (sel_lsu && lsu_arvalid);
+  assign mem_araddr  = sel_ifu ? ifu_araddr : lsu_araddr;
+  assign mem_arid    = sel_ifu ? IFU_ID : lsu_arid;
+  assign mem_arlen   = sel_ifu ? ifu_arlen : lsu_arlen;
+  assign mem_arsize  = sel_ifu ? IFU_SIZE : lsu_arsize;
+  assign mem_arburst = sel_ifu ? ifu_arburst : lsu_arburst;
+
+  assign ifu_arready = sel_ifu && mem_arready;
+  assign lsu_arready = sel_lsu && mem_arready;
 
   assign ifu_rvalid  = mem_rvalid && (mem_rid == IFU_ID);
   assign ifu_rdata   = mem_rdata;
@@ -178,21 +175,42 @@ module Arbiter(
   wire ar_fire = mem_arvalid && mem_arready;
   wire r_fire  = mem_rvalid && mem_rready;
 
-  wire ar_open_ifu = ar_fire && ifu_sel;
-  wire ar_open_lsu = ar_fire && lsu_sel;
+  wire ar_open_ifu = ar_fire && sel_ifu;
+  wire ar_open_lsu = ar_fire && sel_lsu;
 
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
 
   always @(posedge clk) begin
     if (rst) begin
+      state       <= S_IDLE;
+      rr_ifu      <= 1'b1;
       rd_busy_ifu <= 1'b0;
       rd_busy_lsu <= 1'b0;
       rd_chan_ifu <= 1'b0;
       rd_chan_lsu <= 1'b0;
-      ar_hold     <= 1'b0;
-      ar_hold_ifu <= 1'b0;
     end else begin
+      case (state)
+        S_IDLE: begin
+          if (mem_arvalid && !mem_arready) begin
+            state <= sel_ifu ? S_IFU : S_LSU;
+          end
+        end
+        S_IFU: begin
+          if (!ifu_arvalid || mem_arready) state <= S_IDLE;
+        end
+        S_LSU: begin
+          if (!lsu_arvalid || mem_arready) state <= S_IDLE;
+        end
+        default: state <= S_IDLE;
+      endcase
+
+      if (ar_fire) begin
+        rr_ifu <= ~sel_ifu;
+      end else if (!ifu_arvalid && !lsu_arvalid) begin
+        rr_ifu <= 1'b1;
+      end
+
       if (ar_open_ifu) begin
         rd_busy_ifu <= 1'b1;
         rd_chan_ifu <= ifu_chan;
@@ -205,17 +223,6 @@ module Arbiter(
         rd_chan_lsu <= lsu_chan;
       end else if (rd_close_lsu) begin
         rd_busy_lsu <= 1'b0;
-      end
-      
-      if (ar_fire) begin
-        ar_hold     <= 1'b0;
-        ar_hold_ifu <= 1'b0;
-      end else if (mem_arvalid) begin
-        ar_hold     <= 1'b1;
-        ar_hold_ifu <= ifu_sel;
-      end else begin
-        ar_hold     <= 1'b0;  
-        ar_hold_ifu <= 1'b0;
       end
     end
   end

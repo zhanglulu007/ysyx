@@ -384,7 +384,13 @@ module Core(
   assign mem_is_store = m_is_store;
 
   assign csr_addr  = id_inst[31:20];
-  assign csr_wdata = is_csrrw ? id_rs1_val : (id_rs1_val | csr_rdata);
+  // CSR/ecall/ebreak/mret/fence.i execute serially in ID only after EX and MEM
+  // have drained (id_serial_go requires !ex_valid && !m_valid).  Therefore
+  // there cannot be a forwarding source for rs1 here, and reading rf_rs1
+  // directly removes the EX-ALU -> forwarding-mux -> CSR path from the
+  // critical path.  This is functionally identical to id_rs1_val for CSR
+  // instructions, because both forwarding terms are guaranteed to be zero.
+  assign csr_wdata = is_csrrw ? rf_rs1 : (rf_rs1 | csr_rdata);
   assign csr_wen   = id_serial_go &&
                      (is_csrrw || (is_csrrs && (rs1_5 != 5'd0)));
   assign csr_ecall = id_serial_go && is_ecall;
