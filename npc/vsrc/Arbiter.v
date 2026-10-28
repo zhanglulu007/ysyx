@@ -130,8 +130,8 @@ module Arbiter(
   reg ar_hold;    
   reg ar_hold_ifu;
 
-  wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
-  wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
+  wire ifu_sel = (ifu_grant && !lsu_first);
+  wire lsu_sel = (lsu_grant && lsu_first);
 
   assign mem_arvalid = (ifu_sel && ifu_arvalid) || (lsu_sel && lsu_arvalid);
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
