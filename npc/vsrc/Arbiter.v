@@ -164,14 +164,16 @@ module Arbiter(
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
 
-  integer dbg_r = 0, dbg_ar = 0;
+  integer dbg_ar = 0, dbg_r = 0, dbg_cyc = 0;
   always @(posedge clk) begin
     if (!rst) begin
+      dbg_cyc = dbg_cyc + 1;
       if (ar_fire) dbg_ar = dbg_ar + 1;
       if (r_fire)  dbg_r  = dbg_r + 1;
-      if (dbg_ar > 0 && dbg_r == 0 && (dbg_ar % 1000 == 0))
-        $display("[ARB] ar_cnt=%0d r_cnt=%0d  -> AR accepted but R never returned (bifu=%b blsu=%b rid=%0d rv=%b rr=%b)",
-                 dbg_ar, dbg_r, rd_busy_ifu, rd_busy_lsu, mem_rid, mem_rvalid, mem_rready);
+      if (dbg_cyc % 20000 == 0)
+        $display("[ARB] cyc=%0d ar=%0d r=%0d bifu=%b blsu=%b av=%b rv=%b rr=%b rid=%0d ifu_v=%b lsu_v=%b",
+                 dbg_cyc, dbg_ar, dbg_r, rd_busy_ifu, rd_busy_lsu,
+                 mem_arvalid, mem_rvalid, mem_rready, mem_rid, ifu_arvalid, lsu_arvalid);
     end
   end
 
