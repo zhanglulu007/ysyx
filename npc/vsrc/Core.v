@@ -1,3 +1,20 @@
+//============================================================================
+// Core.v - compact 3-stage in-order pipeline (ID / EX / MEM+WB)
+//   * branches and jumps resolve in EX (short ID path, high clock)
+//   * EX/MEM -> ID forwarding, one interlock cycle on load-use
+//   * CSR/ecall/ebreak/mret/fence.i run serially in ID after drain
+//
+// Reset policy:
+//   only the architectural PC and the three pipeline valid bits are reset.
+//   Payload registers are intentionally left without reset; a payload is
+//   never consumed unless its corresponding valid bit is set.
+//
+// Observation boundary:
+//   The retire_* outputs are only used by simulation (commit log, ftrace,
+//   mtrace, DiffTest and top-level performance counters).  They are tied
+//   off under SYNTHESIS so the synthesizable datapath stays clean.  All
+//   performance event classification/counting lives in top.v.
+//============================================================================
 module Core(
   input clk,
   input rst,
@@ -83,11 +100,13 @@ module Core(
   reg [31:0] m_result, m_store_data;
   reg [3:0]  m_rd;
   reg [2:0]  m_f3;
-  reg        m_reg_wen, m_is_load, m_is_store, m_branch_taken;
+  reg        m_reg_wen, m_is_load, m_is_store;
 
 `ifndef SYNTHESIS
+  // Observation-only pipeline: commit PC, instruction and next-PC history.
   reg [31:0] ex_inst, ex_next_pc;
   reg [31:0] m_pc, m_inst, m_next_pc;
+  reg        m_branch_taken;
 `endif
 
   // ---------------- decode ----------------
@@ -100,9 +119,6 @@ module Core(
   wire [3:0] rd_id  = rd5[3:0];
   wire [3:0] rs1_id = rs1_5[3:0];
   wire [3:0] rs2_id = rs2_5[3:0];
-  wire rs1_nz = (rs1_5 != 5'd0);
-  wire rs2_nz = (rs2_5 != 5'd0);
-  wire rd_nz  = (rd5 != 5'd0);
 
   wire [31:0] imm_i = {{20{id_inst[31]}}, id_inst[31:20]};
   wire [31:0] imm_s = {{20{id_inst[31]}}, id_inst[31:25], id_inst[11:7]};
@@ -129,8 +145,9 @@ module Core(
 
   wire uses_rs1 = is_op || is_opimm || is_load || is_store || is_branch || is_jalr || is_csr;
   wire uses_rs2 = is_op || is_store || is_branch;
-  wire reg_wen  = rd_nz && (is_op || is_opimm || is_load || is_lui ||
-                            is_auipc || is_jal || is_jalr || is_csr);
+  // x0 writes are ignored inside RegisterFile; keep the intent decode-only.
+  wire reg_wen  = is_op || is_opimm || is_load || is_lui ||
+                  is_auipc || is_jal || is_jalr || is_csr;
 
   reg [3:0] alu_op;
   reg [1:0] alu_a_sel, alu_b_sel;
@@ -223,12 +240,17 @@ module Core(
 `endif
 
   // ---------------- ID forwarding ----------------
-  wire ex_fwd = ex_valid && ex_reg_wen;
-  wire m_fwd  = m_valid && m_reg_wen && (!m_is_load || mem_done);
-  wire ex_m1 = ex_fwd && rs1_nz && (ex_rd == rs1_id);
-  wire ex_m2 = ex_fwd && rs2_nz && (ex_rd == rs2_id);
-  wire m_m1  = m_fwd  && rs1_nz && (m_rd  == rs1_id);
-  wire m_m2  = m_fwd  && rs2_nz && (m_rd  == rs2_id);
+  // A producer whose destination is x0 is not a producer at all: RegisterFile
+  // ignores that write.  Gating forwarding with the producer's rd (rather than
+  // with the consumer's rs1/rs2 non-zero checks) makes x0 forwarding harmless
+  // while keeping the datapath free of rs1_nz/rs2_nz comparators.
+  wire ex_fwd = ex_valid && ex_reg_wen && (ex_rd != 4'd0);
+  wire m_fwd  = m_valid && m_reg_wen && (m_rd != 4'd0) &&
+                (!m_is_load || mem_done);
+  wire ex_m1 = ex_fwd && (ex_rd == rs1_id);
+  wire ex_m2 = ex_fwd && (ex_rd == rs2_id);
+  wire m_m1  = m_fwd  && (m_rd  == rs1_id);
+  wire m_m2  = m_fwd  && (m_rd  == rs2_id);
 
   wire [31:0] rf_rs1, rf_rs2;
   wire [31:0] id_rs1_val = (ex_m1 && !ex_is_load) ? ex_result :
@@ -237,12 +259,14 @@ module Core(
                            (m_m2 ? m_wb_data : rf_rs2);
 
   // ---------------- hazards / flow ----------------
-  wire ex_load_use = id_valid && ex_valid && ex_is_load && ex_reg_wen &&
-      ((uses_rs1 && rs1_nz && ex_rd == rs1_id) ||
-       (uses_rs2 && rs2_nz && ex_rd == rs2_id));
-  wire m_load_use = id_valid && m_valid && m_is_load && m_reg_wen && !mem_done &&
-      ((uses_rs1 && rs1_nz && m_rd == rs1_id) ||
-       (uses_rs2 && rs2_nz && m_rd == rs2_id));
+  wire ex_load_use = id_valid && ex_is_load && ex_fwd &&
+      ((uses_rs1 && ex_rd == rs1_id) ||
+       (uses_rs2 && ex_rd == rs2_id));
+  wire m_load_pending = m_valid && m_is_load && m_reg_wen &&
+                        (m_rd != 4'd0) && !mem_done;
+  wire m_load_use = id_valid && m_load_pending &&
+      ((uses_rs1 && m_rd == rs1_id) ||
+       (uses_rs2 && m_rd == rs2_id));
   wire id_hazard = ex_load_use || m_load_use;
 
   wire id_is_serial = is_csr || is_ecall || is_ebreak || is_mret || is_fencei;
@@ -255,7 +279,8 @@ module Core(
                         !ex_redirect && !id_serial_go;
 
   // ---------------- register file ----------------
-  wire csr_wb = id_serial_go && is_csr && rd_nz;
+  // Keep rf_wen asserted for x0 as well; RegisterFile owns the x0 write mask.
+  wire csr_wb = id_serial_go && is_csr;
   wire [3:0] rf_waddr  = csr_wb ? rd_id : m_rd;
   wire [31:0] rf_wdata = csr_wb ? csr_rdata : m_wb_data;
   wire rf_wen = (m_valid && m_reg_wen && m_done_wb) || csr_wb;
@@ -269,22 +294,14 @@ module Core(
   );
 
   // ---------------- pipeline registers ----------------
+  // Valid-based reset: only PC and valid bits have a reset.  Payload and
+  // control registers are free-running and are qualified by the valid bits.
   always @(posedge clk) begin
     if (rst) begin
-      pc <= RESET_PC;
-      id_valid <= 1'b0; id_pc <= 32'b0; id_inst <= 32'h00000013;
-      ex_valid <= 1'b0; ex_pc <= 32'b0; ex_rs1 <= 32'b0; ex_rs2 <= 32'b0;
-      ex_imm <= 32'b0; ex_rd <= 4'b0; ex_f3 <= 3'b0; ex_alu_op <= ALU_ADD;
-      ex_a_sel <= A_RS1; ex_b_sel <= B_IMM; ex_reg_wen <= 1'b0;
-      ex_is_load <= 1'b0; ex_is_store <= 1'b0; ex_is_branch <= 1'b0;
-      ex_is_jal <= 1'b0; ex_is_jalr <= 1'b0;
-      m_valid <= 1'b0; m_result <= 32'b0; m_store_data <= 32'b0; m_rd <= 4'b0;
-      m_f3 <= 3'b0; m_reg_wen <= 1'b0; m_is_load <= 1'b0; m_is_store <= 1'b0;
-      m_branch_taken <= 1'b0;
-`ifndef SYNTHESIS
-      ex_inst <= 32'h00000013; ex_next_pc <= 32'b0;
-      m_pc <= 32'b0; m_inst <= 32'h00000013; m_next_pc <= 32'b0;
-`endif
+      pc       <= RESET_PC;
+      id_valid <= 1'b0;
+      ex_valid <= 1'b0;
+      m_valid  <= 1'b0;
     end else if (adv) begin
       m_valid        <= ex_valid;
       m_result       <= ex_result;
@@ -294,8 +311,8 @@ module Core(
       m_reg_wen      <= ex_reg_wen;
       m_is_load      <= ex_is_load;
       m_is_store     <= ex_is_store;
-      m_branch_taken <= ex_branch_taken;
 `ifndef SYNTHESIS
+      m_branch_taken <= ex_branch_taken;
       m_pc           <= ex_pc;
       m_inst         <= ex_inst;
       m_next_pc      <= ex_next_pc_w;
@@ -356,7 +373,8 @@ module Core(
 
   assign csr_addr  = id_inst[31:20];
   assign csr_wdata = is_csrrw ? id_rs1_val : (id_rs1_val | csr_rdata);
-  assign csr_wen   = id_serial_go && (is_csrrw || (is_csrrs && rs1_nz));
+  assign csr_wen   = id_serial_go &&
+                     (is_csrrw || (is_csrrs && (rs1_5 != 5'd0)));
   assign csr_ecall = id_serial_go && is_ecall;
   assign csr_pc    = id_pc;
 
@@ -365,29 +383,30 @@ module Core(
   assign cur_pc   = pc;
   assign cur_inst = id_inst;
 
-  assign retire      = (m_valid && m_done_wb) || id_serial_go;
-  assign retire_pc   = id_serial_go ? id_pc :
-`ifdef SYNTHESIS
-                       32'b0;
+  // ---------------- simulation / observation outputs ----------------
+  // Everything below is for commit logging, ftrace/mtrace, DiffTest and the
+  // top-level performance counters.  It is not part of the synthesizable core.
+`ifndef SYNTHESIS
+  assign retire = (m_valid && m_done_wb) || id_serial_go;
+  assign retire_pc = id_serial_go ? id_pc : m_pc;
+  assign retire_inst = id_serial_go ? id_inst : m_inst;
+  assign retire_next_pc = id_serial_go ? serial_target : m_next_pc;
+  assign retire_addr = m_result;
+  assign retire_wdata = m_is_store ? m_store_data : mem_rdata;
+  assign retire_is_mem = m_valid && (m_is_load || m_is_store);
+  assign retire_is_store = m_valid && m_is_store;
+  assign retire_branch_taken = m_valid && m_branch_taken;
 `else
-                       m_pc;
+  // Tie off all observation ports in synthesis.
+  assign retire = 1'b0;
+  assign retire_pc = 32'b0;
+  assign retire_inst = 32'b0;
+  assign retire_next_pc = 32'b0;
+  assign retire_addr = 32'b0;
+  assign retire_wdata = 32'b0;
+  assign retire_is_mem = 1'b0;
+  assign retire_is_store = 1'b0;
+  assign retire_branch_taken = 1'b0;
 `endif
-  assign retire_inst = id_serial_go ? id_inst :
-`ifdef SYNTHESIS
-                       32'h00000013;
-`else
-                       m_inst;
-`endif
-  assign retire_next_pc = id_serial_go ? serial_target :
-`ifdef SYNTHESIS
-                          32'b0;
-`else
-                          m_next_pc;
-`endif
-  assign retire_addr    = m_result;
-  assign retire_wdata   = m_is_store ? m_store_data : mem_rdata;
-  assign retire_is_mem  = m_valid && (m_is_load || m_is_store);
-  assign retire_is_store= m_valid && m_is_store;
-  assign retire_branch_taken = m_branch_taken;
 
 endmodule

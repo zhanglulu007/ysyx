@@ -1,8 +1,3 @@
-# NPCSynth - 当前 NPC 多周期核整体综合评估
-#
-# 用仓库既有的 yosys-sta 流程 (yosys 综合 + iEDA 时序/功耗) 评估
-# npc/vsrc 的当前多周期核, 产出面积、最高频率、时序违例与功耗。
-#
 # 用法:
 #   make check                  # 只解析/elaborate 整个层次 (最快, 先验证可综合)
 #   make synth                  # 综合出网表 + 面积报告

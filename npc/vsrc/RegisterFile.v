@@ -21,10 +21,12 @@ module RegisterFile(
 `endif
   
   always @(posedge clk) begin
-    if (!rst && wen) begin
+    // x0 is hard-wired to zero: ignore writes targeting it here, so the
+    // core's write-enable path does not need a separate rd != 0 comparator.
+    if (!rst && wen && (waddr[3:0] != 4'd0)) begin
       rf[waddr[3:0]] <= wdata;
 `ifndef SYNTHESIS
-      update_reg_value({27'b0, waddr}, wdata);
+      update_reg_value({28'b0, waddr[3:0]}, wdata);
 `endif
     end
   end

@@ -56,14 +56,14 @@ module LSU(
   reg r_state, w_state;
   reg aw_done, w_done;
 
-  wire [1:0] sz  = f3[1:0];
+  wire [1:0] size  = f3[1:0];
   wire [1:0] off = addr[1:0];
 
   assign lsu_arvalid = req && !wen && (r_state == R_IDLE) && !lsu_rvalid;
   assign lsu_araddr  = addr;
   assign lsu_arid    = 4'b0010;
   assign lsu_arlen   = 8'b0;
-  assign lsu_arsize  = {1'b0, sz};
+  assign lsu_arsize  = {1'b0, size};
   assign lsu_arburst = 2'b01;
 
   assign lsu_rready  = req && !wen;
@@ -72,7 +72,7 @@ module LSU(
   assign lsu_awaddr  = addr;
   assign lsu_awid    = 4'b0010;
   assign lsu_awlen   = 8'b0;
-  assign lsu_awsize  = {1'b0, sz};
+  assign lsu_awsize  = {1'b0, size};
   assign lsu_awburst = 2'b01;
 
   assign lsu_wvalid  = req && wen && (w_state == W_IDLE) && !w_done && !lsu_bvalid;
@@ -132,7 +132,7 @@ module LSU(
 
   reg [31:0] load_ext;
   always @(*) begin
-    case (sz)
+    case (size)
       2'b00: load_ext = is_unsigned ? {24'b0, byte_lane}
                                     : {{24{byte_lane[7]}}, byte_lane};
       2'b01: load_ext = is_unsigned ? {16'b0, half_lane}
@@ -146,7 +146,7 @@ module LSU(
   reg [31:0] store_data;
   reg [3:0]  store_strb;
   always @(*) begin
-    case (sz)
+    case (size)
       2'b00: begin
         store_data = wdata << {off, 3'b000};
         store_strb = 4'b0001 << off;
