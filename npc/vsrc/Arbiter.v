@@ -1,3 +1,8 @@
+//============================================================================
+// Arbiter.v - AXI read arbitration between I-fetch and LSU.
+// LSU (demand data) has priority over I-cache prefetch; demand fetch wins
+// over LSU when both are demanded. One outstanding read burst at a time.
+//============================================================================
 module Arbiter(
   input clk,
   input rst,
@@ -99,6 +104,7 @@ module Arbiter(
   localparam [2:0] IFU_SIZE  = 3'b010;
   localparam [1:0] IFU_BURST = 2'b01;
 
+  // write path passes straight through
   assign mem_awvalid = lsu_awvalid;
   assign mem_awaddr  = lsu_awaddr;
   assign mem_awid    = lsu_awid;
@@ -118,23 +124,15 @@ module Arbiter(
   assign lsu_bid     = mem_bid;
   assign mem_bready  = lsu_bready;
 
-  reg rd_busy_ifu, rd_busy_lsu;
-  wire any_busy = rd_busy_ifu | rd_busy_lsu;
-  wire ifu_free = !any_busy;
-  wire lsu_free = !any_busy;
+  // read arbitration
+  reg rd_busy;
+  wire ar_free = !rd_busy;
 
-  wire ifu_grant = ifu_free && ifu_arvalid;
-  wire lsu_grant = lsu_free && lsu_arvalid;
+  wire lsu_first = lsu_arvalid && (!ifu_arvalid || ifu_ar_prefetch);
+  wire ifu_sel   = ar_free && ifu_arvalid && !lsu_first;
+  wire lsu_sel   = ar_free && lsu_first;
 
-  wire lsu_first = lsu_grant && (!ifu_grant || ifu_ar_prefetch);
-
-  reg ar_hold;    
-  reg ar_hold_ifu;
-
-  wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
-  wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
-
-  assign mem_arvalid = (ifu_sel && ifu_arvalid) || (lsu_sel && lsu_arvalid);
+  assign mem_arvalid = ifu_sel || lsu_sel;
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
   assign mem_arid    = ifu_sel ? IFU_ID : lsu_arid;
   assign mem_arlen   = ifu_sel ? ifu_arlen : lsu_arlen;
@@ -158,37 +156,13 @@ module Arbiter(
 
   wire ar_fire = mem_arvalid && mem_arready;
   wire r_fire  = mem_rvalid && mem_rready;
-
-  wire ar_open_ifu = ar_fire && ifu_sel && (mem_arlen != 8'd0);
-  wire ar_open_lsu = ar_fire && lsu_sel && (mem_arlen != 8'd0);
-
-  wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
-  wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
+  wire ar_open = ar_fire && (mem_arlen != 8'd0);
+  wire rd_close = rd_busy && r_fire && mem_rlast;
 
   always @(posedge clk) begin
-    if (rst) begin
-      rd_busy_ifu <= 1'b0;
-      rd_busy_lsu <= 1'b0;
-      ar_hold     <= 1'b0;
-      ar_hold_ifu <= 1'b0;
-    end else begin
-      if (ar_open_ifu)      rd_busy_ifu <= 1'b1;
-      else if (rd_close_ifu) rd_busy_ifu <= 1'b0;
-
-      if (ar_open_lsu)      rd_busy_lsu <= 1'b1;
-      else if (rd_close_lsu) rd_busy_lsu <= 1'b0;
-
-      if (ar_fire) begin
-        ar_hold     <= 1'b0;
-        ar_hold_ifu <= 1'b0;
-      end else if (mem_arvalid) begin
-        ar_hold     <= 1'b1;
-        ar_hold_ifu <= ifu_sel;
-      end else begin
-        ar_hold     <= 1'b0;  
-        ar_hold_ifu <= 1'b0;
-      end
-    end
+    if (rst) rd_busy <= 1'b0;
+    else if (ar_open) rd_busy <= 1'b1;
+    else if (rd_close) rd_busy <= 1'b0;
   end
 
 endmodule
