@@ -130,8 +130,8 @@ module Arbiter(
   reg ar_hold;    
   reg ar_hold_ifu;
 
-  wire ifu_sel = (ifu_grant && !lsu_first);
-  wire lsu_sel = (lsu_grant && lsu_first);
+  wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
+  wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
 
   assign mem_arvalid = (ifu_sel && ifu_arvalid) || (lsu_sel && lsu_arvalid);
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
@@ -164,7 +164,17 @@ module Arbiter(
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
 
-  integer dbg_cnt = 0;
+  integer dbg_r = 0, dbg_ar = 0;
+  always @(posedge clk) begin
+    if (!rst) begin
+      if (ar_fire) dbg_ar = dbg_ar + 1;
+      if (r_fire)  dbg_r  = dbg_r + 1;
+      if (dbg_ar > 0 && dbg_r == 0 && (dbg_ar % 1000 == 0))
+        $display("[ARB] ar_cnt=%0d r_cnt=%0d  -> AR accepted but R never returned (bifu=%b blsu=%b rid=%0d rv=%b rr=%b)",
+                 dbg_ar, dbg_r, rd_busy_ifu, rd_busy_lsu, mem_rid, mem_rvalid, mem_rready);
+    end
+  end
+
   always @(posedge clk) begin
     if (rst) begin
       rd_busy_ifu <= 1'b0;
@@ -178,12 +188,6 @@ module Arbiter(
       if (ar_open_lsu)      rd_busy_lsu <= 1'b1;
       else if (rd_close_lsu) rd_busy_lsu <= 1'b0;
 
-      if ((mem_arvalid || ar_hold || rd_busy_ifu || rd_busy_lsu) && dbg_cnt < 60) begin
-        dbg_cnt = dbg_cnt + 1;
-        $display("[ARB] n=%0d av=%b ary=%b hold=%b bifu=%b blsu=%b rv=%b rr=%b rlast=%b rid=%0d ifu_v=%b",
-                 dbg_cnt, mem_arvalid, mem_arready, ar_hold,
-                 rd_busy_ifu, rd_busy_lsu, mem_rvalid, mem_rready, mem_rlast, mem_rid, ifu_arvalid);
-      end
       if (ar_fire) begin
         ar_hold     <= 1'b0;
         ar_hold_ifu <= 1'b0;
