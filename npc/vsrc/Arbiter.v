@@ -160,7 +160,10 @@ module Arbiter(
   wire ifu_sel = ar_hold ?  ar_hold_ifu : (ifu_grant && !lsu_first);
   wire lsu_sel = ar_hold ? !ar_hold_ifu : (lsu_grant && lsu_first);
 
-  assign mem_arvalid = ifu_sel || lsu_sel;
+  // A held grant must still be backed by an asserted valid.  A compliant master
+  // never drops valid before ready, but gating here keeps a stray deassert from
+  // turning into a phantom request (and lets the hold release below).
+  assign mem_arvalid = (ifu_sel && ifu_arvalid) || (lsu_sel && lsu_arvalid);
   assign mem_araddr  = ifu_sel ? ifu_araddr : lsu_araddr;
   assign mem_arid    = ifu_sel ? IFU_ID : lsu_arid;
   assign mem_arlen   = ifu_sel ? ifu_arlen : lsu_arlen;
@@ -216,6 +219,9 @@ module Arbiter(
       end else if (mem_arvalid) begin
         ar_hold     <= 1'b1;
         ar_hold_ifu <= ifu_sel;
+      end else begin
+        ar_hold     <= 1'b0;   // source withdrew valid; drop the stale grant
+        ar_hold_ifu <= 1'b0;
       end
     end
   end
