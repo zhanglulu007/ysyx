@@ -132,9 +132,11 @@ module top(
 
   // ---------------- core ----------------
   wire [31:0] cur_pc, cur_inst, a0_value;
+`ifndef SYNTHESIS
   wire        retire;
   wire [31:0] retire_pc, retire_inst, retire_next_pc, retire_addr, retire_wdata;
   wire        retire_is_mem, retire_is_store, retire_branch_taken;
+`endif
 
   Core u_core(
     .clk(clk), .rst(rst),
@@ -146,11 +148,14 @@ module top(
     .csr_addr(csr_addr), .csr_wdata(csr_wdata), .csr_wen(csr_wen),
     .csr_ecall(csr_ecall), .csr_pc(csr_pc), .csr_rdata(csr_rdata),
     .mepc(mepc), .mtvec(mtvec), .icache_flush(icache_flush),
-    .cur_pc(cur_pc), .cur_inst(cur_inst), .a0_value(a0_value),
+    .cur_pc(cur_pc), .cur_inst(cur_inst), .a0_value(a0_value)
+`ifndef SYNTHESIS
+    ,
     .retire(retire), .retire_pc(retire_pc), .retire_inst(retire_inst),
     .retire_next_pc(retire_next_pc), .retire_addr(retire_addr),
     .retire_wdata(retire_wdata), .retire_is_mem(retire_is_mem),
     .retire_is_store(retire_is_store), .retire_branch_taken(retire_branch_taken)
+`endif
   );
 
   ICache u_icache(

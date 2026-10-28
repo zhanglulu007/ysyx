@@ -48,8 +48,11 @@ module Core(
 
   output [31:0] cur_pc,
   output [31:0] cur_inst,
-  output [31:0] a0_value,
-
+  output [31:0] a0_value
+`ifndef SYNTHESIS
+  ,
+  // Simulation-only observation ports.  They are not part of the
+  // synthesizable interface at all when SYNTHESIS is defined.
   output        retire,
   output [31:0] retire_pc,
   output [31:0] retire_inst,
@@ -59,6 +62,7 @@ module Core(
   output        retire_is_mem,
   output        retire_is_store,
   output        retire_branch_taken
+`endif
 );
 
   localparam [31:0] RESET_PC =
@@ -386,7 +390,8 @@ module Core(
 
   // ---------------- simulation / observation outputs ----------------
   // Everything below is for commit logging, ftrace/mtrace, DiffTest and the
-  // top-level performance counters.  It is not part of the synthesizable core.
+  // top-level performance counters.  The ports and drivers are compiled out
+  // completely under SYNTHESIS.
 `ifndef SYNTHESIS
   assign retire = (m_valid && m_done_wb) || id_serial_go;
   assign retire_pc = id_serial_go ? id_pc : m_pc;
@@ -397,17 +402,6 @@ module Core(
   assign retire_is_mem = m_valid && (m_is_load || m_is_store);
   assign retire_is_store = m_valid && m_is_store;
   assign retire_branch_taken = m_valid && m_branch_taken;
-`else
-  // Tie off all observation ports in synthesis.
-  assign retire = 1'b0;
-  assign retire_pc = 32'b0;
-  assign retire_inst = 32'b0;
-  assign retire_next_pc = 32'b0;
-  assign retire_addr = 32'b0;
-  assign retire_wdata = 32'b0;
-  assign retire_is_mem = 1'b0;
-  assign retire_is_store = 1'b0;
-  assign retire_branch_taken = 1'b0;
 `endif
 
 endmodule
