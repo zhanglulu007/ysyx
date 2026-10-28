@@ -180,9 +180,9 @@ module Arbiter(
 
       if ((mem_arvalid || ar_hold || rd_busy_ifu || rd_busy_lsu) && dbg_cnt < 60) begin
         dbg_cnt = dbg_cnt + 1;
-        $display("[ARB] cyc=%0d arvalid=%b arready=%b hold=%b hold_ifu=%b busy_ifu=%b busy_lsu=%b sel_ifu=%b sel_lsu=%b ifu_v=%b lsu_v=%b arlen=%0d",
-                 $time/10, mem_arvalid, mem_arready, ar_hold, ar_hold_ifu,
-                 rd_busy_ifu, rd_busy_lsu, ifu_sel, lsu_sel, ifu_arvalid, lsu_arvalid, mem_arlen);
+        $display("[ARB] n=%0d av=%b ary=%b hold=%b bifu=%b blsu=%b rv=%b rr=%b rlast=%b rid=%0d ifu_v=%b",
+                 dbg_cnt, mem_arvalid, mem_arready, ar_hold,
+                 rd_busy_ifu, rd_busy_lsu, mem_rvalid, mem_rready, mem_rlast, mem_rid, ifu_arvalid);
       end
       if (ar_fire) begin
         ar_hold     <= 1'b0;
