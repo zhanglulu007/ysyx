@@ -86,7 +86,6 @@ module top(
   wire [31:0] ic_araddr;
   wire [ 7:0] ic_arlen;
   wire [ 1:0] ic_arburst;
-  wire        ic_ar_prefetch;
   wire        ic_rvalid, ic_rready;
   wire [31:0] ic_rdata;
   wire        ic_rlast;
@@ -167,7 +166,7 @@ module top(
     .cpu_inst(fetch_inst), .cpu_cacheable(ic_cacheable),
     .cpu_was_miss(ic_was_miss), .cpu_stall(ic_stall),
     .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
-    .arlen(ic_arlen), .arburst(ic_arburst), .ar_prefetch(ic_ar_prefetch),
+    .arlen(ic_arlen), .arburst(ic_arburst),
     .rvalid(ic_rvalid), .rready(ic_rready), .rdata(ic_rdata), .rlast(ic_rlast),
     .idle(fetch_idle),
     .miss_replace_pulse(ic_miss_replace),
@@ -196,7 +195,6 @@ module top(
     .clk(clk), .rst(rst),
     .ifu_arvalid(ic_arvalid), .ifu_arready(ic_arready), .ifu_araddr(ic_araddr),
     .ifu_arlen(ic_arlen), .ifu_arburst(ic_arburst),
-    .ifu_ar_prefetch(ic_ar_prefetch),
     .ifu_rvalid(ic_rvalid), .ifu_rready(ic_rready), .ifu_rdata(ic_rdata),
     .ifu_rlast(ic_rlast),
     .lsu_arvalid(lsu_arvalid), .lsu_arready(lsu_arready), .lsu_araddr(lsu_araddr),

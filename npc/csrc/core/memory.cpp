@@ -7,6 +7,15 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef SOC_MODE
+// Access the actual memory arrays inside the Verilated SoC model.
+// These members are generated in VysyxSoCFull___024root.h; using them avoids
+// maintaining a second shadow copy that could drift from the RTL model.
+#include "VysyxSoCFull.h"
+#include "VysyxSoCFull___024root.h"
+extern VysyxSoCFull* top;
+#endif
+
 static uint8_t pmem[PMEM_SIZE];
 static uint8_t flash[FLASH_SIZE];
 
@@ -154,14 +163,82 @@ bool in_pmem(uint32_t addr) {
     return addr >= PMEM_BASE && addr < PMEM_BASE + PMEM_SIZE;
 }
 
+#ifdef SOC_MODE
+static bool in_window(uint32_t addr, uint32_t base, uint32_t size) {
+    return addr >= base && addr < base + size;
+}
+
+static bool soc_model_ready() {
+    return top != nullptr && top->rootp != nullptr;
+}
+
+// SDRAM is modeled as 4 banks x 8192 rows x 512 x 16-bit words.
+// The controller maps a 32-bit guest address to two consecutive 16-bit
+// columns; see sdram_axi_core.v (addr_col_w/addr_bank_w/addr_row_w).
+static uint32_t soc_read_sdram(uint32_t addr) {
+    if (!soc_model_ready()) return 0;
+
+    uint32_t off = (addr - SDRAM_BASE) & ~0x3u;
+    uint32_t word_index = off >> 2;
+    uint32_t bank = (word_index >> 8) & 0x3u;
+    uint32_t row  = (word_index >> 10) & 0x1fffu;
+    uint32_t col  = (word_index & 0xffu) << 1;
+
+    uint32_t lo = top->rootp->ysyxSoCFull__DOT__sdram__DOT__mem[bank][row][col];
+    uint32_t hi = top->rootp->ysyxSoCFull__DOT__sdram__DOT__mem[bank][row][col + 1];
+    return lo | (hi << 16);
+}
+
+// SRAM is an AXI4RAM with 2048 32-bit words (8KB).
+static uint32_t soc_read_sram(uint32_t addr) {
+    if (!soc_model_ready()) return 0;
+    uint32_t word = ((addr - SRAM_BASE) & ~0x3u) >> 2;
+    return top->rootp->ysyxSoCFull__DOT__asic__DOT__axi4ram__DOT__mem_ext__DOT__Memory[word];
+}
+
+// PSRAM is modeled as a byte array (4MB).
+static uint32_t soc_read_psram(uint32_t addr) {
+    if (!soc_model_ready()) return 0;
+    uint32_t off = (addr - PSRAM_BASE) & ~0x3u;
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i ++) {
+        value |= (uint32_t)top->rootp->ysyxSoCFull__DOT__psram__DOT__mem[off + i] << (8 * i);
+    }
+    return value;
+}
+
+// VGA framebuffer is 524288 32-bit pixels (2MB).
+static uint32_t soc_read_vga(uint32_t addr) {
+    if (!soc_model_ready()) return 0;
+    uint32_t pixel = ((addr - VGA_BASE) & ~0x3u) >> 2;
+    return top->rootp->ysyxSoCFull__DOT__asic__DOT__lvga__DOT__mvga__DOT__fb[pixel];
+}
+#endif
+
 bool npc_mem_read_word(uint32_t addr, uint32_t *data) {
 #ifdef SOC_MODE
     if (in_flash(addr)) {
         *data = flash_read_word(addr);
         return true;
     }
-    if (addr >= MROM_BASE && addr < MROM_BASE + MROM_SIZE) {
+    if (in_window(addr, MROM_BASE, MROM_SIZE)) {
         *data = 0;
+        return true;
+    }
+    if (in_window(addr, SRAM_BASE, SRAM_SIZE)) {
+        *data = soc_read_sram(addr);
+        return true;
+    }
+    if (in_window(addr, SDRAM_BASE, SDRAM_SIZE)) {
+        *data = soc_read_sdram(addr);
+        return true;
+    }
+    if (in_window(addr, PSRAM_BASE, PSRAM_SIZE)) {
+        *data = soc_read_psram(addr);
+        return true;
+    }
+    if (in_window(addr, VGA_BASE, VGA_SIZE)) {
+        *data = soc_read_vga(addr);
         return true;
     }
     return false;
