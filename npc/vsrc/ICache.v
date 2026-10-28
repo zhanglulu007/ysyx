@@ -93,14 +93,17 @@ module ICache(
 
   wire is_flash = (cpu_addr >= 32'h3000_0000) && (cpu_addr < 32'h3100_0000);
   wire is_sdram = (cpu_addr >= 32'ha000_0000) && (cpu_addr < 32'ha200_0000);
-`ifndef SOC_MODE
-  // No PMEM: bypass the cache entirely so no refill burst is ever issued to a
-  // model that cannot walk a WRAP line.
-  wire is_pmem  = 1'b0;
+`ifdef SOC_MODE
+  // SoC mode: only the SDRAM / XIP-flash windows are cacheable.  SDRAM hangs
+  // directly off the AXI4Xbar and its controller implements WRAP, so a
+  // critical-word-first refill is honoured there.
+  wire cacheable = is_flash || is_sdram;
 `else
-  wire is_pmem  = 1'b0;
+  // Standalone mode: the PMEM model walks a burst by adding 4 every beat and
+  // ignores the AXI burst type, so it cannot serve a WRAP line.  Bypass the
+  // cache entirely -- every access goes straight to PMEM.
+  wire cacheable = 1'b0;
 `endif
-  wire cacheable = is_flash || is_sdram || is_pmem;
   assign cpu_cacheable = cacheable;
 
   wire hit = valid[req_idx] && (tag[req_idx] == req_tag);
@@ -118,11 +121,12 @@ module ICache(
   wire [31:0] fill_stream_data = (req_dist == fill_cnt) ? rdata
                                                          : data[req_idx*WORDS + req_word];
 
-  assign cpu_ready = !rst && (!cacheable ||
-                              (hit || fill_has_word));
+  assign cpu_ready = !rst && (cacheable ? (hit || fill_has_word)
+                                        : ((state == S_BYP_R) && rvalid &&
+                                           (cpu_addr == byp_addr)));
   // Bypass reads drive the instruction straight from the bus; cached reads come
   // from the array on a hit, or from the streaming fill while the line lands.
-  assign cpu_inst  = !cacheable ? rdata : (hit ? hit_data : fill_stream_data);
+  assign cpu_inst  = cacheable ? (hit ? hit_data : fill_stream_data) : rdata;
   assign cpu_was_miss = req_was_miss;
   assign cpu_stall = cpu_req && !cpu_ready;
 
