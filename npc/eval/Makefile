@@ -26,7 +26,7 @@ NPC_VSRC ?= $(PROJ_PATH)/../vsrc
 
 DESIGN := NPCSynth
 PDK ?= icsprout55
-CLK_FREQ_MHZ ?= 800
+CLK_FREQ_MHZ ?= 1200
 CLK_PORT_NAME ?= clk
 # SYNTHESIS: 走 top.v 的合成用存储模型, 排除全部 DPI-C
 DEFINES ?= SYNTHESIS
