@@ -389,8 +389,8 @@ module top(
   wire perf_ic_access     = fetch_accept && ic_cacheable;
   wire perf_ic_refill     = ic_arvalid && ic_arready && ic_fill_ar;
   wire perf_ic_bypass_ar  = ic_arvalid && ic_arready && ic_bypass_ar;
-  wire perf_ic_compulsory = ic_fill_start && !ic_victim_valid;
-  wire perf_ic_replace    = ic_fill_start &&  ic_victim_valid;
+  wire perf_ic_compulsory = !icache_flush && ic_fill_start && !ic_victim_valid;
+  wire perf_ic_replace    = !icache_flush && ic_fill_start &&  ic_victim_valid;
   wire perf_lsu_ar        = lsu_arvalid && lsu_arready;
 
   always @(posedge clk) begin

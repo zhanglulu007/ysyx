@@ -131,7 +131,7 @@ module ICache(
 `ifndef SYNTHESIS
   assign obs_cacheable    = cacheable;
   assign obs_hit          = hit;
-  assign obs_fill_start   = !rst && !flush && (state == S_IDLE) && demand_miss;
+  assign obs_fill_start   = (state == S_IDLE) && demand_miss;
   assign obs_victim_valid = valid[req_idx];
   assign obs_fill_ar      = (state == S_FILL_AR);
   assign obs_bypass_ar    = (state == S_BYP_AR);
