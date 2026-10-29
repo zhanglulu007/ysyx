@@ -23,8 +23,8 @@ extern "C" int perf_delay_acc_step() {
     static const int S = 1 << M;
     static const int F_DEV_MHZ = 100;       // 外设频率
 
-#ifdef F
-    const int f_cpu_mhz = F * 10;           
+#ifdef F_CPU
+    const int f_cpu_mhz = F_CPU * 10;
 #else
     const int f_cpu_mhz = F_DEV_MHZ;        // 未指定 F: r = 1
 #endif
@@ -110,8 +110,8 @@ void perf_report() {
     printf("Instructions     : %" PRIu64 "\n", commit);
     printf("IPC              : %.4f\n", ratio(commit, cycle));
     printf("CPI              : %.4f\n", ratio(cycle, commit));
-#ifdef F
-    printf("Clock estimate   : %d MHz (F=%d)\n", F * 10, F);
+#ifdef F_CPU
+    printf("Clock estimate   : %d MHz (F=%d)\n", F_CPU * 10, F_CPU);
 #endif
     printf("Commit (state)   : %" PRIu64 " (%s)\n", state_commit,
            state_commit == commit ? "OK" : "MISMATCH");

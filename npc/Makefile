@@ -172,7 +172,7 @@ endif
 
 ifneq ($(strip $(F)),)
   ifneq ($(strip $(F)),0)
-    EXTRA_CFLAGS += -DF=$(strip $(F))
+    EXTRA_CFLAGS += -DF_CPU=$(strip $(F))
   endif
 endif
 
