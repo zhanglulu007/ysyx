@@ -1,10 +1,3 @@
-`ifndef IC_SETS
-`define IC_SETS 4
-`endif
-`ifndef IC_WORDS
-`define IC_WORDS 8
-`endif
-
 module ICache(
   input clk,
   input rst,
@@ -29,23 +22,14 @@ module ICache(
   output        idle
 `ifndef SYNTHESIS
   ,
-  // Observation-only ports for top-level simulation/perf counters.
-  // They are removed from synthesis entirely.
-  output        obs_cacheable,
-  output        obs_hit,
-  output        obs_fill_start,
-  output        obs_victim_valid,
-  output        obs_fill_ar,
-  output        obs_bypass_ar
+  output        perf_cacheable,
+  output        perf_hit,
+  output        perf_fill_start,
+  output        perf_victim_valid,
+  output        perf_fill_ar,
+  output        perf_bypass_ar
 `endif
 );
-
-  localparam SETS  = `IC_SETS;
-  localparam WORDS = `IC_WORDS;
-  localparam IDX_BITS  = $clog2(SETS);
-  localparam WORD_BITS = $clog2(WORDS);
-  localparam OFF_BITS  = 2 + WORD_BITS;
-  localparam TAG_BITS  = 32 - OFF_BITS - IDX_BITS;
 
   localparam [1:0] BURST_INCR = 2'b01;
 `ifdef SOC_MODE
@@ -58,31 +42,31 @@ module ICache(
   localparam S_BYP_AR  = 3'd3;
   localparam S_BYP_R   = 3'd4;
 
-  reg [31:0] data [0:SETS*WORDS-1];
-  reg [TAG_BITS-1:0] tag [0:SETS-1];
-  reg [SETS-1:0] valid;
+  reg [31:0] data [0:31];
+  reg [24:0] tag [0:3];
+  reg [3:0] valid;
 
   reg [2:0] state;
-  reg [IDX_BITS-1:0] fill_idx;
-  reg [TAG_BITS-1:0] fill_tag;
-  reg [WORD_BITS-1:0] fill_cnt;
+  reg [1:0] fill_idx;
+  reg [24:0] fill_tag;
+  reg [2:0] fill_cnt;
 `ifdef SOC_MODE
-  reg [WORD_BITS-1:0] fill_start;   // word offset the wrap burst begins at
+  reg [2:0] fill_start;   // word offset the wrap burst begins at
 `endif
   reg [29:0] byp_addr;              // cpu_addr[31:2], instruction addresses are 4B aligned
 
-  wire [WORD_BITS-1:0] req_word = cpu_addr[2 +: WORD_BITS];
-  wire [IDX_BITS-1:0]  req_idx  = cpu_addr[OFF_BITS +: IDX_BITS];
-  wire [TAG_BITS-1:0]  req_tag  = cpu_addr[OFF_BITS+IDX_BITS +: TAG_BITS];
+  wire [2:0]  req_word = cpu_addr[4:2];
+  wire [1:0]  req_idx  = cpu_addr[6:5];
+  wire [24:0] req_tag  = cpu_addr[31:7];
   wire [31:0] req_data = data[{req_idx, req_word}];
 
   // Reconstruct the fill line base from the latched tag/index; no duplicate fill_line register.
 `ifdef SOC_MODE
   wire [31:0] fill_addr = {fill_tag, fill_idx, fill_start, 2'b00};
-  wire [WORD_BITS-1:0] fill_wr_word = fill_start + fill_cnt;
+  wire [2:0]  fill_wr_word = fill_start + fill_cnt;
 `else
-  wire [31:0] fill_addr = {fill_tag, fill_idx, {OFF_BITS{1'b0}}};
-  wire [WORD_BITS-1:0] fill_wr_word = fill_cnt;
+  wire [31:0] fill_addr = {fill_tag, fill_idx, 5'b0};
+  wire [2:0]  fill_wr_word = fill_cnt;
 `endif
 
   wire is_flash = (cpu_addr[31:24] == 8'h30);
@@ -100,9 +84,9 @@ module ICache(
                     (req_idx == fill_idx) &&
                     (req_tag == fill_tag);
 `ifdef SOC_MODE
-  wire [WORD_BITS-1:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
+  wire [2:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
 `else
-  wire [WORD_BITS-1:0] req_dist = req_word;               // INCR: burst starts at 0
+  wire [2:0] req_dist = req_word;               // INCR: burst starts at 0
 `endif
   wire fill_has_word   = fill_match &&
                          ((req_dist < fill_cnt) ||
@@ -118,7 +102,7 @@ module ICache(
 
   assign arvalid = !rst && ((state == S_FILL_AR) || (state == S_BYP_AR));
   assign araddr  = (state == S_BYP_AR) ? {byp_addr, 2'b00} : fill_addr;
-  assign arlen   = (state == S_BYP_AR) ? 8'd0 : (WORDS - 1);
+  assign arlen   = (state == S_BYP_AR) ? 8'd0 : 8'd7;
 `ifdef SOC_MODE
   assign arburst = (state == S_BYP_AR) ? BURST_INCR : BURST_WRAP;
 `else
@@ -130,21 +114,21 @@ module ICache(
   wire ar_fire = arvalid && arready;
 
 `ifndef SYNTHESIS
-  assign obs_cacheable    = cacheable;
-  assign obs_hit          = hit;
-  assign obs_fill_start   = (state == S_IDLE) && demand_miss;
-  assign obs_victim_valid = valid[req_idx];
-  assign obs_fill_ar      = (state == S_FILL_AR);
-  assign obs_bypass_ar    = (state == S_BYP_AR);
+  assign perf_cacheable    = cacheable;
+  assign perf_hit          = hit;
+  assign perf_fill_start   = (state == S_IDLE) && demand_miss;
+  assign perf_victim_valid = valid[req_idx];
+  assign perf_fill_ar      = (state == S_FILL_AR);
+  assign perf_bypass_ar    = (state == S_BYP_AR);
 `endif
 
   always @(posedge clk) begin
     if (rst || flush) begin
       state <= S_IDLE;
-      valid <= {SETS{1'b0}};
-      fill_cnt <= {WORD_BITS{1'b0}};
+      valid <= 4'b0;
+      fill_cnt <= 3'b0;
 `ifdef SOC_MODE
-      fill_start <= {WORD_BITS{1'b0}};
+      fill_start <= 3'b0;
 `endif
     end else begin
       case (state)
@@ -159,7 +143,7 @@ module ICache(
 `ifdef SOC_MODE
             fill_start <= req_word;   // critical word first
 `endif
-            fill_cnt  <= {WORD_BITS{1'b0}};
+            fill_cnt  <= 3'b0;
             valid[req_idx] <= 1'b0;
           end
         end

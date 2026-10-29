@@ -1,21 +1,3 @@
-//============================================================================
-// Core.v - compact 3-stage in-order pipeline (ID / EX / MEM+WB)
-//   * branches and jumps resolve in EX (short ID path, high clock)
-//   * EX/MEM -> ID forwarding, one interlock cycle on load-use
-//   * CSR/ecall/ebreak/mret/fence.i run serially in ID after drain
-//
-// Reset policy:
-//   only the architectural PC and the three pipeline valid bits are reset.
-//   Payload registers are intentionally left without reset; a payload is
-//   never consumed unless its corresponding valid bit is set.
-//
-// Observation boundary:
-//   The retire_* and a0_value ports are only used by simulation (commit log,
-//   ftrace, mtrace, DiffTest and top-level performance counters).  They are
-//   conditionally compiled out of the interface under SYNTHESIS, so the
-//   synthesizable datapath and module boundary stay clean.  All performance
-//   event classification/counting lives in top.v.
-//============================================================================
 module Core(
   input clk,
   input rst,
@@ -51,8 +33,6 @@ module Core(
   output [31:0] cur_inst
 `ifndef SYNTHESIS
   ,
-  // Simulation-only observation ports.  They are not part of the
-  // synthesizable interface at all when SYNTHESIS is defined.
   output [31:0] a0_value,
   output        retire,
   output [31:0] retire_pc,
@@ -67,8 +47,6 @@ module Core(
 );
 
 `ifdef SYNTHESIS
-  // RegisterFile still exposes a0 as a debug tap; in synthesis it is unused,
-  // so keep a local sink instead of a Core port.
   wire [31:0] a0_value;
 `endif
 
@@ -114,7 +92,6 @@ module Core(
   reg        m_reg_wen, m_is_load, m_is_store;
 
 `ifndef SYNTHESIS
-  // Observation-only pipeline: commit PC, instruction and next-PC history.
   reg [31:0] ex_inst, ex_next_pc;
   reg [31:0] m_pc, m_inst, m_next_pc;
   reg        m_branch_taken;
@@ -156,8 +133,6 @@ module Core(
 
   wire uses_rs1 = is_op || is_opimm || is_load || is_store || is_branch || is_jalr || is_csr;
   wire uses_rs2 = is_op || is_store || is_branch;
-  // x0 writes are ignored inside RegisterFile; keep the intent decode-only.
-  // CSR writes do not use this path: they retire serially in ID via csr_wb.
   wire reg_wen  = is_op || is_opimm || is_load || is_lui ||
                   is_auipc || is_jal || is_jalr;
 
@@ -252,10 +227,6 @@ module Core(
 `endif
 
   // ---------------- ID forwarding ----------------
-  // A producer whose destination is x0 is not a producer at all: RegisterFile
-  // ignores that write.  Gating forwarding with the producer's rd (rather than
-  // with the consumer's rs1/rs2 non-zero checks) makes x0 forwarding harmless
-  // while keeping the datapath free of rs1_nz/rs2_nz comparators.
   wire ex_fwd = ex_valid && ex_reg_wen && (ex_rd != 4'd0);
   wire m_fwd  = m_valid && m_reg_wen && (m_rd != 4'd0) &&
                 (!m_is_load || mem_done);
@@ -306,8 +277,6 @@ module Core(
   );
 
   // ---------------- pipeline registers ----------------
-  // Valid-based reset: only PC and valid bits have a reset.  Payload and
-  // control registers are free-running and are qualified by the valid bits.
   always @(posedge clk) begin
     if (rst) begin
       pc       <= RESET_PC;
@@ -384,12 +353,6 @@ module Core(
   assign mem_is_store = m_is_store;
 
   assign csr_addr  = id_inst[31:20];
-  // CSR/ecall/ebreak/mret/fence.i execute serially in ID only after EX and MEM
-  // have drained (id_serial_go requires !ex_valid && !m_valid).  Therefore
-  // there cannot be a forwarding source for rs1 here, and reading rf_rs1
-  // directly removes the EX-ALU -> forwarding-mux -> CSR path from the
-  // critical path.  This is functionally identical to id_rs1_val for CSR
-  // instructions, because both forwarding terms are guaranteed to be zero.
   assign csr_wdata = is_csrrw ? rf_rs1 : (rf_rs1 | csr_rdata);
   assign csr_wen   = id_serial_go &&
                      (is_csrrw || (is_csrrs && (rs1_5 != 5'd0)));
@@ -401,10 +364,6 @@ module Core(
   assign cur_pc   = pc;
   assign cur_inst = id_inst;
 
-  // ---------------- simulation / observation outputs ----------------
-  // Everything below is for commit logging, ftrace/mtrace, DiffTest and the
-  // top-level performance counters.  The ports and drivers are compiled out
-  // completely under SYNTHESIS.
 `ifndef SYNTHESIS
   assign retire = (m_valid && m_done_wb) || id_serial_go;
   assign retire_pc = id_serial_go ? id_pc : m_pc;

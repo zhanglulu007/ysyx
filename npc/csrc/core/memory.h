@@ -10,7 +10,6 @@
 #define MROM_BASE 0x20000000
 #define MROM_SIZE 0x1000
 
-// SoC memory-map windows (see ysyxSoC/src/SoC.scala).
 #define SRAM_BASE  0x0f000000
 #define SRAM_SIZE  0x2000       // 8KB
 #define SDRAM_BASE 0xa0000000

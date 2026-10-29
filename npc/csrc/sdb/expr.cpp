@@ -131,23 +131,6 @@ static bool make_token(char *e) {
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// Recursive-descent parser
-//
-//   expr    := or
-//   or      := and ('||' and)*
-//   and     := equality ('&&' equality)*
-//   equality:= additive (('==' | '!=') additive)*
-//   additive:= multiplicative (('+' | '-') multiplicative)*
-//   mult    := unary (('*' | '/') unary)*
-//   unary   := ('-' | '!' | '*') unary | primary
-//   primary := number | hex | register | '(' expr ')'
-//
-// The old implementation handled unary '*' before finding the main operator,
-// so `*addr + 4` was parsed as `*(addr + 4)`.  Keeping unary '*' in the
-// grammar above gives it the correct (highest) precedence.
-// ---------------------------------------------------------------------------
-
 struct Parser {
   int pos;
   bool ok;

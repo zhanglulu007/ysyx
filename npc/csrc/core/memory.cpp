@@ -8,9 +8,6 @@
 #include <cstring>
 
 #ifdef SOC_MODE
-// Access the actual memory arrays inside the Verilated SoC model.
-// These members are generated in VysyxSoCFull___024root.h; using them avoids
-// maintaining a second shadow copy that could drift from the RTL model.
 #include "VysyxSoCFull.h"
 #include "VysyxSoCFull___024root.h"
 extern VysyxSoCFull* top;
@@ -172,9 +169,6 @@ static bool soc_model_ready() {
     return top != nullptr && top->rootp != nullptr;
 }
 
-// SDRAM is modeled as 4 banks x 8192 rows x 512 x 16-bit words.
-// The controller maps a 32-bit guest address to two consecutive 16-bit
-// columns; see sdram_axi_core.v (addr_col_w/addr_bank_w/addr_row_w).
 static uint32_t soc_read_sdram(uint32_t addr) {
     if (!soc_model_ready()) return 0;
 
@@ -189,14 +183,14 @@ static uint32_t soc_read_sdram(uint32_t addr) {
     return lo | (hi << 16);
 }
 
-// SRAM is an AXI4RAM with 2048 32-bit words (8KB).
+
 static uint32_t soc_read_sram(uint32_t addr) {
     if (!soc_model_ready()) return 0;
     uint32_t word = ((addr - SRAM_BASE) & ~0x3u) >> 2;
     return top->rootp->ysyxSoCFull__DOT__asic__DOT__axi4ram__DOT__mem_ext__DOT__Memory[word];
 }
 
-// PSRAM is modeled as a byte array (4MB).
+
 static uint32_t soc_read_psram(uint32_t addr) {
     if (!soc_model_ready()) return 0;
     uint32_t off = (addr - PSRAM_BASE) & ~0x3u;
@@ -207,7 +201,6 @@ static uint32_t soc_read_psram(uint32_t addr) {
     return value;
 }
 
-// VGA framebuffer is 524288 32-bit pixels (2MB).
 static uint32_t soc_read_vga(uint32_t addr) {
     if (!soc_model_ready()) return 0;
     uint32_t pixel = ((addr - VGA_BASE) & ~0x3u) >> 2;

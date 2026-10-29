@@ -26,10 +26,6 @@ DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-# ICache 参数化（对应 vsrc/ICache.v 的 `IC_SETS / `IC_WORDS 宏）
-# 默认值与 final_soc 架构一致：4 组 × 8 字（32 字节行）
-IC_SETS    ?= 4
-IC_WORDS   ?= 8
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0
@@ -172,7 +168,6 @@ endif
 
 ifneq ($(strip $(F)),)
   ifneq ($(strip $(F)),0)
-    # 不要命名为 F：Verilator 的 FST 头文件把 F 用作模板参数，会编译失败
     EXTRA_CFLAGS += -DF_CPU=$(strip $(F))
   endif
 endif

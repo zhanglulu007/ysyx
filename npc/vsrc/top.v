@@ -1,7 +1,3 @@
-//============================================================================
-// top.v - pipelined NPC top level
-//   Core (3-stage) + ICache + LSU + Arbiter + CSR + PMEM/AXI
-//============================================================================
 module top(
   input clk,
   input rst,
@@ -90,7 +86,6 @@ module top(
   wire [31:0] ic_rdata;
   wire        ic_rlast;
 `ifndef SYNTHESIS
-  // ICache observation signals: all perf classification happens here in top.
   wire        ic_cacheable, ic_hit, ic_fill_start, ic_victim_valid;
   wire        ic_fill_ar, ic_bypass_ar;
 `endif
@@ -168,9 +163,9 @@ module top(
     .cpu_addr(fetch_pc), .cpu_req(fetch_req), .cpu_ready(fetch_ready),
     .cpu_inst(fetch_inst)
 `ifndef SYNTHESIS
-    , .obs_cacheable(ic_cacheable), .obs_hit(ic_hit),
-    .obs_fill_start(ic_fill_start), .obs_victim_valid(ic_victim_valid),
-    .obs_fill_ar(ic_fill_ar), .obs_bypass_ar(ic_bypass_ar)
+    , .perf_cacheable(ic_cacheable), .perf_hit(ic_hit),
+    .perf_fill_start(ic_fill_start), .perf_victim_valid(ic_victim_valid),
+    .perf_fill_ar(ic_fill_ar), .perf_bypass_ar(ic_bypass_ar)
 `endif
     , .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
     .arlen(ic_arlen), .arburst(ic_arburst),
@@ -261,7 +256,6 @@ module top(
 `endif
 
 `ifdef SYNTHESIS
-  // synthesis-only simple AXI responder (keeps the bus logic in the PPA netlist)
   reg        syn_rvalid;
   reg [ 7:0] syn_left;
   reg [ 3:0] syn_rid;
@@ -297,7 +291,6 @@ module top(
   end
 `endif
 `else
-  // SoC mode uses the external AXI master ports directly (declared above)
 `endif
 
   // ======================= simulation-only tracing / perf =======================
@@ -385,7 +378,6 @@ module top(
   wire perf_ld_done = retire && retire_is_mem && !retire_is_store;
   wire perf_st_done = retire && retire_is_mem &&  retire_is_store;
 
-  // ICache performance classification lives here; ICache only exports raw observations.
   wire perf_ic_access     = fetch_accept && ic_cacheable;
   wire perf_ic_refill     = ic_arvalid && ic_arready && ic_fill_ar;
   wire perf_ic_bypass_ar  = ic_arvalid && ic_arready && ic_bypass_ar;

@@ -41,8 +41,6 @@ word_t npc_reg_str2val(const char *s, bool *success) {
     }
 
     for (int i = 0; i < 16; i++) {
-        // regs[0] is "$0"; compare without the leading '$' so both
-        // "$0" and "0" work, while the display code keeps its old format.
         const char *name = regs[i];
         if (*name == '$') name ++;
         if (strcmp(s, name) == 0) {
