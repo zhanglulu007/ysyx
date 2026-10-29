@@ -95,15 +95,15 @@ module ICache(
 
   wire hit = valid[req_idx] && (tag[req_idx] == req_tag);
 
-  wire fill_line_match = (state == S_FILL_R) &&
-                         (req_idx == fill_idx) &&
-                         (req_tag == fill_tag);
+  wire fill_match = (state == S_FILL_R) &&
+                    (req_idx == fill_idx) &&
+                    (req_tag == fill_tag);
 `ifdef SOC_MODE
   wire [WORD_BITS-1:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
 `else
   wire [WORD_BITS-1:0] req_dist = req_word;               // INCR: burst starts at 0
 `endif
-  wire fill_has_word   = fill_line_match &&
+  wire fill_has_word   = fill_match &&
                          ((req_dist < fill_cnt) ||
                           (rvalid && (req_dist == fill_cnt)));
   wire [31:0] fill_stream_data = (req_dist == fill_cnt) ? rdata : req_data;
