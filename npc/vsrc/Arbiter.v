@@ -142,10 +142,14 @@ module Arbiter(
   localparam [1:0] S_IDLE = 2'd0, S_IFU  = 2'd1, S_LSU  = 2'd2;
 
   reg [1:0] state;
-  reg rr_ifu;
 
-  wire pick_ifu = ifu_req && (!lsu_req || rr_ifu);
-  wire pick_lsu = lsu_req && (!ifu_req || !rr_ifu);
+  // Strict IFU priority: whenever the IFU request can be granted, it wins.
+  // LSU is selected only when IFU is not requesting (or its target channel
+  // is busy).  Once an AR has been selected and is waiting for arready, the
+  // FSM state holds that selection; AXI requires the AR payload to remain
+  // stable until the handshake, so it cannot be preempted in that cycle.
+  wire pick_ifu = ifu_req;
+  wire pick_lsu = lsu_req && !ifu_req;
 
   wire sel_ifu = (state == S_IFU) || ((state == S_IDLE) && pick_ifu);
   wire sel_lsu = (state == S_LSU) || ((state == S_IDLE) && pick_lsu);
@@ -184,7 +188,6 @@ module Arbiter(
   always @(posedge clk) begin
     if (rst) begin
       state       <= S_IDLE;
-      rr_ifu      <= 1'b1;
       rd_busy_ifu <= 1'b0;
       rd_busy_lsu <= 1'b0;
       rd_chan_ifu <= 1'b0;
@@ -204,12 +207,6 @@ module Arbiter(
         end
         default: state <= S_IDLE;
       endcase
-
-      if (ar_fire) begin
-        rr_ifu <= ~sel_ifu;
-      end else if (!ifu_arvalid && !lsu_arvalid) begin
-        rr_ifu <= 1'b1;
-      end
 
       if (ar_open_ifu) begin
         rd_busy_ifu <= 1'b1;
