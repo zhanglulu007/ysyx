@@ -60,6 +60,8 @@ void perf_report() {
     const uint64_t ic_hit        = perf_count[PERF_IC_HIT];
     const uint64_t ic_miss       = perf_count[PERF_IC_MISS];
     const uint64_t ic_refill     = perf_count[PERF_IC_REFILL];
+    const uint64_t ic_compulsory = perf_count[PERF_IC_COMPULSORY];
+    const uint64_t ic_replace    = perf_count[PERF_IC_REPLACE];
 
     const uint64_t alu     = perf_count[PERF_ALU];
     const uint64_t alu_r   = perf_count[PERF_ALU_R];
@@ -170,10 +172,12 @@ void perf_report() {
            ic_access, ic_hit, ic_miss);
     printf("  hit rate / miss rate: %.2f%% / %.2f%%\n",
            percent(ic_hit, ic_access), percent(ic_miss, ic_access));
+    printf("  line fills         : compulsory=%" PRIu64 ", replace=%" PRIu64 "\n",
+           ic_compulsory, ic_replace);
     printf("  refill AR          : %" PRIu64 " (%s)\n", ic_refill,
-           (ic_miss == 0 || ic_refill % ic_miss == 0) ? "OK" : "MISMATCH");
-    printf("  AR per miss        : %.2f (1.00 = 突发; block/4 = 独立事务)\n",
-           ratio(ic_refill, ic_miss));
+           ic_refill == ic_compulsory + ic_replace ? "OK" : "MISMATCH");
+    printf("  AR per line fill   : %.2f (1.00 = one AR per line fill)\n",
+           ratio(ic_refill, ic_compulsory + ic_replace));
     printf("  misses per 1k inst : %.2f\n", ratio(ic_miss, commit) * 1000.0);
 
     printf("\n[LSU behavior]\n");

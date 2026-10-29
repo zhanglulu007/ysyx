@@ -89,8 +89,10 @@ module top(
   wire        ic_rvalid, ic_rready;
   wire [31:0] ic_rdata;
   wire        ic_rlast;
-  wire        ic_cacheable, ic_was_miss, ic_stall;
-  wire        ic_miss_replace, ic_miss_compulsory;
+`ifndef SYNTHESIS
+  // ICache observation signals: all perf classification happens here in top.
+  wire        ic_cacheable, ic_hit, ic_fill_start, ic_victim_valid, ic_fill_ar;
+`endif
 
   // ---------------- LSU <-> Arbiter ----------------
   wire        lsu_arvalid, lsu_arready;
@@ -163,14 +165,16 @@ module top(
   ICache u_icache(
     .clk(clk), .rst(rst), .flush(icache_flush),
     .cpu_addr(fetch_pc), .cpu_req(fetch_req), .cpu_ready(fetch_ready),
-    .cpu_inst(fetch_inst), .cpu_cacheable(ic_cacheable),
-    .cpu_was_miss(ic_was_miss), .cpu_stall(ic_stall),
-    .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
+    .cpu_inst(fetch_inst)
+`ifndef SYNTHESIS
+    , .obs_cacheable(ic_cacheable), .obs_hit(ic_hit),
+    .obs_fill_start(ic_fill_start), .obs_victim_valid(ic_victim_valid),
+    .obs_fill_ar(ic_fill_ar)
+`endif
+    , .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
     .arlen(ic_arlen), .arburst(ic_arburst),
     .rvalid(ic_rvalid), .rready(ic_rready), .rdata(ic_rdata), .rlast(ic_rlast),
-    .idle(fetch_idle),
-    .miss_replace_pulse(ic_miss_replace),
-    .miss_compulsory_pulse(ic_miss_compulsory)
+    .idle(fetch_idle)
   );
 
   LSU u_lsu(
@@ -328,8 +332,7 @@ module top(
   localparam PERF_IC_HIT       = 18;
   localparam PERF_IC_MISS      = 19;
   localparam PERF_IC_REFILL    = 20;
-  localparam PERF_IC_MISS_AR   = 21;
-  localparam PERF_IC_MISS_R    = 22;
+  // 21/22 reserved: former ICache miss AR/R wait counters (not implemented)
   localparam PERF_IF_BYPASS    = 23;
   localparam PERF_BRANCH_TAKEN = 24;
   localparam PERF_BRANCH_NOT_TAKEN = 25;
@@ -380,6 +383,12 @@ module top(
   wire perf_ld_done = retire && retire_is_mem && !retire_is_store;
   wire perf_st_done = retire && retire_is_mem &&  retire_is_store;
 
+  // ICache performance classification lives here; ICache only exports raw observations.
+  wire perf_ic_access     = fetch_accept && ic_cacheable;
+  wire perf_ic_refill     = ic_arvalid && ic_arready && ic_fill_ar;
+  wire perf_ic_compulsory = ic_fill_start && !ic_victim_valid;
+  wire perf_ic_replace    = ic_fill_start &&  ic_victim_valid;
+
   always @(posedge clk) begin
     if (!rst) begin
       if (retire)           perf_event(PERF_COMMIT);
@@ -391,15 +400,15 @@ module top(
       if (perf_ld_wait)      perf_event(PERF_LD_WAIT);
       if (perf_st_wait)      perf_event(PERF_ST_WAIT);
 
-      if (fetch_accept && ic_cacheable) begin
+      if (perf_ic_access) begin
         perf_event(PERF_IC_ACCESS);
-        if (ic_was_miss) perf_event(PERF_IC_MISS);
-        else             perf_event(PERF_IC_HIT);
+        if (ic_hit) perf_event(PERF_IC_HIT);
+        else        perf_event(PERF_IC_MISS);
       end
       if (fetch_accept && !ic_cacheable) perf_event(PERF_IF_BYPASS);
-      if (ic_arvalid && ic_arready) perf_event(PERF_IC_REFILL);
-      if (ic_miss_compulsory) perf_event(PERF_IC_COMPULSORY);
-      if (ic_miss_replace)    perf_event(PERF_IC_REPLACE);
+      if (perf_ic_refill)     perf_event(PERF_IC_REFILL);
+      if (perf_ic_compulsory) perf_event(PERF_IC_COMPULSORY);
+      if (perf_ic_replace)    perf_event(PERF_IC_REPLACE);
 
       if (mem_arvalid && mem_arready)  perf_event(PERF_BUS_AR);
       if (mem_rvalid  && mem_rready)   perf_event(PERF_BUS_R);
