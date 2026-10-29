@@ -76,6 +76,7 @@ module ICache(
   wire [TAG_BITS-1:0]  req_tag  = cpu_addr[OFF_BITS+IDX_BITS +: TAG_BITS];
   wire [31:0] req_data = data[{req_idx, req_word}];
 
+  // Reconstruct the fill line base from the latched tag/index; no duplicate fill_line register.
 `ifdef SOC_MODE
   wire [31:0] fill_addr = {fill_tag, fill_idx, fill_start, 2'b00};
   wire [WORD_BITS-1:0] fill_wr_word = fill_start + fill_cnt;
