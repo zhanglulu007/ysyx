@@ -172,6 +172,7 @@ endif
 
 ifneq ($(strip $(F)),)
   ifneq ($(strip $(F)),0)
+    # 不要命名为 F：Verilator 的 FST 头文件把 F 用作模板参数，会编译失败
     EXTRA_CFLAGS += -DF_CPU=$(strip $(F))
   endif
 endif
