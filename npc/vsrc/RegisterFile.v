@@ -14,7 +14,6 @@ module RegisterFile(
   output [31:0] a0_value      
 );
 
-  // x0 has no storage: it is hard-wired to zero.
   reg [31:0] rf [1:15];
 
 `ifndef SYNTHESIS
@@ -22,8 +21,6 @@ module RegisterFile(
 `endif
   
   always @(posedge clk) begin
-    // x0 is hard-wired to zero: ignore writes targeting it here, so the
-    // core's write-enable path does not need a separate rd != 0 comparator.
     if (!rst && wen && (waddr[3:0] != 4'd0)) begin
       rf[waddr[3:0]] <= wdata;
 `ifndef SYNTHESIS
