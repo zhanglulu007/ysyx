@@ -91,7 +91,8 @@ module top(
   wire        ic_rlast;
 `ifndef SYNTHESIS
   // ICache observation signals: all perf classification happens here in top.
-  wire        ic_cacheable, ic_hit, ic_fill_start, ic_victim_valid, ic_fill_ar;
+  wire        ic_cacheable, ic_hit, ic_fill_start, ic_victim_valid;
+  wire        ic_fill_ar, ic_bypass_ar;
 `endif
 
   // ---------------- LSU <-> Arbiter ----------------
@@ -169,7 +170,7 @@ module top(
 `ifndef SYNTHESIS
     , .obs_cacheable(ic_cacheable), .obs_hit(ic_hit),
     .obs_fill_start(ic_fill_start), .obs_victim_valid(ic_victim_valid),
-    .obs_fill_ar(ic_fill_ar)
+    .obs_fill_ar(ic_fill_ar), .obs_bypass_ar(ic_bypass_ar)
 `endif
     , .arvalid(ic_arvalid), .arready(ic_arready), .araddr(ic_araddr),
     .arlen(ic_arlen), .arburst(ic_arburst),
@@ -332,7 +333,8 @@ module top(
   localparam PERF_IC_HIT       = 18;
   localparam PERF_IC_MISS      = 19;
   localparam PERF_IC_REFILL    = 20;
-  // 21/22 reserved: former ICache miss AR/R wait counters (not implemented)
+  localparam PERF_IC_BYPASS_AR = 21;
+  localparam PERF_LSU_AR       = 22;
   localparam PERF_IF_BYPASS    = 23;
   localparam PERF_BRANCH_TAKEN = 24;
   localparam PERF_BRANCH_NOT_TAKEN = 25;
@@ -386,8 +388,10 @@ module top(
   // ICache performance classification lives here; ICache only exports raw observations.
   wire perf_ic_access     = fetch_accept && ic_cacheable;
   wire perf_ic_refill     = ic_arvalid && ic_arready && ic_fill_ar;
+  wire perf_ic_bypass_ar  = ic_arvalid && ic_arready && ic_bypass_ar;
   wire perf_ic_compulsory = ic_fill_start && !ic_victim_valid;
   wire perf_ic_replace    = ic_fill_start &&  ic_victim_valid;
+  wire perf_lsu_ar        = lsu_arvalid && lsu_arready;
 
   always @(posedge clk) begin
     if (!rst) begin
@@ -407,8 +411,10 @@ module top(
       end
       if (fetch_accept && !ic_cacheable) perf_event(PERF_IF_BYPASS);
       if (perf_ic_refill)     perf_event(PERF_IC_REFILL);
+      if (perf_ic_bypass_ar)  perf_event(PERF_IC_BYPASS_AR);
       if (perf_ic_compulsory) perf_event(PERF_IC_COMPULSORY);
       if (perf_ic_replace)    perf_event(PERF_IC_REPLACE);
+      if (perf_lsu_ar)        perf_event(PERF_LSU_AR);
 
       if (mem_arvalid && mem_arready)  perf_event(PERF_BUS_AR);
       if (mem_rvalid  && mem_rready)   perf_event(PERF_BUS_R);
