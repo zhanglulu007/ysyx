@@ -10,6 +10,15 @@
 #define MROM_BASE 0x20000000
 #define MROM_SIZE 0x1000
 
+#define SRAM_BASE  0x0f000000
+#define SRAM_SIZE  0x2000       // 8KB
+#define SDRAM_BASE 0xa0000000
+#define SDRAM_SIZE 0x2000000    // 32MB
+#define PSRAM_BASE 0x80000000
+#define PSRAM_SIZE 0x400000     // 4MB
+#define VGA_BASE   0x21000000
+#define VGA_SIZE   0x200000     // 2MB
+
 #define PMEM_SIZE (128 * 1024 * 1024)  
 #define PMEM_BASE 0x80000000           
 

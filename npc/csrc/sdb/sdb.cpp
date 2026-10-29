@@ -112,7 +112,7 @@ static int cmd_x(char *args) {
   int n;
   char expr_str[256];
   
-  if (sscanf(args, "%d %s", &n, expr_str) != 2 || n <= 0) {
+  if (sscanf(args, "%d %255s", &n, expr_str) != 2 || n <= 0) {
     printf("Invalid format. Usage: x N EXPR (N > 0)\n");
     return 0;
   }

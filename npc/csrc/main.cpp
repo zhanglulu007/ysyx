@@ -16,10 +16,10 @@
 #include "trace/ftrace.h"
 #endif
 
-#ifdef F
+#ifdef F_CPU
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
-#define F_STR STRINGIFY(F)
+#define F_STR STRINGIFY(F_CPU)
 #else
 #define F_STR "0"
 #endif

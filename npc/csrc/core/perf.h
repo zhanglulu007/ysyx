@@ -31,8 +31,8 @@ enum PerfEventId {
     PERF_IC_HIT       = 18,  // ICache 命中数
     PERF_IC_MISS      = 19,  // ICache 缺失数
     PERF_IC_REFILL    = 20,  // ICache 缺失时发起的总线 AR 数
-    PERF_IC_MISS_AR   = 21,  // ICache 缺失等待 AR 的周期数
-    PERF_IC_MISS_R    = 22,  // ICache 缺失等待 R 的周期数
+    PERF_IC_BYPASS_AR = 21,  // ICache 非缓存旁路发起的总线 AR 数
+    PERF_LSU_AR       = 22,  // LSU 发起的总线 AR 数
     PERF_IF_BYPASS    = 23,  // 非缓存地址直连取指数
     PERF_BRANCH_TAKEN = 24,  // 条件分支 taken
     PERF_BRANCH_NOT_TAKEN = 25, // 条件分支 not taken

@@ -1,8 +1,3 @@
-# NPCSynth - 当前 NPC 多周期核整体综合评估
-#
-# 用仓库既有的 yosys-sta 流程 (yosys 综合 + iEDA 时序/功耗) 评估
-# npc/vsrc 的当前多周期核, 产出面积、最高频率、时序违例与功耗。
-#
 # 用法:
 #   make check                  # 只解析/elaborate 整个层次 (最快, 先验证可综合)
 #   make synth                  # 综合出网表 + 面积报告
@@ -40,15 +35,12 @@ DEFINES ?= SYNTHESIS
 # 实例化; ysyx_26020070.v 是 SOC_MODE 专用的 SoC 顶层, 均不纳入)
 RTL_FILES := $(PROJ_PATH)/NPCSynth.v \
              $(NPC_VSRC)/top.v \
+             $(NPC_VSRC)/Core.v \
+             $(NPC_VSRC)/ICache.v \
+             $(NPC_VSRC)/LSU.v \
              $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/CSR.v \
-             $(NPC_VSRC)/EXU.v \
-             $(NPC_VSRC)/ICache.v \
-             $(NPC_VSRC)/IDU.v \
-             $(NPC_VSRC)/IFU.v \
-             $(NPC_VSRC)/LSU.v \
-             $(NPC_VSRC)/RegisterFile.v \
-             $(NPC_VSRC)/WBU.v
+             $(NPC_VSRC)/RegisterFile.v
 
 SDC_FILE ?= $(YOSYS_STA_HOME)/scripts/default.sdc
 

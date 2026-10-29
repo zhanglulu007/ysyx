@@ -22,16 +22,31 @@ static const char *csr_names[] = {
 // 寄存器名称转换为值
 word_t npc_reg_str2val(const char *s, bool *success) {
     *success = true;
-    
+
+    if (s == NULL) {
+        *success = false;
+        return 0;
+    }
+
+    // Accept both "$pc" and "pc" (expr.cpp passes the token including '$').
+    if (*s == '$') s ++;
+
     if (strcmp(s, "pc") == 0) {
         return npc_get_pc();
     }
-    
+
+    // x0 is not stored in the register file but is a valid debugger name.
+    if (strcmp(s, "0") == 0) {
+        return 0;
+    }
+
     for (int i = 0; i < 16; i++) {
-        if (strcmp(s, regs[i]) == 0) {
+        const char *name = regs[i];
+        if (*name == '$') name ++;
+        if (strcmp(s, name) == 0) {
             return npc_get_reg(i);
         }
-        
+
         char xname[8];
         sprintf(xname, "x%d", i);
         if (strcmp(s, xname) == 0) {
@@ -44,7 +59,7 @@ word_t npc_reg_str2val(const char *s, bool *success) {
             return npc_get_csr(i);
         }
     }
-    
+
     *success = false;
     return 0;
 }

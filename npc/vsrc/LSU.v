@@ -2,247 +2,171 @@ module LSU(
   input clk,
   input rst,
 
-  input mem_valid,
-  input mem_wen,
-
-  input is_lb,
-  input is_lh,
-  input is_lw,
-  input is_lbu,
-  input is_lhu,
-
-  input is_sb,
-  input is_sh,
-  input is_sw,
-
-  // AXI4 AR
-  output lsu_arvalid,
-  input lsu_arready,
-  output [31:0] lsu_araddr,
-  output [3:0] lsu_arid,
-  output [7:0] lsu_arlen,
-  output reg [2:0] lsu_arsize,
-  output [1:0] lsu_arburst,
-
-  // AXI4 R
-  input lsu_rvalid,
-  output lsu_rready,
-  input [1:0] lsu_rresp,
-  input [31:0] lsu_rdata,
-  input lsu_rlast,
-  input [3:0] lsu_rid,
-
-  // AXI4 AW
-  output lsu_awvalid,
-  input lsu_awready,
-  output [31:0] lsu_awaddr,
-  output [3:0] lsu_awid,
-  output [7:0] lsu_awlen,
-  output reg [2:0] lsu_awsize,
-  output [1:0] lsu_awburst,
-
-  // AXI4 W
-  output lsu_wvalid,
-  input lsu_wready,
-  output reg [31:0] lsu_wdata,
-  output reg [3:0] lsu_wstrb,
-  output lsu_wlast,
-
-  // AXI4 B
-  input lsu_bvalid,
-  output lsu_bready,
-  input [1:0] lsu_bresp,
-  input [3:0] lsu_bid,
-
+  input        req,
+  input        wen,
+  input  [2:0] f3,
   input [31:0] addr,
   input [31:0] wdata,
+  output [31:0] rdata,
+  output        done,
 
-  output reg [31:0] rdata,
-  output lsu_done
+  // AXI4 AR
+  output        lsu_arvalid,
+  input         lsu_arready,
+  output [31:0] lsu_araddr,
+  output [3:0]  lsu_arid,
+  output [7:0]  lsu_arlen,
+  output [2:0]  lsu_arsize,
+  output [1:0]  lsu_arburst,
+
+  // AXI4 R
+  input         lsu_rvalid,
+  output        lsu_rready,
+  input  [1:0]  lsu_rresp,
+  input  [31:0] lsu_rdata,
+  input         lsu_rlast,
+  input  [3:0]  lsu_rid,
+
+  // AXI4 AW
+  output        lsu_awvalid,
+  input         lsu_awready,
+  output [31:0] lsu_awaddr,
+  output [3:0]  lsu_awid,
+  output [7:0]  lsu_awlen,
+  output [2:0]  lsu_awsize,
+  output [1:0]  lsu_awburst,
+
+  // AXI4 W
+  output        lsu_wvalid,
+  input         lsu_wready,
+  output [31:0] lsu_wdata,
+  output [3:0]  lsu_wstrb,
+  output        lsu_wlast,
+
+  // AXI4 B
+  input         lsu_bvalid,
+  output        lsu_bready,
+  input  [1:0]  lsu_bresp,
+  input  [3:0]  lsu_bid
 );
 
-  localparam IDLE_R = 1'b0, IDLE_W = 1'b0;
-  localparam WAIT_R = 1'b1, WAIT_W = 1'b1;
-  reg state_r, state_w;
+  localparam R_IDLE = 1'b0, R_WAIT = 1'b1;
+  localparam W_IDLE = 1'b0, W_WAIT = 1'b1;
+
+  reg r_state, w_state;
+  reg aw_done, w_done;
+
+  wire [1:0] size  = f3[1:0];
+  wire [1:0] off = addr[1:0];
+
+  assign lsu_arvalid = req && !wen && (r_state == R_IDLE) && !lsu_rvalid;
+  assign lsu_araddr  = addr;
+  assign lsu_arid    = 4'b0010;
+  assign lsu_arlen   = 8'b0;
+  assign lsu_arsize  = {1'b0, size};
+  assign lsu_arburst = 2'b01;
+
+  assign lsu_rready  = req && !wen;
+
+  assign lsu_awvalid = req && wen && (w_state == W_IDLE) && !aw_done && !lsu_bvalid;
+  assign lsu_awaddr  = addr;
+  assign lsu_awid    = 4'b0010;
+  assign lsu_awlen   = 8'b0;
+  assign lsu_awsize  = {1'b0, size};
+  assign lsu_awburst = 2'b01;
+
+  assign lsu_wvalid  = req && wen && (w_state == W_IDLE) && !w_done && !lsu_bvalid;
+  assign lsu_wlast   = lsu_wvalid;
+
+  assign lsu_bready  = req && wen;
+
+  assign done = req &&
+                ((!wen && lsu_rvalid && lsu_rready && lsu_rlast) ||
+                 ( wen && lsu_bvalid && lsu_bready));
 
   always @(posedge clk) begin
     if (rst) begin
-      state_r <= IDLE_R;
-      state_w <= IDLE_W;
+      r_state <= R_IDLE;
+      w_state <= W_IDLE;
+      aw_done <= 1'b0;
+      w_done  <= 1'b0;
     end else begin
-      case (state_r)
-        IDLE_R: begin
-          if (lsu_arvalid && lsu_arready) begin
-            state_r <= WAIT_R;
-          end
+      case (r_state)
+        R_IDLE: if (lsu_arvalid && lsu_arready) r_state <= R_WAIT;
+        R_WAIT: begin
+          if (!req) r_state <= R_IDLE;
+          else if (lsu_rvalid && lsu_rready && lsu_rlast) r_state <= R_IDLE;
         end
-        WAIT_R: begin
-          if (lsu_rvalid && lsu_rready && lsu_rlast) begin
-            state_r <= IDLE_R;
-          end
-        end 
-        default: state_r <= IDLE_R;        
+        default: r_state <= R_IDLE;
       endcase
 
-      case (state_w)
-        IDLE_W: begin
-          if (lsu_awvalid && lsu_awready) begin
-            state_w <= WAIT_W;
+      case (w_state)
+        W_IDLE: begin
+          if (lsu_awvalid && lsu_awready) aw_done <= 1'b1;
+          if (lsu_wvalid  && lsu_wready)  w_done  <= 1'b1;
+          if ((aw_done || (lsu_awvalid && lsu_awready)) &&
+              (w_done  || (lsu_wvalid  && lsu_wready))) begin
+            w_state <= W_WAIT;
+            aw_done <= 1'b0;
+            w_done  <= 1'b0;
           end
         end
-        WAIT_W: begin
-          if (lsu_bvalid && lsu_bready) begin
-            state_w <= IDLE_W;
+        W_WAIT: begin
+          if (!req) begin
+            w_state <= W_IDLE;
+            aw_done <= 1'b0;
+            w_done  <= 1'b0;
+          end else if (lsu_bvalid && lsu_bready) begin
+            w_state <= W_IDLE;
           end
-        end 
-        default: state_w <= IDLE_W;
+        end
+        default: w_state <= W_IDLE;
       endcase
-
     end
   end
 
-  assign lsu_arvalid = mem_valid && !mem_wen && !lsu_rvalid && (state_r == IDLE_R);
-  assign lsu_araddr = addr;
-  assign lsu_arid = 4'b0010;
-  assign lsu_arlen = 8'b0;
-  assign lsu_arburst = 2'b01;
-  
-  assign lsu_rready = mem_valid && !mem_wen;
+  // ---- load data extraction / extension ----
+  wire [7:0]  byte_lane = lsu_rdata[8*off +: 8];
+  wire [15:0] half_lane = off[1] ? lsu_rdata[31:16] : lsu_rdata[15:0];
+  wire        is_unsigned = f3[2];
 
-  assign lsu_awvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
-  assign lsu_awaddr = addr;
-  assign lsu_awid = 4'b0010;
-  assign lsu_awlen = 8'b0;
-  assign lsu_awburst = 2'b01;
-
-  assign lsu_wvalid = mem_valid && mem_wen && !lsu_bvalid && (state_w == IDLE_W);
-  assign lsu_wlast = lsu_wvalid;
-
-  assign lsu_bready = mem_valid && mem_wen;
-
-
-  assign lsu_done = !rst && mem_valid &&
-                    ((!mem_wen && lsu_rvalid && lsu_rready && lsu_rlast) ||
-                     (mem_wen && lsu_bvalid && lsu_bready));
-
+  reg [31:0] load_ext;
   always @(*) begin
-
-    case (1'b1)
-
-      // LHU：根据地址低1位选择半字并零扩展
-      is_lhu: begin
-      case (addr[1])
-        1'b0: rdata = {16'b0, lsu_rdata[15:0]};
-        1'b1: rdata = {16'b0, lsu_rdata[31:16]};
-      endcase
-      lsu_arsize = 3'b001;
-      lsu_awsize = 3'b001;
-    end
-
-      // LBU：根据地址低2位选择字节并零扩展
-      is_lbu: begin
-      case (addr[1:0])
-        2'b00: rdata = {24'b0, lsu_rdata[7:0]};
-        2'b01: rdata = {24'b0, lsu_rdata[15:8]};
-        2'b10: rdata = {24'b0, lsu_rdata[23:16]};
-        2'b11: rdata = {24'b0, lsu_rdata[31:24]};
-      endcase
-      lsu_arsize = 3'b000;
-      lsu_awsize = 3'b000;
-    end
-
-      is_lw: begin 
-        rdata = lsu_rdata; // LW
-        lsu_arsize = 3'b010;
-        lsu_awsize = 3'b010;
-      end
-
-      is_lh:begin
-      // LH：根据地址低1位选择半字并符号扩展
-      case (addr[1])
-        1'b0: rdata = {{16{lsu_rdata[15]}}, lsu_rdata[15:0]};
-        1'b1: rdata = {{16{lsu_rdata[31]}}, lsu_rdata[31:16]};
-      endcase
-      lsu_arsize = 3'b001;
-      lsu_awsize = 3'b001;
-    end
-
-      is_lb: begin
-      // LB：根据地址低2位选择字节并符号扩展
-      case (addr[1:0])
-        2'b00: rdata = {{24{lsu_rdata[7]}},  lsu_rdata[7:0]};
-        2'b01: rdata = {{24{lsu_rdata[15]}}, lsu_rdata[15:8]};
-        2'b10: rdata = {{24{lsu_rdata[23]}}, lsu_rdata[23:16]};
-        2'b11: rdata = {{24{lsu_rdata[31]}}, lsu_rdata[31:24]};
-      endcase
-      lsu_arsize = 3'b000;
-      lsu_awsize = 3'b000;
-    end
-
-      default:  rdata = 32'b0;
-
+    case (size)
+      2'b00: load_ext = is_unsigned ? {24'b0, byte_lane}
+                                    : {{24{byte_lane[7]}}, byte_lane};
+      2'b01: load_ext = is_unsigned ? {16'b0, half_lane}
+                                    : {{16{half_lane[15]}}, half_lane};
+      default: load_ext = lsu_rdata;
     endcase
   end
+  assign rdata = load_ext;
 
+  // ---- store data alignment ----
+  reg [31:0] store_data;
+  reg [3:0]  store_strb;
   always @(*) begin
-
-    case (1'b1)
-
-        // SW：写入4字节，写掩码全1
-      is_sw: begin
-        lsu_wstrb = 4'b1111;
-        lsu_wdata = wdata;
-        lsu_arsize = 3'b010;
-        lsu_awsize = 3'b010;
+    case (size)
+      2'b00: begin
+        store_data = wdata << {off, 3'b000};
+        store_strb = 4'b0001 << off;
       end
-
-        // SH：根据地址低1位写入2字节
-      is_sh: begin
-        case (addr[1])
-          1'b0: begin
-            lsu_wstrb = 4'b0011;  // 写入低半字
-            lsu_wdata = wdata;
-          end
-          1'b1: begin
-            lsu_wstrb = 4'b1100;  // 写入高半字
-            lsu_wdata = wdata << 16;
-          end
-        endcase
-        lsu_arsize = 3'b001;
-        lsu_awsize = 3'b001;
+      2'b01: begin
+        if (off[1]) begin
+          store_data = wdata << 16;
+          store_strb = 4'b1100;
+        end else begin
+          store_data = wdata;
+          store_strb = 4'b0011;
+        end
       end
-
-        // SB：根据地址低2位写入1字节
-      is_sb: begin
-        case (addr[1:0])
-          2'b00: begin
-            lsu_wstrb = 4'b0001;
-            lsu_wdata = wdata;
-          end
-          2'b01: begin
-            lsu_wstrb = 4'b0010;
-            lsu_wdata = wdata << 8;
-          end
-          2'b10: begin
-            lsu_wstrb = 4'b0100;
-            lsu_wdata = wdata << 16;
-          end
-          2'b11: begin
-            lsu_wstrb = 4'b1000;
-            lsu_wdata = wdata << 24;
-          end
-        endcase
-        lsu_arsize = 3'b000;
-        lsu_awsize = 3'b000;
-      end
-
       default: begin
-        lsu_wstrb = 4'b0;
-        lsu_wdata = 32'b0;
+        store_data = wdata;
+        store_strb = 4'b1111;
       end
-
     endcase
-
   end
+  assign lsu_wdata = store_data;
+  assign lsu_wstrb = store_strb;
 
 endmodule

@@ -1,26 +1,28 @@
 #include "sdb.h"
 #include <regex.h>
 #include <cassert>
+#include <cstdlib>
 
 enum {
-  TK_NOTYPE = 256, 
+  TK_NOTYPE = 256,
   TK_EQ,
+  TK_NE,
+  TK_AND,
+  TK_OR,
   TK_NUM,
   TK_HEX,
   TK_REG,
-  TK_NE,
-  TK_AND,
-  TK_DEREF,
 };
 
 static struct rule {
   const char *regex;
   int token_type;
 } rules[] = {
-  {" +", TK_NOTYPE},
+  {"[ \t]+", TK_NOTYPE},
   {"==", TK_EQ},
   {"!=", TK_NE},
   {"&&", TK_AND},
+  {"\\|\\|", TK_OR},
   {"0[xX][0-9a-fA-F]+", TK_HEX},
   {"[0-9]+", TK_NUM},
   {"\\$[a-zA-Z0-9]+", TK_REG},
@@ -30,6 +32,7 @@ static struct rule {
   {"/", '/'},
   {"\\(", '('},
   {"\\)", ')'},
+  {"!", '!'},
 };
 
 #define NR_REGEX (sizeof(rules) / sizeof(rules[0]))
@@ -82,13 +85,13 @@ static bool make_token(char *e) {
           case TK_HEX:
           case TK_REG:
             tokens[nr_token].type = rules[i].token_type;
-            if (substr_len >= 32) {
+            if (substr_len >= (int)sizeof(tokens[nr_token].str)) {
               printf("Token too long!\n");
               return false;
             }
             strncpy(tokens[nr_token].str, substr_start, substr_len);
             tokens[nr_token].str[substr_len] = '\0';
-            nr_token++;
+            nr_token ++;
             break;
 
           case '+':
@@ -97,18 +100,20 @@ static bool make_token(char *e) {
           case '/':
           case '(':
           case ')':
+          case '!':
           case TK_EQ:
           case TK_NE:
           case TK_AND:
+          case TK_OR:
             tokens[nr_token].type = rules[i].token_type;
-            nr_token++;
+            nr_token ++;
             break;
 
           default:
             assert(0);
         }
 
-        if (nr_token >= 65536) {
+        if (nr_token >= (int)(sizeof(tokens) / sizeof(tokens[0]))) {
           printf("Too many tokens\n");
           return false;
         }
@@ -118,7 +123,7 @@ static bool make_token(char *e) {
     }
 
     if (i == NR_REGEX) {
-      printf("no match at position %d\n%s\n%*.s^\n", position, e, position, "");
+      printf("no match at position %d\n%s\n%*s^\n", position, e, position, "");
       return false;
     }
   }
@@ -126,150 +131,181 @@ static bool make_token(char *e) {
   return true;
 }
 
-static bool check_parentheses(int p, int q) {
-  if (tokens[p].type != '(' || tokens[q].type != ')') {
-    return false;
+struct Parser {
+  int pos;
+  bool ok;
+};
+
+static word_t parse_or(Parser *p);
+
+static bool accept(Parser *p, int type) {
+  if (p->ok && p->pos < nr_token && tokens[p->pos].type == type) {
+    p->pos ++;
+    return true;
   }
-  
-  int count = 0;
-  for (int i = p; i <= q; i++) {
-    if (tokens[i].type == '(') count++;
-    if (tokens[i].type == ')') count--;
-    
-    if (count < 0) return false;
-    if (count == 0 && i < q) return false;
-  }
-  
-  return count == 0;
+  return false;
 }
 
-static int find_main_op(int p, int q) {
-  int main_op = -1;
-  int min_priority = 100;
-  int paren_level = 0;
-  
-  for (int i = p; i <= q; i++) {
-    if (tokens[i].type == '(') {
-      paren_level++;
-      continue;
-    }
-    if (tokens[i].type == ')') {
-      paren_level--;
-      continue;
-    }
-    
-    if (paren_level > 0) continue;
-    if (tokens[i].type == TK_DEREF) continue;
-    
-    int priority = 100;
-    
-    if (tokens[i].type == TK_AND) {
-      priority = 0;
-    }
-    else if (tokens[i].type == TK_EQ || tokens[i].type == TK_NE) {
-      priority = 1;
-    }
-    else if (tokens[i].type == '+' || tokens[i].type == '-') {
-      priority = 2;
-    }
-    else if (tokens[i].type == '*' || tokens[i].type == '/') {
-      priority = 3;
-    }
-    else {
-      continue;
-    }
-    
-    if (priority <= min_priority) {
-      min_priority = priority;
-      main_op = i;
-    }
-  }
-  
-  return main_op;
-}
-
-static word_t eval(int p, int q, bool *success) {
-  if (p > q) {
-    *success = false;
+static word_t parse_primary(Parser *p) {
+  if (!p->ok || p->pos >= nr_token) {
+    p->ok = false;
     return 0;
   }
-  else if (p == q) {
-    switch (tokens[p].type) {
-      case TK_NUM:
-        return atoi(tokens[p].str);
-        
-      case TK_HEX:
-        return strtol(tokens[p].str, NULL, 16);
-        
-      case TK_REG: {
-        bool reg_success;
-        word_t val = npc_reg_str2val(tokens[p].str + 1, &reg_success);
-        if (!reg_success) {
-          printf("Unknown register: %s\n", tokens[p].str);
-          *success = false;
-          return 0;
-        }
-        return val;
-      }
-      
-      default:
-        printf("Invalid single token type: %d\n", tokens[p].type);
-        *success = false;
-        return 0;
-    }
-  }
-  else if (check_parentheses(p, q) == true) {
-    return eval(p + 1, q - 1, success);
-  }
-  else {
-    if (tokens[p].type == TK_DEREF) {
-      word_t addr = eval(p + 1, q, success);
-      if (!*success) return 0;
-      
-      word_t data = 0;
-      if (!npc_mem_read_word(addr, &data)) {
-        printf("Invalid or unavailable memory address: 0x%08x\n", addr);
-        *success = false;
+
+  Token *t = &tokens[p->pos];
+
+  switch (t->type) {
+    case TK_NUM:
+      p->pos ++;
+      return (word_t)strtoul(t->str, NULL, 10);
+
+    case TK_HEX:
+      p->pos ++;
+      return (word_t)strtoul(t->str, NULL, 16);
+
+    case TK_REG: {
+      bool success = false;
+      word_t val = npc_reg_str2val(t->str, &success);
+      if (!success) {
+        printf("Unknown register: %s\n", t->str);
+        p->ok = false;
         return 0;
       }
-      return data;
+      p->pos ++;
+      return val;
     }
-    
-    int op = find_main_op(p, q);
-    if (op == -1) {
-      printf("No main operator found\n");
-      *success = false;
+
+    case '(': {
+      p->pos ++;
+      word_t val = parse_or(p);
+      if (!accept(p, ')')) {
+        printf("Missing ')'\n");
+        p->ok = false;
+        return 0;
+      }
+      return val;
+    }
+
+    default:
+      if (t->type > 0 && t->type < 256) {
+        printf("Unexpected token: '%c'\n", (char)t->type);
+      } else {
+        printf("Unexpected token (type %d)\n", t->type);
+      }
+      p->ok = false;
+      return 0;
+  }
+}
+
+static word_t parse_unary(Parser *p) {
+  if (accept(p, '-')) {
+    return (word_t)(0u - parse_unary(p));
+  }
+  if (accept(p, '!')) {
+    return (word_t)(parse_unary(p) == 0);
+  }
+  if (accept(p, '*')) {
+    word_t addr = parse_unary(p);
+    if (!p->ok) return 0;
+
+    word_t data = 0;
+    if (!npc_mem_read_word(addr, &data)) {
+      printf("Invalid or unavailable memory address: 0x%08x\n", addr);
+      p->ok = false;
       return 0;
     }
-    
-    word_t val1 = eval(p, op - 1, success);
-    if (!*success) return 0;
-    
-    word_t val2 = eval(op + 1, q, success);
-    if (!*success) return 0;
-    
-    switch (tokens[op].type) {
-      case '+': return val1 + val2;
-      case '-': return val1 - val2;
-      case '*': return val1 * val2;
-      case '/':
-        if (val2 == 0) {
-          printf("Division by zero!\n");
-          *success = false;
-          return 0;
-        }
-        return val1 / val2;
-        
-      case TK_EQ:  return val1 == val2;
-      case TK_NE:  return val1 != val2;
-      case TK_AND: return val1 && val2;
-      
-      default:
-        printf("Unknown operator: %d\n", tokens[op].type);
-        *success = false;
+    return data;
+  }
+  return parse_primary(p);
+}
+
+static word_t parse_mul(Parser *p) {
+  word_t val = parse_unary(p);
+
+  while (p->ok) {
+    if (accept(p, '*')) {
+      word_t rhs = parse_unary(p);
+      if (!p->ok) return 0;
+      val = val * rhs;
+    } else if (accept(p, '/')) {
+      word_t rhs = parse_unary(p);
+      if (!p->ok) return 0;
+      if (rhs == 0) {
+        printf("Division by zero!\n");
+        p->ok = false;
         return 0;
+      }
+      val = val / rhs;
+    } else {
+      break;
     }
   }
+
+  return val;
+}
+
+static word_t parse_add(Parser *p) {
+  word_t val = parse_mul(p);
+
+  while (p->ok) {
+    if (accept(p, '+')) {
+      word_t rhs = parse_mul(p);
+      if (!p->ok) return 0;
+      val = val + rhs;
+    } else if (accept(p, '-')) {
+      word_t rhs = parse_mul(p);
+      if (!p->ok) return 0;
+      val = val - rhs;
+    } else {
+      break;
+    }
+  }
+
+  return val;
+}
+
+static word_t parse_equality(Parser *p) {
+  word_t val = parse_add(p);
+
+  while (p->ok) {
+    if (accept(p, TK_EQ)) {
+      word_t rhs = parse_add(p);
+      if (!p->ok) return 0;
+      val = (val == rhs);
+    } else if (accept(p, TK_NE)) {
+      word_t rhs = parse_add(p);
+      if (!p->ok) return 0;
+      val = (val != rhs);
+    } else {
+      break;
+    }
+  }
+
+  return val;
+}
+
+static word_t parse_and(Parser *p) {
+  word_t val = parse_equality(p);
+
+  while (p->ok && accept(p, TK_AND)) {
+    word_t rhs = parse_equality(p);
+    if (!p->ok) return 0;
+    val = (val && rhs);
+  }
+
+  return val;
+}
+
+static word_t parse_or(Parser *p) {
+  word_t val = parse_and(p);
+
+  while (p->ok && accept(p, TK_OR)) {
+    word_t rhs = parse_and(p);
+    if (!p->ok) return 0;
+    val = (val || rhs);
+  }
+
+  return val;
 }
 
 word_t expr(char *e, bool *success) {
@@ -278,25 +314,26 @@ word_t expr(char *e, bool *success) {
     return 0;
   }
 
-  // 识别指针解引用
-  for (int i = 0; i < nr_token; i++) {
-    if (tokens[i].type == '*') {
-      if (i == 0 || 
-          tokens[i - 1].type == '(' ||
-          tokens[i - 1].type == '+' ||
-          tokens[i - 1].type == '-' ||
-          tokens[i - 1].type == '*' ||
-          tokens[i - 1].type == '/' ||
-          tokens[i - 1].type == TK_EQ ||
-          tokens[i - 1].type == TK_NE ||
-          tokens[i - 1].type == TK_AND ||
-          tokens[i - 1].type == TK_DEREF) {
-        tokens[i].type = TK_DEREF;
-      }
-    }
+  if (nr_token == 0) {
+    *success = false;
+    return 0;
+  }
+
+  Parser p;
+  p.pos = 0;
+  p.ok = true;
+  word_t result = parse_or(&p);
+
+  if (p.ok && p.pos != nr_token) {
+    printf("Unexpected trailing token (type %d)\n", tokens[p.pos].type);
+    p.ok = false;
+  }
+
+  if (!p.ok) {
+    *success = false;
+    return 0;
   }
 
   *success = true;
-  word_t result = eval(0, nr_token - 1, success);
   return result;
 }
