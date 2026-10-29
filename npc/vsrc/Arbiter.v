@@ -136,7 +136,17 @@ module Arbiter(
   wire ifu_free = !(ifu_chan ? ch1_used : ch0_used);
   wire lsu_free = !(lsu_chan ? ch1_used : ch0_used);
 
+  // Plan A: let IFU present/hold its AR while LSU is waiting for a read
+  // response.  This is not a second concurrent SDRAM transaction: the
+  // AXI4Delayer on the SDRAM path still accepts only one AR until rlast.
+  // The IFU AR simply waits at mem_arvalid/mem_arready and can be accepted
+  // immediately after the LSU read finishes, avoiding a later arbitration
+  // bubble.  In standalone mode keep the original channel-based gating.
+`ifdef SOC_MODE
+  wire ifu_req = ifu_arvalid && !rd_busy_ifu;
+`else
   wire ifu_req = ifu_arvalid && ifu_free;
+`endif
   wire lsu_req = lsu_arvalid && lsu_free;
 
   localparam [1:0] S_IDLE = 2'd0, S_IFU  = 2'd1, S_LSU  = 2'd2;
