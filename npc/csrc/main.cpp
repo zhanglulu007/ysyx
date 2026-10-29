@@ -31,6 +31,7 @@ static void print_usage(const char* prog_name) {
     printf("  -e elf_file: specify ELF file for ftrace\n");
     printf("  -d ref_so: specify REF shared object for DiffTest\n");
     printf("Log files (LOG=1): log/<timestamp>/{npc.log,trace.log,perf.log}\n");
+    printf("FST waveform: log/<timestamp>/dump.fst when LOG=1, otherwise wave/dump.fst\n");
     printf("Example: %s build/dummy-riscv32e-npc.bin\n", prog_name);
 }
 
