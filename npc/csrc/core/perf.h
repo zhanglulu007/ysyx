@@ -63,6 +63,11 @@ enum PerfEventId {
 
 void perf_report();
 
+// Full report is written to perf.log when LOG=1.  The file is opened by the
+// run-logger; PERF=0 leaves a short note in the file instead of a report.
+void perf_log_open(const char *path);
+void perf_log_close();
+
 #ifdef __cplusplus
 extern "C" {
 #endif

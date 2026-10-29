@@ -67,6 +67,11 @@ void npc_dump_snapshot();
 
 #define panic(format, ...) Assert(0, format, ## __VA_ARGS__)
 
+// 运行级日志目录管理（仅在 LOG=1 时启用）
+bool log_run_init(const char *trace_override);
+void log_close_run();
+const char *log_run_dir();
+
 // 日志函数
 extern FILE* log_fp;
 void init_log(const char *log_file);

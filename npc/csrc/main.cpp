@@ -25,11 +25,12 @@
 #endif
 
 static void print_usage(const char* prog_name) {
-    printf("Usage: %s <program.bin> [-b] [-l log_file] [-e elf_file] [-d ref_so]\n", prog_name);
+    printf("Usage: %s <program.bin> [-b] [-l trace_log] [-e elf_file] [-d ref_so]\n", prog_name);
     printf("  -b: batch mode (non-interactive)\n");
-    printf("  -l log_file: specify log file (default: npc.log)\n");
+    printf("  -l trace_log: optional trace log path override (default: log/<timestamp>/trace.log)\n");
     printf("  -e elf_file: specify ELF file for ftrace\n");
     printf("  -d ref_so: specify REF shared object for DiffTest\n");
+    printf("Log files (LOG=1): log/<timestamp>/{npc.log,trace.log,perf.log}\n");
     printf("Example: %s build/dummy-riscv32e-npc.bin\n", prog_name);
 }
 
@@ -68,7 +69,13 @@ static bool parse_args(int argc, char** argv,
 }
 
 static bool init_subsystems(const char* log_file, const char* elf_file) {
-    init_log(log_file);
+#ifdef ENABLE_LOG
+    if (!log_run_init(log_file)) {
+        return false;
+    }
+#else
+    init_log(NULL);
+#endif
 
 #ifdef ENABLE_TRACE
     init_itrace();
@@ -128,15 +135,23 @@ int main(int argc, char** argv) {
     }
     
     // 初始化子系统
-    init_subsystems(log_file, elf_file);
+    if (!init_subsystems(log_file, elf_file)) {
+        fprintf(stderr, "Failed to initialize logging submodule\n");
+        return 1;
+    }
 
-    Log("Config: mode=%s trace=%s fst=%s perf=%s nvboard=%s F=%s",
+    Log("Config: mode=%s trace=%s log=%s fst=%s perf=%s nvboard=%s F=%s",
 #ifdef SOC_MODE
         "soc",
 #else
         "standalone",
 #endif
 #ifdef ENABLE_TRACE
+        "on",
+#else
+        "off",
+#endif
+#ifdef ENABLE_LOG
         "on",
 #else
         "off",
@@ -212,7 +227,11 @@ int main(int argc, char** argv) {
 
     // 清理资源
     cleanup_cpu();
+#ifdef ENABLE_LOG
+    log_close_run();
+#else
     log_flush();
+#endif
     
     return npc_get_exit_code();
 }

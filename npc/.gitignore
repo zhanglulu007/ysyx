@@ -12,3 +12,4 @@
 !config/
 !config/*
 build/
+log/
