@@ -108,9 +108,12 @@ extern "C" void difftest_skip_ref() {
 // 检查单个寄存器
 bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t dut) {
   if (ref != dut) {
-    Log("%s is different after executing instruction at pc = 0x%08x, "
-        "right = 0x%08x, wrong = 0x%08x, diff = 0x%08x",
-        name, pc, ref, dut, ref ^ dut);
+    LogError("%s is different after executing instruction at pc = 0x%08x, "
+             "right = 0x%08x, wrong = 0x%08x, diff = 0x%08x",
+             name, pc, ref, dut, ref ^ dut);
+    const char *red = log_color_enabled() ? ANSI_FG_RED : "";
+    const char *reset = log_color_enabled() ? ANSI_NONE : "";
+    printf("%s", red);
     printf("\n");
     printf("========================================\n");
     printf("  DiffTest Failed!\n");
@@ -120,6 +123,7 @@ bool difftest_check_reg(const char *name, uint32_t pc, uint32_t ref, uint32_t du
     printf("  DUT (wrong) = 0x%08x\n", dut);
     printf("  diff        = 0x%08x\n", ref ^ dut);
     printf("========================================\n");
+    printf("%s", reset);
     printf("\n");
     return false;
   }
@@ -174,7 +178,9 @@ void difftest_step(uint32_t pc, uint32_t npc) {
   // 对比寄存器
   if (!checkregs(&ref_state, pc)) {
     LogError("DiffTest failed at pc = 0x%08x", pc);
-    printf("\nDiffTest failed! Program aborted.\n");
+    const char *red = log_color_enabled() ? ANSI_FG_RED : "";
+    const char *reset = log_color_enabled() ? ANSI_NONE : "";
+    printf("%s\nDiffTest failed! Program aborted.%s\n", red, reset);
     npc_dump_snapshot();
     log_flush();
     exit(1);

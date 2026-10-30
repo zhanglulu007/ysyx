@@ -29,6 +29,8 @@
 #define ANSI_BG_MAGENTA "\33[1;45m"
 #define ANSI_BG_CYAN    "\33[1;46m"
 #define ANSI_BG_WHITE   "\33[1;47m"
+#define ANSI_DIM        "\33[2m"
+#define ANSI_BOLD       "\33[1m"
 #define ANSI_NONE       "\33[0m"
 
 #define ANSI_FMT(str, fmt) fmt str ANSI_NONE
@@ -67,11 +69,17 @@ void npc_dump_snapshot();
 
 #define panic(format, ...) Assert(0, format, ## __VA_ARGS__)
 
+// 运行级日志目录管理（仅在 LOG=1 时启用）
+bool log_run_init(const char *trace_override);
+void log_close_run();
+const char *log_run_dir();
+
 // 日志函数
 extern FILE* log_fp;
 void init_log(const char *log_file);
 void log_set_level(int level);
 int log_get_level();
+bool log_color_enabled();
 void _Log(int level, const char *file, int line, const char *func,
           const char *format, ...);
 void log_write(const char *format, ...);

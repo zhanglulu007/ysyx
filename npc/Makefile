@@ -22,10 +22,12 @@ endif
 SOC ?= 0
 FST ?= 0
 TRACE ?= 0
+LOG ?= 0
 DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
+LOG_DIR ?= $(PROJECT_DIR)/log
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
 F_DEFAULT     ?= 0
@@ -63,7 +65,7 @@ SIM_SRCS := \
   $(wildcard $(SRC_ROOT)/utils/*.cpp) \
   $(wildcard $(SRC_ROOT)/trace/*.cpp)
 
-EXTRA_CFLAGS :=
+EXTRA_CFLAGS := -pthread
 VERILATOR_TRACE_FLAGS :=
 
 ifeq ($(SOC),1)
@@ -144,6 +146,10 @@ ifeq ($(TRACE),1)
   EXTRA_CFLAGS += -DENABLE_TRACE
 endif
 
+ifeq ($(LOG),1)
+  EXTRA_CFLAGS += -DENABLE_LOG
+endif
+
 ifneq ($(ELF),)
   ELF_ARG := -e $(ELF_ABS)
 endif
@@ -184,7 +190,7 @@ define VERILATE_CMD
 	    -I$(NEMU_HOME)/include \
       -I$(NVBOARD_HOME)/usr/include \
 	    $(SDL_CFLAGS) $(EXTRA_CFLAGS)" \
-	  -LDFLAGS "$(NVBOARD_LDFLAGS) -lreadline -ldl $(SDL_LIBS)" \
+	  -LDFLAGS "$(NVBOARD_LDFLAGS) -lreadline -ldl $(SDL_LIBS) -pthread" \
 	  $(RTL_SRCS) $(SIM_SRCS) \
 	  --Mdir $(OBJ_DIR) \
     $(NVBOARD_CSRCS)
@@ -195,8 +201,9 @@ all: build
 show-config:
 	@echo "MODE=$(MODE) SOC=$(SOC) TOP=$(TOP) TOP_CLASS=$(TOP_CLASS)"
 	@echo "OBJ_DIR=$(OBJ_DIR)"
-	@echo "FST=$(FST) TRACE=$(TRACE) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH)"
+	@echo "FST=$(FST) TRACE=$(TRACE) LOG=$(LOG) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH)"
 	@echo "PERF=$(PERF) NVBOARD=$(NVBOARD) F=$(F)"
+	@echo "LOG_DIR=$(LOG_DIR)"
 	@echo "PROG=$(PROG_ABS) ELF=$(ELF_ABS)"
 	@echo "YSYXSOC_ROOT=$(YSYXSOC_ROOT)"
 
@@ -215,7 +222,7 @@ lint: $(MODE_PREREQUISITE)
 
 build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
-	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) FFLASH=$(FFLASH)] --"
+	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) LOG=$(LOG) FFLASH=$(FFLASH)] --"
 	$(VERILATE_CMD)
 
 run: build
@@ -228,8 +235,9 @@ run: build
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "-- RUN NPC [MODE=$(MODE) DIFFTEST=$(DIFFTEST)] --"
 	@cd $(PROJECT_DIR) && \
+	  NPC_LOG_DIR=$(LOG_DIR) \
 	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
-	  -l $(PROJECT_DIR)/npc.log $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
+	  $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
 # 一键性能评估：清理 NPC -> eval 综合 -> microbench train -> 打印报告
 perf:
@@ -248,7 +256,8 @@ perf:
 	      AM_HOME=$(WORKBENCH_ROOT)/abstract-machine \
 	      NPC_HOME=$(PROJECT_DIR) \
 	      ARCH=riscv32e-ysyxsoc SOC=1 FFLASH=0 PERF=1 \
-	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 mainargs=train run \
+	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 LOG=$(LOG) LOG_DIR=$(LOG_DIR) \
+	      mainargs=train run \
 	      > $(PERF_MICROBENCH_LOG) 2>&1; then \
 	  echo "[perf] microbench failed; tail of $(PERF_MICROBENCH_LOG):"; \
 	  tail -n 80 $(PERF_MICROBENCH_LOG); \
@@ -270,5 +279,8 @@ perf:
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
 
+clean-log:
+	-rm -rf $(LOG_DIR)
+
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc perf clean
+	build-standalone run-standalone build-soc run-soc perf clean clean-log

@@ -62,6 +62,8 @@ enum PerfEventId {
 };
 
 void perf_report();
+void perf_log_open(const char *path);
+void perf_log_close();
 
 #ifdef __cplusplus
 extern "C" {

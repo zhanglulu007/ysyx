@@ -7,6 +7,7 @@
 #include "utils/log.h"
 
 #include <cstdio>
+#include <string>
 #include <verilated.h>
 #ifdef SOC_MODE
 #include "VysyxSoCFull.h"
@@ -70,8 +71,16 @@ bool init_cpu(int argc, char** argv) {
     Verilated::traceEverOn(true);
     tfp = new VerilatedFstC;
     top->trace(tfp, 99);
-    tfp->open("wave/dump.fst");
-    Log("FST: ON  -> wave/dump.fst");
+
+    std::string fst_path = "wave/dump.fst";
+#ifdef ENABLE_LOG
+    const char *run_dir = log_run_dir();
+    if (run_dir != NULL && run_dir[0] != '\0') {
+        fst_path = std::string(run_dir) + "/dump.fst";
+    }
+#endif
+    tfp->open(fst_path.c_str());
+    Log("FST: ON  -> %s", fst_path.c_str());
 #else
     Log("FST: OFF");
 #endif
