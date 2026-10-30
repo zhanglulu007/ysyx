@@ -21,6 +21,7 @@ std::thread g_thread_out;
 std::thread g_thread_err;
 std::mutex g_write_mutex;
 std::atomic<bool> g_active(false);
+bool g_stdout_is_tty = false;
 
 bool write_all(int fd, const char *data, size_t len) {
     while (len > 0) {
@@ -49,6 +50,79 @@ void close_pipe(int pipefd[2]) {
     close_fd(pipefd[1]);
 }
 
+void write_file_filtered(const char *data, size_t len) {
+    if (g_file_fd < 0) return;
+
+    // Strip terminal control sequences from the transcript file.  The terminal
+    // itself gets the raw bytes, so colors/readline still work there.
+    static thread_local int esc_state = 0;
+    char out[8192];
+    size_t out_len = 0;
+
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = static_cast<unsigned char>(data[i]);
+        bool emit = true;
+
+        switch (esc_state) {
+            case 0:
+                if (c == 0x1b) {
+                    esc_state = 1;
+                    emit = false;
+                }
+                break;
+            case 1:
+                emit = false;
+                if (c == '[') {
+                    esc_state = 2;
+                } else if (c == ']') {
+                    esc_state = 3;
+                } else {
+                    esc_state = 0;
+                }
+                break;
+            case 2:
+                emit = false;
+                if (c >= 0x40 && c <= 0x7e) {
+                    esc_state = 0;
+                }
+                break;
+            case 3:
+                emit = false;
+                if (c == 0x07) {
+                    esc_state = 0;
+                } else if (c == 0x1b) {
+                    esc_state = 4;
+                }
+                break;
+            case 4:
+                emit = false;
+                if (c == '\\') {
+                    esc_state = 0;
+                } else {
+                    esc_state = 3;
+                }
+                break;
+            default:
+                esc_state = 0;
+                break;
+        }
+
+        if (emit) {
+            out[out_len++] = static_cast<char>(c);
+            if (out_len == sizeof(out)) {
+                std::lock_guard<std::mutex> lock(g_write_mutex);
+                write_all(g_file_fd, out, out_len);
+                out_len = 0;
+            }
+        }
+    }
+
+    if (out_len > 0) {
+        std::lock_guard<std::mutex> lock(g_write_mutex);
+        write_all(g_file_fd, out, out_len);
+    }
+}
+
 void reader_loop(int read_fd, int terminal_fd) {
     char buf[8192];
     for (;;) {
@@ -57,10 +131,7 @@ void reader_loop(int read_fd, int terminal_fd) {
             if (terminal_fd >= 0) {
                 write_all(terminal_fd, buf, static_cast<size_t>(n));
             }
-            std::lock_guard<std::mutex> lock(g_write_mutex);
-            if (g_file_fd >= 0) {
-                write_all(g_file_fd, buf, static_cast<size_t>(n));
-            }
+            write_file_filtered(buf, static_cast<size_t>(n));
         } else if (n == 0) {
             break;
         } else if (errno == EINTR) {
@@ -107,6 +178,9 @@ bool console_capture_start(const char *path) {
         cleanup_failed_start();
         return false;
     }
+
+    // Remember the original terminal state before stdout is replaced by a pipe.
+    g_stdout_is_tty = ::isatty(STDOUT_FILENO) != 0;
 
     g_orig_stdout = ::dup(STDOUT_FILENO);
     g_orig_stderr = ::dup(STDERR_FILENO);
@@ -186,4 +260,9 @@ void console_capture_stop() {
 
 bool console_capture_active() {
     return g_active.load();
+}
+
+bool console_stdout_is_tty() {
+    if (g_active.load()) return g_stdout_is_tty;
+    return ::isatty(STDOUT_FILENO) != 0;
 }

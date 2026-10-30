@@ -9,5 +9,6 @@
 bool console_capture_start(const char *path);
 void console_capture_stop();
 bool console_capture_active();
+bool console_stdout_is_tty();
 
 #endif

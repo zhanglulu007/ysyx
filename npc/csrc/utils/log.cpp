@@ -190,7 +190,9 @@ void init_log(const char *log_file) {
   log_fp = NULL;
 #endif
 
-  log_color_stdout = isatty(fileno(stdout));
+  log_color_stdout = console_capture_active()
+                         ? console_stdout_is_tty()
+                         : (isatty(fileno(stdout)) != 0);
 
   const char *env_level = getenv("NPC_LOG_LEVEL");
   if (env_level != NULL) {
