@@ -28,6 +28,9 @@ static int log_level = LOG_INFO;
 static bool log_color_stdout = false;
 static char log_buffer[1 << 20];
 static const char *level_names[] = {"ERROR", "WARN", "INFO", "DEBUG"};
+static const char *level_colors[] = {
+  ANSI_FG_RED, ANSI_FG_YELLOW, ANSI_FG_BLUE, ANSI_FG_MAGENTA
+};
 
 static char g_run_dir[PATH_MAX] = {0};
 static char g_trace_path[PATH_MAX + 32] = {0};
@@ -41,6 +44,10 @@ void log_set_level(int level) {
 
 int log_get_level() {
   return log_level;
+}
+
+bool log_color_enabled() {
+  return log_color_stdout;
 }
 
 static bool make_dir(const char *path) {
@@ -242,9 +249,13 @@ void _Log(int level, const char *file, int line, const char *func,
   }
 
   if (log_color_stdout) {
-    printf("%s[%s] [cyc=%llu commit=%llu time=%llu] [%s:%d %s] %s%s\n",
-           ANSI_FG_BLUE, lvl, (unsigned long long)cyc, (unsigned long long)commit,
-           (unsigned long long)time, base, line, func, msg, ANSI_NONE);
+    const char *level_color =
+        (level >= 0 && level <= LOG_DEBUG) ? level_colors[level] : ANSI_FG_BLUE;
+    printf("%s[%s]%s %s[cyc=%llu commit=%llu time=%llu]%s %s[%s:%d %s]%s %s\n",
+           level_color, lvl, ANSI_NONE,
+           ANSI_DIM, (unsigned long long)cyc, (unsigned long long)commit,
+           (unsigned long long)time, ANSI_NONE,
+           ANSI_DIM, base, line, func, ANSI_NONE, msg);
   } else {
     printf("[%s] [cyc=%llu commit=%llu time=%llu] [%s:%d %s] %s\n",
            lvl, (unsigned long long)cyc, (unsigned long long)commit,

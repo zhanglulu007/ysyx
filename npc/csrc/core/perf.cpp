@@ -54,6 +54,36 @@ static void perf_printf(const char *format, ...) {
     }
 }
 
+// Colored only on the terminal; perf.log always receives plain text.
+static void perf_color(const char *color, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    if (log_color_enabled()) {
+        fputs(color, stdout);
+        vprintf(format, args);
+        fputs(ANSI_NONE, stdout);
+    } else {
+        vprintf(format, args);
+    }
+    va_end(args);
+
+    if (perf_fp != NULL) {
+        va_start(args, format);
+        vfprintf(perf_fp, format, args);
+        va_end(args);
+        fflush(perf_fp);
+    }
+}
+
+static void perf_section(const char *name) {
+    perf_printf("\n");
+    perf_color(ANSI_FG_CYAN, "[%s]\n", name);
+}
+
+static void perf_status(bool ok) {
+    perf_color(ok ? ANSI_FG_GREEN : ANSI_FG_RED, "%s", ok ? "OK" : "MISMATCH");
+}
+
 extern "C" void perf_event(int event_id) {
     if (event_id >= 0 && event_id < PERF_EVENT_COUNT) {
         perf_count[event_id]++;
@@ -151,7 +181,8 @@ void perf_report() {
     const uint64_t class_sum =
         alu + load + store + branch + jump + upper + csr + ecall + mret + ebreak + fence_i;
 
-    perf_printf("\n=================== Performance Report ===================\n");
+    perf_printf("\n");
+    perf_color(ANSI_FG_CYAN, "=================== Performance Report ===================\n");
     perf_printf("Cycles           : %" PRIu64 "\n", cycle);
     perf_printf("Instructions     : %" PRIu64 "\n", commit);
     perf_printf("IPC              : %.4f\n", ratio(commit, cycle));
@@ -159,14 +190,16 @@ void perf_report() {
 #ifdef F_CPU
     perf_printf("Clock estimate   : %d MHz (F=%d)\n", F_CPU * 10, F_CPU);
 #endif
-    perf_printf("Commit (state)   : %" PRIu64 " (%s)\n", state_commit,
-           state_commit == commit ? "OK" : "MISMATCH");
-    perf_printf("Fetch / commit   : %" PRIu64 " / %" PRIu64 " (%s)\n", if_fetch, commit,
-           if_fetch == commit ? "OK" : "MISMATCH");
+    perf_printf("Commit (state)   : %" PRIu64 " (", state_commit);
+    perf_status(state_commit == commit);
+    perf_printf(")\n");
+    perf_printf("Fetch / commit   : %" PRIu64 " / %" PRIu64 " (", if_fetch, commit);
+    perf_status(if_fetch == commit);
+    perf_printf(")\n");
 
-    perf_printf("\n[Instruction mix]\n");
-    perf_printf("  %-14s %10s  %7s\n", "category", "count", "share");
-    perf_printf("  %-14s %10s  %7s\n", "--------------", "----------", "-------");
+    perf_section("Instruction mix");
+    perf_color(ANSI_DIM, "  %-14s %10s  %7s\n", "category", "count", "share");
+    perf_color(ANSI_DIM, "  %-14s %10s  %7s\n", "--------------", "----------", "-------");
     print_mix("alu", alu, commit);
     print_mix("load", load, commit);
     print_mix("store", store, commit);
@@ -178,28 +211,34 @@ void perf_report() {
     print_mix("mret", mret, commit);
     print_mix("ebreak", ebreak, commit);
     print_mix("fence.i", fence_i, commit);
-    perf_printf("  %-14s %10" PRIu64 "  %s\n", "class sum", class_sum,
-           class_sum == commit ? "OK" : "MISMATCH");
+    perf_printf("  %-14s %10" PRIu64 "  ", "class sum", class_sum);
+    perf_status(class_sum == commit);
+    perf_printf("\n");
 
-    perf_printf("  ALU breakdown  : R=%" PRIu64 ", I=%" PRIu64 " (%s)\n",
-           alu_r, alu_i, alu_r + alu_i == alu ? "OK" : "MISMATCH");
-    perf_printf("  Load width     : byte=%" PRIu64 ", half=%" PRIu64 ", word=%" PRIu64 " (%s)\n",
-           ld_byte, ld_half, ld_word,
-           ld_byte + ld_half + ld_word == load ? "OK" : "MISMATCH");
-    perf_printf("  Store width    : byte=%" PRIu64 ", half=%" PRIu64 ", word=%" PRIu64 " (%s)\n",
-           st_byte, st_half, st_word,
-           st_byte + st_half + st_word == store ? "OK" : "MISMATCH");
+    perf_printf("  ALU breakdown  : R=%" PRIu64 ", I=%" PRIu64 " (",
+           alu_r, alu_i);
+    perf_status(alu_r + alu_i == alu);
+    perf_printf(")\n");
+    perf_printf("  Load width     : byte=%" PRIu64 ", half=%" PRIu64 ", word=%" PRIu64 " (",
+           ld_byte, ld_half, ld_word);
+    perf_status(ld_byte + ld_half + ld_word == load);
+    perf_printf(")\n");
+    perf_printf("  Store width    : byte=%" PRIu64 ", half=%" PRIu64 ", word=%" PRIu64 " (",
+           st_byte, st_half, st_word);
+    perf_status(st_byte + st_half + st_word == store);
+    perf_printf(")\n");
 
-    perf_printf("\n[Control flow]\n");
+    perf_section("Control flow");
     perf_printf("  conditional branch : %" PRIu64 "\n", branch);
     perf_printf("  taken / not taken  : %" PRIu64 " / %" PRIu64 " (%.2f%% taken)\n",
            branch_taken, branch_not_taken, percent(branch_taken, branch));
-    perf_printf("  jal / jalr         : %" PRIu64 " / %" PRIu64 " (%s)\n",
-           jal, jalr, jal + jalr == jump ? "OK" : "MISMATCH");
+    perf_printf("  jal / jalr         : %" PRIu64 " / %" PRIu64 " (", jal, jalr);
+    perf_status(jal + jalr == jump);
+    perf_printf(")\n");
     perf_printf("  control transfer   : %.2f%% of committed instructions\n",
            percent(branch + jump, commit));
 
-    perf_printf("\n[IFU behavior]\n");
+    perf_section("IFU behavior");
     perf_printf("  fetched            : %" PRIu64 "\n", if_fetch);
     perf_printf("  uncached bypass    : %" PRIu64 " requests\n", if_bypass);
     perf_printf("  stall (busy AR)    : %" PRIu64 " cycles\n", if_stall_bus);
@@ -207,11 +246,12 @@ void perf_report() {
     perf_printf("  stall ratio        : %.2f%% of cycles\n",
            percent(if_stall_bus + if_stall_mem, cycle));
     perf_printf("  avg R wait / fetch : %.4f cycles\n", ratio(if_stall_mem, if_fetch));
-    perf_printf("  fetch path check   : hit+miss+bypass = %" PRIu64 " (%s)\n",
-           ic_hit + ic_miss + if_bypass,
-           ic_hit + ic_miss + if_bypass == if_fetch ? "OK" : "MISMATCH");
+    perf_printf("  fetch path check   : hit+miss+bypass = %" PRIu64 " (",
+           ic_hit + ic_miss + if_bypass);
+    perf_status(ic_hit + ic_miss + if_bypass == if_fetch);
+    perf_printf(")\n");
 
-    perf_printf("\n[ICache behavior]\n");
+    perf_section("ICache behavior");
     perf_printf("  access / hit / miss: %" PRIu64 " / %" PRIu64 " / %" PRIu64 "\n",
            ic_access, ic_hit, ic_miss);
     perf_printf("  hit rate / miss rate: %.2f%% / %.2f%%\n",
@@ -220,13 +260,14 @@ void perf_report() {
            ic_compulsory, ic_replace);
     perf_printf("  refill / bypass AR : %" PRIu64 " / %" PRIu64 "\n",
            ic_refill, ic_bypass_ar);
-    perf_printf("  refill AR          : %" PRIu64 " (%s)\n", ic_refill,
-           ic_refill == ic_compulsory + ic_replace ? "OK" : "MISMATCH");
+    perf_printf("  refill AR          : %" PRIu64 " (", ic_refill);
+    perf_status(ic_refill == ic_compulsory + ic_replace);
+    perf_printf(")\n");
     perf_printf("  AR per line fill   : %.2f (1.00 = one AR per line fill)\n",
            ratio(ic_refill, ic_compulsory + ic_replace));
     perf_printf("  misses per 1k inst : %.2f\n", ratio(ic_miss, commit) * 1000.0);
 
-    perf_printf("\n[LSU behavior]\n");
+    perf_section("LSU behavior");
     perf_printf("  load / store done  : %" PRIu64 " / %" PRIu64 "\n", ld_done, st_done);
     perf_printf("  load width         : byte=%" PRIu64 ", half=%" PRIu64 ", word=%" PRIu64 "\n",
            ld_byte, ld_half, ld_word);
@@ -238,11 +279,13 @@ void perf_report() {
     perf_printf("  avg store latency  : %.4f cycles\n", ratio(st_wait, st_done));
     perf_printf("  load / store share : %.2f%% / %.2f%%\n",
            percent(load, commit), percent(store, commit));
-    perf_printf("  LSU vs commit      : load=%s, store=%s\n",
-           ld_done == load ? "OK" : "MISMATCH",
-           st_done == store ? "OK" : "MISMATCH");
+    perf_printf("  LSU vs commit      : load=");
+    perf_status(ld_done == load);
+    perf_printf(", store=");
+    perf_status(st_done == store);
+    perf_printf("\n");
 
-    perf_printf("\n[Bus behavior]\n");
+    perf_section("Bus behavior");
     perf_printf("  AR / R             : %" PRIu64 " / %" PRIu64 "\n", bus_ar, bus_r);
     perf_printf("  AW / W / B         : %" PRIu64 " / %" PRIu64 " / %" PRIu64 "\n",
            bus_aw, bus_w, bus_b);
@@ -250,51 +293,60 @@ void perf_report() {
            bus_ar_stall, percent(bus_ar_stall, cycle));
     perf_printf("  beats per read     : %.2f\n", ratio(bus_r, bus_ar));
     perf_printf("  beats per write    : %.2f\n", ratio(bus_w, bus_aw));
-    perf_printf("  AR source check    : refill+bypass_ar+lsu_ar = %" PRIu64 " vs AR = %" PRIu64 " (%s)\n",
-           ic_refill + ic_bypass_ar + lsu_ar, bus_ar,
-           ic_refill + ic_bypass_ar + lsu_ar == bus_ar ? "OK" : "MISMATCH");
-    perf_printf("  write source check : store=%" PRIu64 ", AW=%" PRIu64 ", W=%" PRIu64 ", B=%" PRIu64 " (%s)\n",
-           store, bus_aw, bus_w, bus_b,
-           (store == bus_aw && store == bus_w && store == bus_b) ? "OK" : "MISMATCH");
+    perf_printf("  AR source check    : refill+bypass_ar+lsu_ar = %" PRIu64 " vs AR = %" PRIu64 " (",
+           ic_refill + ic_bypass_ar + lsu_ar, bus_ar);
+    perf_status(ic_refill + ic_bypass_ar + lsu_ar == bus_ar);
+    perf_printf(")\n");
+    perf_printf("  write source check : store=%" PRIu64 ", AW=%" PRIu64 ", W=%" PRIu64 ", B=%" PRIu64 " (",
+           store, bus_aw, bus_w, bus_b);
+    perf_status(store == bus_aw && store == bus_w && store == bus_b);
+    perf_printf(")\n");
 
-    perf_printf("\n[System / CSR]\n");
+    perf_section("System / CSR");
     perf_printf("  CSR total          : %" PRIu64 "\n", csr);
-    perf_printf("  csrrw / csrrs      : %" PRIu64 " / %" PRIu64 " (%s)\n",
-           csrrw, csrrs, csrrw + csrrs == csr ? "OK" : "MISMATCH");
+    perf_printf("  csrrw / csrrs      : %" PRIu64 " / %" PRIu64 " (", csrrw, csrrs);
+    perf_status(csrrw + csrrs == csr);
+    perf_printf(")\n");
     perf_printf("  ecall / mret / ebreak: %" PRIu64 " / %" PRIu64 " / %" PRIu64 "\n",
            ecall, mret, ebreak);
 
-    perf_printf("\n[Observation]\n");
+    perf_section("Observation");
     bool any = false;
     if (ic_access && ratio(ic_miss, ic_access) > 0.10) {
-        perf_printf("  - ICache miss rate %.2f%%; cache capacity/locality may be limiting fetch.\n",
+        perf_color(ANSI_FG_YELLOW,
+               "  - ICache miss rate %.2f%%; cache capacity/locality may be limiting fetch.\n",
                percent(ic_miss, ic_access));
         any = true;
     }
     if (ratio(if_stall_bus + if_stall_mem, cycle) > 0.10) {
-        perf_printf("  - IFU stall ratio %.2f%%; fetch wait is a significant fraction of cycles.\n",
+        perf_color(ANSI_FG_YELLOW,
+               "  - IFU stall ratio %.2f%%; fetch wait is a significant fraction of cycles.\n",
                percent(if_stall_bus + if_stall_mem, cycle));
         any = true;
     }
     if (ratio(ld_wait, cycle) > 0.10) {
-        perf_printf("  - load wait %.2f%% of cycles; data-side memory latency is significant.\n",
+        perf_color(ANSI_FG_YELLOW,
+               "  - load wait %.2f%% of cycles; data-side memory latency is significant.\n",
                percent(ld_wait, cycle));
         any = true;
     }
     if (ratio(bus_ar_stall, cycle) > 0.05) {
-        perf_printf("  - bus AR stall %.2f%% of cycles; arbitration/memory backpressure is visible.\n",
+        perf_color(ANSI_FG_YELLOW,
+               "  - bus AR stall %.2f%% of cycles; arbitration/memory backpressure is visible.\n",
                percent(bus_ar_stall, cycle));
         any = true;
     }
     if (branch && ratio(branch_taken, branch) > 0.50) {
-        perf_printf("  - taken branch ratio %.2f%%; without a branch predictor, fetch redirects are frequent.\n",
+        perf_color(ANSI_FG_YELLOW,
+               "  - taken branch ratio %.2f%%; without a branch predictor, fetch redirects are frequent.\n",
                percent(branch_taken, branch));
         any = true;
     }
     if (!any) {
-        perf_printf("  - no single dominant stall above current thresholds.\n");
+        perf_color(ANSI_FG_GREEN,
+               "  - no single dominant stall above current thresholds.\n");
     }
-    perf_printf("==========================================================\n");
+    perf_color(ANSI_FG_CYAN, "==========================================================\n");
 
     Log("Perf summary: cycles=%llu inst=%llu ipc=%.4f cpi=%.4f icache_access=%llu icache_hit=%llu icache_miss=%llu icache_hit_rate=%.4f if_bypass=%llu",
         (unsigned long long)cycle, (unsigned long long)commit, ratio(commit, cycle),

@@ -107,8 +107,11 @@ static void init_difftest_if_needed(const char* ref_so_file, const char* program
 }
 
 static void print_welcome() {
-    printf("NPC - RISC-V processor simulator with Simple Debugger\n");
-    printf("======================================================\n\n");
+    const char *title = log_color_enabled() ? ANSI_FG_CYAN : "";
+    const char *dim = log_color_enabled() ? ANSI_DIM : "";
+    const char *reset = log_color_enabled() ? ANSI_NONE : "";
+    printf("%sNPC - RISC-V processor simulator with Simple Debugger%s\n", title, reset);
+    printf("%s======================================================%s\n\n", dim, reset);
 }
 
 static void print_exit_info() {

@@ -30,13 +30,21 @@ bool check_breakpoints() {
 /* 使用readline库提供更灵活的输入 */
 static char* rl_gets() {
   static char *line_read = NULL;
+  static char prompt[64];
+
+  if (log_color_enabled()) {
+    snprintf(prompt, sizeof(prompt),
+             "\001" ANSI_FG_CYAN "\002(npc) \001" ANSI_NONE "\002");
+  } else {
+    snprintf(prompt, sizeof(prompt), "(npc) ");
+  }
 
   if (line_read) {
     free(line_read);
     line_read = NULL;
   }
 
-  line_read = readline("(npc) ");
+  line_read = readline(prompt);
 
   if (line_read && *line_read) {
     add_history(line_read);

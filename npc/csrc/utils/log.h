@@ -29,6 +29,8 @@
 #define ANSI_BG_MAGENTA "\33[1;45m"
 #define ANSI_BG_CYAN    "\33[1;46m"
 #define ANSI_BG_WHITE   "\33[1;47m"
+#define ANSI_DIM        "\33[2m"
+#define ANSI_BOLD       "\33[1m"
 #define ANSI_NONE       "\33[0m"
 
 #define ANSI_FMT(str, fmt) fmt str ANSI_NONE
@@ -77,6 +79,7 @@ extern FILE* log_fp;
 void init_log(const char *log_file);
 void log_set_level(int level);
 int log_get_level();
+bool log_color_enabled();
 void _Log(int level, const char *file, int line, const char *func,
           const char *format, ...);
 void log_write(const char *format, ...);
