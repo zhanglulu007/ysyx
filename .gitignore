@@ -15,3 +15,5 @@
 /fceux-am
 /am-kernels
 /nvboard
+!/patch/
+!/patch/**
