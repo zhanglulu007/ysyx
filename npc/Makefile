@@ -22,13 +22,11 @@ endif
 SOC ?= 0
 FST ?= 0
 TRACE ?= 0
-# LOG=1: save ./log/<timestamp>/{npc.log,trace.log,perf.log[,dump.fst]}; LOG=0: no log files.
 LOG ?= 0
 DIFFTEST ?= 0
 FFLASH  ?= 0
 NVBOARD ?= 0
 PERF    ?= 0
-
 LOG_DIR ?= $(PROJECT_DIR)/log
 
 F_CONFIG_FILE ?= $(PROJECT_DIR)/config/f_cpu
