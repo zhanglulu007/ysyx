@@ -176,7 +176,8 @@ module Arbiter(
   wire r_fire  = mem_rvalid && mem_rready;
 
   wire ar_open_ifu = ar_fire && sel_ifu;
-  wire ar_open_lsu = ar_fire && sel_lsu;
+  wire ar_open_lsu = ar_fire && sel_lsu && (mem_arlen != 8'd0);
+  //wire ar_open_lsu = ar_fire && sel_lsu;
 
   wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
   wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
