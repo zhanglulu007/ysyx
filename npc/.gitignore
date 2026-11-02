@@ -11,5 +11,7 @@
 !README.md
 !config/
 !config/*
+!scripts/
+!scripts/*.py
 build/
 log/
