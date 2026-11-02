@@ -53,7 +53,6 @@ EVAL_DIR ?= $(PROJECT_DIR)/eval
 MICROBENCH_DIR ?= $(WORKBENCH_ROOT)/am-kernels/benchmarks/microbench
 PERF_EVAL_LOG := $(BUILD_DIR)/perf-eval.log
 PERF_MICROBENCH_LOG := $(BUILD_DIR)/perf-microbench.log
-BUILD_FLAGS := SOC=$(SOC) FST=$(FST) TRACE=$(TRACE) LOG=$(LOG) DIFFTEST=$(DIFFTEST) FFLASH=$(FFLASH) NVBOARD=$(NVBOARD) PERF=$(PERF) F=$(F) IC_SETS=$(IC_SETS) IC_WORDS=$(IC_WORDS)
 $(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
 CORE_RTL_SRCS := $(sort \
@@ -223,14 +222,6 @@ lint: $(MODE_PREREQUISITE)
 
 build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
-	@flags='$(BUILD_FLAGS)'; \
-	 old=''; \
-	 if [ -f $(BUILD_DIR)/.build_flags ]; then old=$$(cat $(BUILD_DIR)/.build_flags); fi; \
-	 if [ "$$old" != "$$flags" ]; then \
-	   echo "-- BUILD FLAGS CHANGED: removing $(OBJ_DIR) --"; \
-	   rm -rf $(OBJ_DIR); \
-	   printf '%s\n' "$$flags" > $(BUILD_DIR)/.build_flags; \
-	 fi
 	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) LOG=$(LOG) FFLASH=$(FFLASH)] --"
 	$(VERILATE_CMD)
 
