@@ -18,6 +18,10 @@
 
 module tb_iverilog;
 
+`ifdef SIM_NETLIST
+  initial $display("[tb] netlist simulation mode");
+`endif
+
   // ---------------------------------------------------------------------------
   // Clock / reset
   // ---------------------------------------------------------------------------
@@ -190,7 +194,7 @@ module tb_iverilog;
       $fatal;
     end
     if (!$value$plusargs("max_cycles=%d", max_cycles))
-      max_cycles = 2000000;
+      max_cycles = 5000000;
 
     // Zero the program window so uninitialized heap/stack does not produce X.
     for (i = 0; i < PROG_WORDS; i = i + 1)

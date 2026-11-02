@@ -71,7 +71,7 @@ SIM_HEX := $(BUILD_DIR)/sim-iverilog.hex
 SIM_NETLIST_HEX := $(BUILD_DIR)/sim-netlist.hex
 SIM_IVERILOG_VVP := $(BUILD_DIR)/sim-iverilog.vvp
 SIM_NETLIST_VVP := $(BUILD_DIR)/sim-netlist.vvp
-SIM_MAX_CYCLES ?= 2000000
+SIM_MAX_CYCLES ?= 5000000
 
 CORE_RTL_SRCS := $(sort \
   $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
@@ -264,7 +264,7 @@ verilog:
 	@test -f "$(GEN_VERILOG)" || { \
 	  echo "Error: missing $(GEN_VERILOG)"; exit 1; \
 	}
-	python3 $(GEN_VERILOG)
+	STUID=$(STUID) python3 $(GEN_VERILOG)
 	@test -f "$(VERILOG_OUT)" || { \
 	  echo "Error: $(VERILOG_OUT) was not generated"; exit 1; \
 	}
@@ -285,7 +285,9 @@ sim-iverilog: verilog
 	$(VVP) $(SIM_IVERILOG_VVP) \
 	  +hex=$(abspath $(SIM_HEX)) +max_cycles=$(SIM_MAX_CYCLES)
 
-# 网表仿真：同一 testbench + yosys 网表 + 标准单元行为模型
+# 网表仿真：同一 testbench + yosys 网表 + 标准单元行为模型。
+# NETLIST 应是保留向量端口的仿真网表（例如 *.netlist.v.sim），
+# 不是经过 splitnets -ports 的 STA 网表。
 sim-iverilog-netlist:
 	@test -r "$(IMG_ABS)" || { \
 	  echo "Error: program '$(IMG_ABS)' not found (pass IMG=xxx.bin)."; exit 1; \

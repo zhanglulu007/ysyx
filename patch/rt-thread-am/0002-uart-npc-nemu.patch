@@ -1,7 +1,7 @@
 From 88c6562ea7ed221a8eb75fec0843fd3e147e63a4 Mon Sep 17 00:00:00 2001
 From: zhangshenlu <2444967582@qq.com>
 Date: Fri, 30 Oct 2026 09:11:01 +0800
-Subject: [PATCH 2/2] =?UTF-8?q?=E4=BF=AE=E6=94=B9uart-=E9=80=82=E9=85=8Dnp?=
+Subject: [PATCH 2/3] =?UTF-8?q?=E4=BF=AE=E6=94=B9uart-=E9=80=82=E9=85=8Dnp?=
  =?UTF-8?q?c=E5=92=8Cnemu?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
