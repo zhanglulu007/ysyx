@@ -1,15 +1,13 @@
 //============================================================================
 // tb_iverilog.v - 4-state RTL/netlist testbench for ysyx_xxxxxxxx.v
 //
-// The generated CPU is the SOC_MODE + SYNTHESIS view:
-//   * reset PC = 0x30000000
-//   * AXI4 master only
-//   * no DPI-C / PMEM
-//
-// This testbench provides:
-//   * a small AXI4 slave memory at 0x3000_0000 (flash boot stub)
-//   * a program memory at 0x8000_0000
-//   * the same testbench for RTL and post-synthesis netlist simulation
+// The generated CPU is the SOC_MODE + SYNTHESIS view.  Core.v keeps a
+// SIM_IVERILOG reset switch:
+//   * RTL simulation (npc/Makefile passes -DSIM_IVERILOG) resets at 0x8000_0000;
+//   * a CI/SoC netlist synthesized without SIM_IVERILOG resets at 0x3000_0000,
+//     fetches the two-instruction boot stub below, and jumps to 0x8000_0000.
+// This testbench maps both 0x3000_0000 (boot) and 0x8000_0000 (program), so
+// the same RTL and netlist can use it.
 //
 // Program image is passed with +hex=FILE (one 32-bit word per line).
 //============================================================================
@@ -140,9 +138,11 @@ module tb_iverilog;
   // ---------------------------------------------------------------------------
   // Memory
   // ---------------------------------------------------------------------------
-  // 0x3000_0000: 1MB boot window (only the first two words are used)
-  // 0x8000_0000: 4MB program/data/stack window
-  localparam FLASH_WORDS = 1 << 18;
+  // 0x3000_0000: small boot window used when the CPU resets at the SoC
+  //               reset vector (CI netlist, ysyxSoC).  It contains a two
+  //               instruction stub that jumps to the program at 0x8000_0000.
+  // 0x8000_0000: 4MB program/data/stack window.
+  localparam FLASH_WORDS = 1 << 8;
   localparam PROG_WORDS  = 1 << 20;
 
   reg [31:0] flash_mem [0:FLASH_WORDS-1];
@@ -166,7 +166,11 @@ module tb_iverilog;
     input [ 3:0] strb;
     reg   [31:0] word;
     begin
-      if (addr[31:22] == 10'h200) begin
+      if (addr == 32'h1000_0000) begin
+        // AM serial port: the CI monitor looks for characters printed by
+        // the program (e.g. the random microbench key) on stdout.
+        if (strb[0]) $write("%c", data[7:0]);
+      end else if (addr[31:22] == 10'h200) begin
         word = prog_mem[addr[21:2]];
         if (strb[0]) word[ 7: 0] = data[ 7: 0];
         if (strb[1]) word[15: 8] = data[15: 8];
@@ -174,7 +178,6 @@ module tb_iverilog;
         if (strb[3]) word[31:24] = data[31:24];
         prog_mem[addr[21:2]] = word;
       end
-      // Writes to the boot flash window are ignored (read-only boot stub).
     end
   endtask
 
@@ -200,9 +203,11 @@ module tb_iverilog;
     for (i = 0; i < PROG_WORDS; i = i + 1)
       prog_mem[i] = 32'b0;
 
-    // Boot stub at 0x3000_0000:
+    // Boot stub at 0x3000_0000 (the SoC/CI reset vector):
     //   lui  t0, 0x80000
     //   jalr x0, 0(t0)
+    // A CPU built with SIM_IVERILOG starts at 0x8000_0000 and simply
+    // ignores this window.
     flash_mem[0] = 32'h800002b7;
     flash_mem[1] = 32'h00028067;
     for (i = 2; i < 8; i = i + 1)

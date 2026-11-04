@@ -13,5 +13,6 @@
 !config/*
 !scripts/
 !scripts/*.py
+!*.nxdc
 build/
 log/

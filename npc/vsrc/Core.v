@@ -51,7 +51,10 @@ module Core(
 `endif
 
   localparam [31:0] RESET_PC =
-`ifdef SOC_MODE
+`ifdef SIM_IVERILOG
+    // iverilog RTL/netlist simulation starts at the standalone program base.
+    32'h8000_0000;
+`elsif SOC_MODE
     32'h3000_0000;
 `else
     32'h8000_0000;
