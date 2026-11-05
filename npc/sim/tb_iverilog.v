@@ -404,11 +404,14 @@ module tb_iverilog;
         b_valid <= 1'b0;
 
       // ---- ebreak monitor ----
-      // IFU uses AXI ID 1 in the NPC arbiter.  The ebreak instruction is
-      // fetched as data; once it appears on the R channel, wait a short while
-      // for it to retire, then stop.  This works for both RTL and netlist.
+      // IFU uses AXI ID 1 in the NPC arbiter.  Only the first beat of a
+      // cache-line fill is the word the CPU actually requested; the other
+      // beats are neighboring words and must not be mistaken for an executed
+      // ebreak.  For a single-beat bypass read r_progress is also 0.
+      // Once the requested word is an ebreak, wait a short while for it to
+      // retire, then stop.  This works for both RTL and netlist.
       if (r_valid && m_rready && (r_id == 4'b0001) &&
-          (r_data == 32'h00100073)) begin
+          (r_progress == 8'd0) && (r_data == 32'h00100073)) begin
         seen_ebreak <= 1'b1;
         ebreak_wait <= 500;
       end

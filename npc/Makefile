@@ -130,7 +130,7 @@ ifeq ($(NVBOARD), 1)
   NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
   NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
   NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
-  NVBOARD_HOME ?= /home/zhangshenlu/ysyx-workbench/nvboard
+  NVBOARD_HOME ?= $(WORKBENCH_ROOT)/nvboard
   NXDC_FILES = $(PROJECT_DIR)/constr/soc.nxdc
   SRC_AUTO_BIND = $(BUILD_DIR)/auto_bind.cpp
 

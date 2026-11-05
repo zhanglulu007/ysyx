@@ -680,7 +680,8 @@ module top(
 
 `ifdef SOC_MODE
         if (retire_is_mem &&
-            ((retire_addr >= 32'h10000000 && retire_addr < 32'h10020000) ||
+            ((retire_addr >= 32'h02000000 && retire_addr < 32'h02010000) ||
+             (retire_addr >= 32'h10000000 && retire_addr < 32'h10020000) ||
              (retire_addr >= 32'h21000000 && retire_addr < 32'h22000000))) begin
           difftest_skip_ref();
         end
