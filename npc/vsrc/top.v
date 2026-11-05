@@ -382,10 +382,13 @@ module top(
   // W has no address of its own.  Route it according to the accepted AW, or
   // according to an AW that is being accepted in the same cycle.  If AW has
   // not been accepted yet, hold W until the write target is known.
+  // Forward W as soon as the AW address is known, even before AWREADY.
+  // Some AXI-to-APB bridges wait for W before accepting AW; holding W until
+  // AW handshake would deadlock such a bridge.
   wire w_clint = (wr_owner == WR_CLINT) ||
-                 (wr_free && cpu_awvalid && cpu_aw_clint && cpu_awready);
+                 (wr_free && cpu_awvalid &&  cpu_aw_clint);
   wire w_mem   = (wr_owner == WR_MEM) ||
-                 (wr_free && cpu_awvalid && !cpu_aw_clint && cpu_awready);
+                 (wr_free && cpu_awvalid && !cpu_aw_clint);
 
   assign cpu_wready = w_clint ? clint_wready :
                       w_mem   ? mem_wready   : 1'b0;
