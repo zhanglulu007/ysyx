@@ -1,18 +1,13 @@
 #include <am.h>
 #include "ysyxsoc.h"
 
-static uint64_t rdcycle() {
-  uint32_t lo, hi;
-  asm volatile("csrr %0, mcycle" : "=r"(lo));
-  asm volatile("csrr %0, mcycleh" : "=r"(hi));
-  return ((uint64_t)hi << 32) | lo;
-}
-
 void __am_timer_init() {
 }
 
 void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
-  uptime->us = rdcycle() / CPU_FREQ_MHZ;
+  uint32_t lo = *(volatile uint32_t *)(CLINT_BASE + CLINT_MTIME);
+  uint32_t hi = *(volatile uint32_t *)(CLINT_BASE + CLINT_MTIME + 4);
+  uptime->us = (((uint64_t)hi << 32) | lo) / CPU_FREQ_MHZ;
 }
 
 void __am_timer_rtc(AM_TIMER_RTC_T *rtc) {

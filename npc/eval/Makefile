@@ -40,7 +40,8 @@ RTL_FILES := $(PROJ_PATH)/NPCSynth.v \
              $(NPC_VSRC)/LSU.v \
              $(NPC_VSRC)/Arbiter.v \
              $(NPC_VSRC)/CSR.v \
-             $(NPC_VSRC)/RegisterFile.v
+             $(NPC_VSRC)/RegisterFile.v \
+             $(NPC_VSRC)/CLINT.v
 
 SDC_FILE ?= $(YOSYS_STA_HOME)/scripts/default.sdc
 

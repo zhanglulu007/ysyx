@@ -116,6 +116,59 @@ module top(
   wire [ 1:0] lsu_bresp;
   wire [ 3:0] lsu_bid;
 
+  // ---------------- Arbiter <-> internal CLINT / external memory ----------------
+  wire        cpu_arvalid, cpu_arready;
+  wire [31:0] cpu_araddr;
+  wire [ 3:0] cpu_arid;
+  wire [ 7:0] cpu_arlen;
+  wire [ 2:0] cpu_arsize;
+  wire [ 1:0] cpu_arburst;
+  wire        cpu_rvalid, cpu_rready;
+  wire [ 1:0] cpu_rresp;
+  wire [31:0] cpu_rdata;
+  wire        cpu_rlast;
+  wire [ 3:0] cpu_rid;
+
+  wire        cpu_awvalid, cpu_awready;
+  wire [31:0] cpu_awaddr;
+  wire [ 3:0] cpu_awid;
+  wire [ 7:0] cpu_awlen;
+  wire [ 2:0] cpu_awsize;
+  wire [ 1:0] cpu_awburst;
+  wire        cpu_wvalid, cpu_wready;
+  wire [31:0] cpu_wdata;
+  wire [ 3:0] cpu_wstrb;
+  wire        cpu_wlast;
+  wire        cpu_bvalid, cpu_bready;
+  wire [ 1:0] cpu_bresp;
+  wire [ 3:0] cpu_bid;
+
+  // CLINT slave AXI4
+  wire        clint_arvalid, clint_arready;
+  wire [31:0] clint_araddr;
+  wire [ 3:0] clint_arid;
+  wire [ 7:0] clint_arlen;
+  wire [ 2:0] clint_arsize;
+  wire [ 1:0] clint_arburst;
+  wire        clint_rvalid, clint_rready;
+  wire [ 1:0] clint_rresp;
+  wire [31:0] clint_rdata;
+  wire        clint_rlast;
+  wire [ 3:0] clint_rid;
+  wire        clint_awvalid, clint_awready;
+  wire [31:0] clint_awaddr;
+  wire [ 3:0] clint_awid;
+  wire [ 7:0] clint_awlen;
+  wire [ 2:0] clint_awsize;
+  wire [ 1:0] clint_awburst;
+  wire        clint_wvalid, clint_wready;
+  wire [31:0] clint_wdata;
+  wire [ 3:0] clint_wstrb;
+  wire        clint_wlast;
+  wire        clint_bvalid, clint_bready;
+  wire [ 1:0] clint_bresp;
+  wire [ 3:0] clint_bid;
+
   // ---------------- Core <-> LSU ----------------
   wire        dmem_valid, dmem_wen;
   wire [ 2:0] dmem_f3;
@@ -209,19 +262,162 @@ module top(
     .lsu_wstrb(lsu_wstrb), .lsu_wlast(lsu_wlast),
     .lsu_bvalid(lsu_bvalid), .lsu_bready(lsu_bready), .lsu_bresp(lsu_bresp),
     .lsu_bid(lsu_bid),
-    .mem_arvalid(mem_arvalid), .mem_arready(mem_arready), .mem_araddr(mem_araddr),
-    .mem_arid(mem_arid), .mem_arlen(mem_arlen), .mem_arsize(mem_arsize),
-    .mem_arburst(mem_arburst),
-    .mem_rvalid(mem_rvalid), .mem_rready(mem_rready), .mem_rresp(mem_rresp),
-    .mem_rdata(mem_rdata), .mem_rlast(mem_rlast), .mem_rid(mem_rid),
-    .mem_awvalid(mem_awvalid), .mem_awready(mem_awready), .mem_awaddr(mem_awaddr),
-    .mem_awid(mem_awid), .mem_awlen(mem_awlen), .mem_awsize(mem_awsize),
-    .mem_awburst(mem_awburst),
-    .mem_wvalid(mem_wvalid), .mem_wready(mem_wready), .mem_wdata(mem_wdata),
-    .mem_wstrb(mem_wstrb), .mem_wlast(mem_wlast),
-    .mem_bvalid(mem_bvalid), .mem_bready(mem_bready), .mem_bresp(mem_bresp),
-    .mem_bid(mem_bid)
+    .mem_arvalid(cpu_arvalid), .mem_arready(cpu_arready), .mem_araddr(cpu_araddr),
+    .mem_arid(cpu_arid), .mem_arlen(cpu_arlen), .mem_arsize(cpu_arsize),
+    .mem_arburst(cpu_arburst),
+    .mem_rvalid(cpu_rvalid), .mem_rready(cpu_rready), .mem_rresp(cpu_rresp),
+    .mem_rdata(cpu_rdata), .mem_rlast(cpu_rlast), .mem_rid(cpu_rid),
+    .mem_awvalid(cpu_awvalid), .mem_awready(cpu_awready), .mem_awaddr(cpu_awaddr),
+    .mem_awid(cpu_awid), .mem_awlen(cpu_awlen), .mem_awsize(cpu_awsize),
+    .mem_awburst(cpu_awburst),
+    .mem_wvalid(cpu_wvalid), .mem_wready(cpu_wready), .mem_wdata(cpu_wdata),
+    .mem_wstrb(cpu_wstrb), .mem_wlast(cpu_wlast),
+    .mem_bvalid(cpu_bvalid), .mem_bready(cpu_bready), .mem_bresp(cpu_bresp),
+    .mem_bid(cpu_bid)
   );
+
+  // ---------------------------------------------------------------------------
+  // CLINT is local to the CPU.  Requests in [0x0200_0000, 0x0200_ffff] are
+  // served here; all other requests continue to the external memory bus.
+  // The internal bus is serialized: only one read transaction and one write
+  // transaction may be outstanding at a time.  This keeps the address mux
+  // independent of the number of AXI IDs used by the CPU.
+  // ---------------------------------------------------------------------------
+  localparam [31:0] CLINT_BASE = 32'h0200_0000;
+  localparam [31:0] CLINT_MASK = 32'hffff_0000;
+
+  wire cpu_ar_clint = ((cpu_araddr & CLINT_MASK) == CLINT_BASE);
+  wire cpu_aw_clint = ((cpu_awaddr & CLINT_MASK) == CLINT_BASE);
+
+  CLINT u_clint(
+    .clk(clk), .rst(rst),
+    .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr), .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid), .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata), .clint_rresp(clint_rresp),
+    .clint_rlast(clint_rlast), .clint_rid(clint_rid),
+    .clint_awvalid(clint_awvalid), .clint_awready(clint_awready),
+    .clint_awaddr(clint_awaddr), .clint_awid(clint_awid),
+    .clint_awlen(clint_awlen), .clint_awsize(clint_awsize),
+    .clint_awburst(clint_awburst),
+    .clint_wvalid(clint_wvalid), .clint_wready(clint_wready),
+    .clint_wdata(clint_wdata), .clint_wstrb(clint_wstrb),
+    .clint_wlast(clint_wlast),
+    .clint_bvalid(clint_bvalid), .clint_bready(clint_bready),
+    .clint_bresp(clint_bresp), .clint_bid(clint_bid)
+  );
+
+  // ---------------- read-channel mux ----------------
+  localparam [1:0] RD_NONE = 2'd0, RD_MEM = 2'd1, RD_CLINT = 2'd2;
+  reg [1:0] rd_owner;
+  wire rd_free = (rd_owner == RD_NONE);
+  wire ar_fire = cpu_arvalid && cpu_arready;
+  wire r_fire  = cpu_rvalid && cpu_rready && cpu_rlast;
+
+  assign cpu_arready = rd_free ? (cpu_ar_clint ? clint_arready : mem_arready)
+                              : 1'b0;
+  assign clint_arvalid = rd_free && cpu_arvalid &&  cpu_ar_clint;
+  assign mem_arvalid   = rd_free && cpu_arvalid && !cpu_ar_clint;
+
+  assign clint_araddr  = cpu_araddr;
+  assign clint_arid    = cpu_arid;
+  assign clint_arlen   = cpu_arlen;
+  assign clint_arsize  = cpu_arsize;
+  assign clint_arburst = cpu_arburst;
+
+  assign mem_araddr  = cpu_araddr;
+  assign mem_arid    = cpu_arid;
+  assign mem_arlen   = cpu_arlen;
+  assign mem_arsize  = cpu_arsize;
+  assign mem_arburst = cpu_arburst;
+
+  assign cpu_rvalid = (rd_owner == RD_CLINT) ? clint_rvalid :
+                      (rd_owner == RD_MEM)   ? mem_rvalid   : 1'b0;
+  assign cpu_rdata  = (rd_owner == RD_CLINT) ? clint_rdata : mem_rdata;
+  assign cpu_rresp  = (rd_owner == RD_CLINT) ? clint_rresp : mem_rresp;
+  assign cpu_rlast  = (rd_owner == RD_CLINT) ? clint_rlast : mem_rlast;
+  assign cpu_rid    = (rd_owner == RD_CLINT) ? clint_rid   : mem_rid;
+
+  assign clint_rready = (rd_owner == RD_CLINT) ? cpu_rready : 1'b0;
+  assign mem_rready   = (rd_owner == RD_MEM)   ? cpu_rready : 1'b0;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      rd_owner <= RD_NONE;
+    end else begin
+      if (r_fire)
+        rd_owner <= RD_NONE;
+      if (ar_fire)
+        rd_owner <= cpu_ar_clint ? RD_CLINT : RD_MEM;
+    end
+  end
+
+  // ---------------- write-channel mux ----------------
+  localparam [1:0] WR_NONE = 2'd0, WR_MEM = 2'd1, WR_CLINT = 2'd2;
+  reg [1:0] wr_owner;
+  wire wr_free = (wr_owner == WR_NONE);
+
+  wire aw_fire = cpu_awvalid && cpu_awready;
+  wire b_fire  = cpu_bvalid && cpu_bready;
+
+  assign cpu_awready = wr_free ? (cpu_aw_clint ? clint_awready : mem_awready)
+                              : 1'b0;
+  assign clint_awvalid = wr_free && cpu_awvalid &&  cpu_aw_clint;
+  assign mem_awvalid   = wr_free && cpu_awvalid && !cpu_aw_clint;
+
+  assign clint_awaddr  = cpu_awaddr;
+  assign clint_awid    = cpu_awid;
+  assign clint_awlen   = cpu_awlen;
+  assign clint_awsize  = cpu_awsize;
+  assign clint_awburst = cpu_awburst;
+
+  assign mem_awaddr  = cpu_awaddr;
+  assign mem_awid    = cpu_awid;
+  assign mem_awlen   = cpu_awlen;
+  assign mem_awsize  = cpu_awsize;
+  assign mem_awburst = cpu_awburst;
+
+  // W has no address of its own.  Route it according to the accepted AW, or
+  // according to an AW that is being accepted in the same cycle.  If AW has
+  // not been accepted yet, hold W until the write target is known.
+  wire w_clint = (wr_owner == WR_CLINT) ||
+                 (wr_free && cpu_awvalid && cpu_aw_clint && cpu_awready);
+  wire w_mem   = (wr_owner == WR_MEM) ||
+                 (wr_free && cpu_awvalid && !cpu_aw_clint && cpu_awready);
+
+  assign cpu_wready = w_clint ? clint_wready :
+                      w_mem   ? mem_wready   : 1'b0;
+  assign clint_wvalid = cpu_wvalid && w_clint;
+  assign mem_wvalid   = cpu_wvalid && w_mem;
+
+  assign clint_wdata  = cpu_wdata;
+  assign clint_wstrb  = cpu_wstrb;
+  assign clint_wlast  = cpu_wlast;
+
+  assign mem_wdata  = cpu_wdata;
+  assign mem_wstrb  = cpu_wstrb;
+  assign mem_wlast  = cpu_wlast;
+
+  assign cpu_bvalid = (wr_owner == WR_CLINT) ? clint_bvalid :
+                      (wr_owner == WR_MEM)   ? mem_bvalid   : 1'b0;
+  assign cpu_bresp  = (wr_owner == WR_CLINT) ? clint_bresp : mem_bresp;
+  assign cpu_bid    = (wr_owner == WR_CLINT) ? clint_bid   : mem_bid;
+
+  assign clint_bready = (wr_owner == WR_CLINT) ? cpu_bready : 1'b0;
+  assign mem_bready   = (wr_owner == WR_MEM)   ? cpu_bready : 1'b0;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      wr_owner <= WR_NONE;
+    end else begin
+      if (b_fire)
+        wr_owner <= WR_NONE;
+      if (aw_fire)
+        wr_owner <= cpu_aw_clint ? WR_CLINT : WR_MEM;
+    end
+  end
 
   CSR u_csr(
     .clk(clk), .rst(rst),

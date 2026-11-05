@@ -141,9 +141,9 @@ module tb_iverilog;
   // 0x3000_0000: small boot window used when the CPU resets at the SoC
   //               reset vector (CI netlist, ysyxSoC).  It contains a two
   //               instruction stub that jumps to the program at 0x8000_0000.
-  // 0x8000_0000: 4MB program/data/stack window.
+  // 0x8000_0000: 128MB program/data/stack window.
   localparam FLASH_WORDS = 1 << 8;
-  localparam PROG_WORDS  = 1 << 20;
+  localparam PROG_WORDS  = 1 << 25;
 
   reg [31:0] flash_mem [0:FLASH_WORDS-1];
   reg [31:0] prog_mem  [0:PROG_WORDS-1];
@@ -153,8 +153,8 @@ module tb_iverilog;
     begin
       if (addr[31:20] == 12'h300)
         read_mem = flash_mem[addr[19:2]];
-      else if (addr[31:22] == 10'h200)
-        read_mem = prog_mem[addr[21:2]];
+      else if (addr[31:27] == 5'b10000)
+        read_mem = prog_mem[addr[26:2]];
       else
         read_mem = 32'b0;
     end
@@ -170,13 +170,13 @@ module tb_iverilog;
         // AM serial port: the CI monitor looks for characters printed by
         // the program (e.g. the random microbench key) on stdout.
         if (strb[0]) $write("%c", data[7:0]);
-      end else if (addr[31:22] == 10'h200) begin
-        word = prog_mem[addr[21:2]];
+      end else if (addr[31:27] == 5'b10000) begin
+        word = prog_mem[addr[26:2]];
         if (strb[0]) word[ 7: 0] = data[ 7: 0];
         if (strb[1]) word[15: 8] = data[15: 8];
         if (strb[2]) word[23:16] = data[23:16];
         if (strb[3]) word[31:24] = data[31:24];
-        prog_mem[addr[21:2]] = word;
+        prog_mem[addr[26:2]] = word;
       end
     end
   endtask

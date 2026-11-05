@@ -1,0 +1,176 @@
+// CLINT - Core Local INTerrupt controller (timer subset)
+//
+// Base address : 0x0200_0000 (same as the CLINT window in ysyxSoC)
+// Register map :
+//   0x0200_bff8 : mtime[31:0]  (read-only)
+//   0x0200_bffc : mtime[63:32] (read-only)
+//
+// The 64-bit mtime counter advances by one every clock.  Software reads the
+// low and high halves separately and combines them into a 64-bit value.
+//
+// The bus port carries the AXI4 channel set used by the NPC internal bus,
+// but the CLINT only implements the single-beat AXI4-Lite subset of it.
+
+/* verilator lint_off UNUSEDSIGNAL */
+module CLINT(
+  input         clk,
+  input         rst,
+
+  // AXI4 AR
+  input         clint_arvalid,
+  output        clint_arready,
+  input  [31:0] clint_araddr,
+  input  [ 3:0] clint_arid,
+  input  [ 7:0] clint_arlen,
+  input  [ 2:0] clint_arsize,
+  input  [ 1:0] clint_arburst,
+
+  // AXI4 R
+  output        clint_rvalid,
+  input         clint_rready,
+  output [31:0] clint_rdata,
+  output [ 1:0] clint_rresp,
+  output        clint_rlast,
+  output [ 3:0] clint_rid,
+
+  // AXI4 AW
+  input         clint_awvalid,
+  output        clint_awready,
+  input  [31:0] clint_awaddr,
+  input  [ 3:0] clint_awid,
+  input  [ 7:0] clint_awlen,
+  input  [ 2:0] clint_awsize,
+  input  [ 1:0] clint_awburst,
+
+  // AXI4 W
+  input         clint_wvalid,
+  output        clint_wready,
+  input  [31:0] clint_wdata,
+  input  [ 3:0] clint_wstrb,
+  input         clint_wlast,
+
+  // AXI4 B
+  output        clint_bvalid,
+  input         clint_bready,
+  output [ 1:0] clint_bresp,
+  output [ 3:0] clint_bid
+);
+
+  // ---------------------------------------------------------------------------
+  // mtime: 64-bit, increments every clock.
+  // ---------------------------------------------------------------------------
+  reg [63:0] mtime;
+
+  always @(posedge clk) begin
+    if (rst)
+      mtime <= 64'b0;
+    else
+      mtime <= mtime + 64'd1;
+  end
+
+  // ---------------------------------------------------------------------------
+  // Read channel
+  // ---------------------------------------------------------------------------
+  localparam R_IDLE = 1'b0;
+  localparam R_WAIT = 1'b1;
+
+  reg        r_state;
+  reg [31:0] rdata_latch;
+  reg [ 3:0] rid_latch;
+  reg        rlast_latch;
+
+  wire [15:0] raddr_off = clint_araddr[15:0];
+  wire is_mtime_lo = (raddr_off == 16'hbff8) || (raddr_off == 16'h0000);
+  wire is_mtime_hi = (raddr_off == 16'hbffc) || (raddr_off == 16'h0004);
+
+  assign clint_arready = !rst && (r_state == R_IDLE);
+  assign clint_rvalid  = !rst && (r_state == R_WAIT);
+  assign clint_rdata   = rdata_latch;
+  assign clint_rresp   = 2'b00;
+  assign clint_rlast   = rlast_latch;
+  assign clint_rid     = rid_latch;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      r_state     <= R_IDLE;
+      rdata_latch <= 32'b0;
+      rid_latch   <= 4'b0;
+      rlast_latch <= 1'b0;
+    end else begin
+      case (r_state)
+        R_IDLE: begin
+          if (clint_arvalid) begin
+            rid_latch   <= clint_arid;
+            rlast_latch <= (clint_arlen == 8'd0);
+            if (is_mtime_lo)
+              rdata_latch <= mtime[31:0];
+            else if (is_mtime_hi)
+              rdata_latch <= mtime[63:32];
+            else
+              rdata_latch <= 32'b0;
+            r_state <= R_WAIT;
+          end
+        end
+        R_WAIT: begin
+          if (clint_rready)
+            r_state <= R_IDLE;
+        end
+        default: r_state <= R_IDLE;
+      endcase
+    end
+  end
+
+  // ---------------------------------------------------------------------------
+  // Write channel: the timer subset has no writable register.  Accept the
+  // transaction and return OKAY so that unexpected writes do not hang the bus.
+  // ---------------------------------------------------------------------------
+  localparam W_IDLE = 1'b0;
+  localparam W_RESP = 1'b1;
+
+  reg        w_state;
+  reg        aw_done;
+  reg        w_done;
+  reg [ 3:0] bid_latch;
+
+  wire aw_fire = clint_awvalid && clint_awready;
+  wire w_fire  = clint_wvalid  && clint_wready;
+
+  assign clint_awready = !rst && (w_state == W_IDLE) && !aw_done;
+  assign clint_wready  = !rst && (w_state == W_IDLE) && !w_done;
+  assign clint_bvalid  = !rst && (w_state == W_RESP);
+  assign clint_bresp   = 2'b00;
+  assign clint_bid     = bid_latch;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      w_state   <= W_IDLE;
+      aw_done   <= 1'b0;
+      w_done    <= 1'b0;
+      bid_latch <= 4'b0;
+    end else begin
+      case (w_state)
+        W_IDLE: begin
+          if (aw_fire) begin
+            aw_done   <= 1'b1;
+            bid_latch <= clint_awid;
+          end
+          if (w_fire)
+            w_done <= 1'b1;
+
+          if ((aw_done || aw_fire) && (w_done || w_fire)) begin
+            aw_done <= 1'b0;
+            w_done  <= 1'b0;
+            w_state <= W_RESP;
+          end
+        end
+        W_RESP: begin
+          if (clint_bready)
+            w_state <= W_IDLE;
+        end
+        default: w_state <= W_IDLE;
+      endcase
+    end
+  end
+
+endmodule
+/* verilator lint_on UNUSEDSIGNAL */
