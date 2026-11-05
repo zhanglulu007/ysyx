@@ -23,6 +23,7 @@ module CSR(
   //reg [31:0] mepc;      // 0x341 
   reg [31:0] mcause;    // 0x342
   reg [31:0] mcycle_lo;
+  reg [31:0] mcycle_hi;
   
   always @(*) begin
     case (csr_addr)
@@ -31,7 +32,7 @@ module CSR(
       12'h341: csr_rdata = mepc;              
       12'h342: csr_rdata = mcause;                      
       12'hb00: csr_rdata = mcycle_lo;
-      12'hb80: csr_rdata = 32'b0;
+      12'hb80: csr_rdata = mcycle_hi;
       default: csr_rdata = 32'b0;
     endcase
   end
@@ -43,8 +44,11 @@ module CSR(
       mepc    <= 32'b0;
       mcause  <= 32'b0;
       mcycle_lo <= 32'b0;
+      mcycle_hi <= 32'b0;
     end else begin
       mcycle_lo <= mcycle_lo + 32'd1;
+      if (mcycle_lo == 32'hffff_ffff)
+        mcycle_hi <= mcycle_hi + 32'd1;
       if (is_ecall) begin
         mepc   <= pc;
         mcause <= 32'd11;
@@ -64,6 +68,6 @@ module CSR(
   assign mstatus_out = mstatus;
   assign mcause_out  = mcause;
   assign mcycle_lo_out = mcycle_lo;
-  assign mcycle_hi_out = 32'b0;
+  assign mcycle_hi_out = mcycle_hi;
 
 endmodule

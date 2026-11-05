@@ -380,11 +380,11 @@ module top(
   assign mem_awburst = cpu_awburst;
 
   // W has no address of its own.  Route it according to the accepted AW, or
-  // according to an AW that is being accepted in the same cycle.  If AW has
-  // not been accepted yet, hold W until the write target is known.
-  // Forward W as soon as the AW address is known, even before AWREADY.
-  // Some AXI-to-APB bridges wait for W before accepting AW; holding W until
-  // AW handshake would deadlock such a bridge.
+  // according to the AW address currently being presented.  W is forwarded
+  // as soon as the target is known, even before AWREADY: some AXI-to-APB
+  // bridges wait for W before accepting AW, so holding W until the AW
+  // handshake would deadlock such a bridge.  If W arrives with no valid AW
+  // and no accepted write, hold it until the target is known.
   wire w_clint = (wr_owner == WR_CLINT) ||
                  (wr_free && cpu_awvalid &&  cpu_aw_clint);
   wire w_mem   = (wr_owner == WR_MEM) ||
