@@ -286,8 +286,10 @@ module top(
   localparam [31:0] CLINT_BASE = 32'h0200_0000;
   localparam [31:0] CLINT_MASK = 32'hffff_0000;
 
-  wire cpu_ar_clint = ((cpu_araddr & CLINT_MASK) == CLINT_BASE);
-  wire cpu_aw_clint = ((cpu_awaddr & CLINT_MASK) == CLINT_BASE);
+  wire cpu_ar_clint = cpu_arvalid &&
+                      ((cpu_araddr & CLINT_MASK) == CLINT_BASE);
+  wire cpu_aw_clint = cpu_awvalid &&
+                      ((cpu_awaddr & CLINT_MASK) == CLINT_BASE);
 
   CLINT u_clint(
     .clk(clk), .rst(rst),

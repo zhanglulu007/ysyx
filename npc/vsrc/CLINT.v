@@ -80,8 +80,8 @@ module CLINT(
   reg        rlast_latch;
 
   wire [15:0] raddr_off = clint_araddr[15:0];
-  wire is_mtime_lo = (raddr_off == 16'hbff8) || (raddr_off == 16'h0000);
-  wire is_mtime_hi = (raddr_off == 16'hbffc) || (raddr_off == 16'h0004);
+  wire is_mtime_lo = (raddr_off == 16'hbff8);
+  wire is_mtime_hi = (raddr_off == 16'hbffc);
 
   assign clint_arready = !rst && (r_state == R_IDLE);
   assign clint_rvalid  = !rst && (r_state == R_WAIT);
