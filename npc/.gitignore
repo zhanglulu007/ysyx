@@ -11,5 +11,8 @@
 !README.md
 !config/
 !config/*
+!scripts/
+!scripts/*.py
+!*.nxdc
 build/
 log/

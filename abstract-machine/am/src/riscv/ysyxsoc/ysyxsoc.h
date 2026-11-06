@@ -18,6 +18,9 @@
 
 #define CPU_FREQ_MHZ 500
 
+#define CLINT_BASE    0x02000000
+#define CLINT_MTIME   0x0000bff8   // 64-bit mtime, low word first
+
 #define PS2_BASE      0x10011000   
 
 #define VGA_FB_BASE   0x21000000   

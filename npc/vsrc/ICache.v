@@ -36,6 +36,7 @@ module ICache(
   localparam [1:0] BURST_WRAP = 2'b10;
 `endif
 
+  localparam S_BOOT    = 3'd5;
   localparam S_IDLE    = 3'd0;
   localparam S_FILL_AR = 3'd1;
   localparam S_FILL_R  = 3'd2;
@@ -51,16 +52,15 @@ module ICache(
   reg [24:0] fill_tag;
   reg [2:0] fill_cnt;
 `ifdef SOC_MODE
-  reg [2:0] fill_start;   // word offset the wrap burst begins at
+  reg [2:0] fill_start; 
 `endif
-  reg [29:0] byp_addr;              // cpu_addr[31:2], instruction addresses are 4B aligned
+  reg [29:0] byp_addr;             
 
   wire [2:0]  req_word = cpu_addr[4:2];
   wire [1:0]  req_idx  = cpu_addr[6:5];
   wire [24:0] req_tag  = cpu_addr[31:7];
   wire [31:0] req_data = data[{req_idx, req_word}];
 
-  // Reconstruct the fill line base from the latched tag/index; no duplicate fill_line register.
 `ifdef SOC_MODE
   wire [31:0] fill_addr = {fill_tag, fill_idx, fill_start, 2'b00};
   wire [2:0]  fill_wr_word = fill_start + fill_cnt;
@@ -123,7 +123,14 @@ module ICache(
 `endif
 
   always @(posedge clk) begin
-    if (rst || flush) begin
+    if (rst) begin
+      state <= S_BOOT;
+      valid <= 4'b0;
+      fill_cnt <= 3'b0;
+`ifdef SOC_MODE
+      fill_start <= 3'b0;
+`endif
+    end else if (flush) begin
       state <= S_IDLE;
       valid <= 4'b0;
       fill_cnt <= 3'b0;
@@ -132,6 +139,9 @@ module ICache(
 `endif
     end else begin
       case (state)
+        S_BOOT: begin
+          state <= S_IDLE;
+        end
         S_IDLE: begin
           if (cpu_req && !cacheable) begin
             state <= S_BYP_AR;

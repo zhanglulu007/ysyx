@@ -55,6 +55,22 @@ PERF_EVAL_LOG := $(BUILD_DIR)/perf-eval.log
 PERF_MICROBENCH_LOG := $(BUILD_DIR)/perf-microbench.log
 $(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
+GEN_VERILOG := $(PROJECT_DIR)/scripts/gen_verilog.py
+VERILOG_OUT := $(BUILD_DIR)/$(STUID).v
+
+SIM_DIR := $(PROJECT_DIR)/sim
+SIM_TB := $(SIM_DIR)/tb_iverilog.v
+BIN2HEX := $(PROJECT_DIR)/scripts/bin2hex.py
+IVERILOG ?= iverilog
+VVP ?= vvp
+IMG ?= $(WORKBENCH_ROOT)/am-kernels/kernels/hello/build/hello-riscv32e-npc.bin
+IMG_ABS := $(abspath $(IMG))
+SIM_HEX := $(BUILD_DIR)/sim-iverilog.hex
+SIM_NETLIST_HEX := $(BUILD_DIR)/sim-netlist.hex
+SIM_IVERILOG_VVP := $(BUILD_DIR)/sim-iverilog.vvp
+SIM_NETLIST_VVP := $(BUILD_DIR)/sim-netlist.vvp
+SIM_MAX_CYCLES ?= 5000000
+
 CORE_RTL_SRCS := $(sort \
   $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
   $(wildcard $(PROJECT_DIR)/vsrc/*.sv))
@@ -112,7 +128,7 @@ ifeq ($(NVBOARD), 1)
   NVBOARD_PREREQ = $(SRC_AUTO_BIND) nvboard-archive
   NVBOARD_CSRCS  = $(SRC_AUTO_BIND)
   NVBOARD_LDFLAGS = $(NVBOARD_ARCHIVE)
-  NVBOARD_HOME ?= /home/zhangshenlu/ysyx-workbench/nvboard
+  NVBOARD_HOME ?= $(WORKBENCH_ROOT)/nvboard
   NXDC_FILES = $(PROJECT_DIR)/constr/soc.nxdc
   SRC_AUTO_BIND = $(BUILD_DIR)/auto_bind.cpp
 
@@ -239,6 +255,50 @@ run: build
 	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
 	  $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
+verilog:
+	@test -f "$(GEN_VERILOG)" || { \
+	  echo "Error: missing $(GEN_VERILOG)"; exit 1; \
+	}
+	STUID=$(STUID) python3 $(GEN_VERILOG)
+	@test -f "$(VERILOG_OUT)" || { \
+	  echo "Error: $(VERILOG_OUT) was not generated"; exit 1; \
+	}
+	@echo "[verilog] generated $(VERILOG_OUT)"
+
+sim-iverilog: verilog
+	@test -r "$(IMG_ABS)" || { \
+	  echo "Error: program '$(IMG_ABS)' not found (pass IMG=xxx.bin)."; exit 1; \
+	}
+	@test -f "$(SIM_TB)" || { \
+	  echo "Error: missing $(SIM_TB)"; exit 1; \
+	}
+	python3 $(BIN2HEX) $(IMG_ABS) $(SIM_HEX)
+	$(IVERILOG) -g2012 -DSOC_MODE -DSYNTHESIS -DSIM_IVERILOG \
+	  -o $(SIM_IVERILOG_VVP) $(SIM_TB) $(VERILOG_OUT)
+	@echo "[sim-iverilog] running $(IMG_ABS)"
+	$(VVP) $(SIM_IVERILOG_VVP) \
+	  +hex=$(abspath $(SIM_HEX)) +max_cycles=$(SIM_MAX_CYCLES)
+
+sim-iverilog-netlist:
+	@test -r "$(IMG_ABS)" || { \
+	  echo "Error: program '$(IMG_ABS)' not found (pass IMG=xxx.bin)."; exit 1; \
+	}
+	@test -n "$(NETLIST)" || { \
+	  echo "Error: NETLIST is required (pass NETLIST=xxx.v)."; exit 1; \
+	}
+	@test -n "$(CELLS)" || { \
+	  echo "Error: CELLS is required (pass CELLS=xxx.v)."; exit 1; \
+	}
+	@test -f "$(SIM_TB)" || { \
+	  echo "Error: missing $(SIM_TB)"; exit 1; \
+	}
+	python3 $(BIN2HEX) $(IMG_ABS) $(SIM_NETLIST_HEX)
+	$(IVERILOG) -g2012 -DSIM_NETLIST \
+	  -o $(SIM_NETLIST_VVP) $(SIM_TB) $(NETLIST) $(CELLS)
+	@echo "[sim-iverilog-netlist] running $(IMG_ABS) with $(NETLIST)"
+	$(VVP) $(SIM_NETLIST_VVP) \
+	  +hex=$(abspath $(SIM_NETLIST_HEX)) +max_cycles=$(SIM_MAX_CYCLES)
+
 # 一键性能评估：清理 NPC -> eval 综合 -> microbench train -> 打印报告
 perf:
 	@set -e; \
@@ -256,9 +316,9 @@ perf:
 	      AM_HOME=$(WORKBENCH_ROOT)/abstract-machine \
 	      NPC_HOME=$(PROJECT_DIR) \
 	      ARCH=riscv32e-ysyxsoc SOC=1 FFLASH=0 PERF=1 \
-	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 LOG=$(LOG) LOG_DIR=$(LOG_DIR) \
+	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 LOG=1 LOG_DIR=$(LOG_DIR) \
 	      mainargs=train run \
-	      > $(PERF_MICROBENCH_LOG) 2>&1; then \
+	      > $(PERF_MICROBENCH_LOG) 2>&1; then \`
 	  echo "[perf] microbench failed; tail of $(PERF_MICROBENCH_LOG):"; \
 	  tail -n 80 $(PERF_MICROBENCH_LOG); \
 	  exit 1; \
@@ -283,4 +343,5 @@ clean-log:
 	-rm -rf $(LOG_DIR)
 
 .PHONY: all show-config check-soc lint build run \
-	build-standalone run-standalone build-soc run-soc perf clean clean-log
+	build-standalone run-standalone build-soc run-soc perf clean clean-log \
+	verilog sim-iverilog sim-iverilog-netlist

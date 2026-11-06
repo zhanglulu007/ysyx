@@ -116,6 +116,19 @@ module top(
   wire [ 1:0] lsu_bresp;
   wire [ 3:0] lsu_bid;
 
+  // ---------------- CLINT slave (read-only AXI4-Lite subset) ----------------
+  wire        clint_arvalid, clint_arready;
+  wire [31:0] clint_araddr;
+  wire [ 3:0] clint_arid;
+  wire [ 7:0] clint_arlen;
+  wire [ 2:0] clint_arsize;
+  wire [ 1:0] clint_arburst;
+  wire        clint_rvalid, clint_rready;
+  wire [ 1:0] clint_rresp;
+  wire [31:0] clint_rdata;
+  wire        clint_rlast;
+  wire [ 3:0] clint_rid;
+
   // ---------------- Core <-> LSU ----------------
   wire        dmem_valid, dmem_wen;
   wire [ 2:0] dmem_f3;
@@ -127,6 +140,7 @@ module top(
   wire [31:0] csr_wdata, csr_rdata, csr_pc;
   wire        csr_wen, csr_ecall;
   wire [31:0] mepc, mtvec, mstatus, mcause, mcycle_lo, mcycle_hi;
+  wire [63:0] mtime_shared = {mcycle_hi, mcycle_lo};
 
   // ---------------- core ----------------
   wire [31:0] cur_pc, cur_inst;
@@ -209,6 +223,13 @@ module top(
     .lsu_wstrb(lsu_wstrb), .lsu_wlast(lsu_wlast),
     .lsu_bvalid(lsu_bvalid), .lsu_bready(lsu_bready), .lsu_bresp(lsu_bresp),
     .lsu_bid(lsu_bid),
+    .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr), .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid), .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata), .clint_rresp(clint_rresp),
+    .clint_rlast(clint_rlast), .clint_rid(clint_rid),
     .mem_arvalid(mem_arvalid), .mem_arready(mem_arready), .mem_araddr(mem_araddr),
     .mem_arid(mem_arid), .mem_arlen(mem_arlen), .mem_arsize(mem_arsize),
     .mem_arburst(mem_arburst),
@@ -221,6 +242,18 @@ module top(
     .mem_wstrb(mem_wstrb), .mem_wlast(mem_wlast),
     .mem_bvalid(mem_bvalid), .mem_bready(mem_bready), .mem_bresp(mem_bresp),
     .mem_bid(mem_bid)
+  );
+
+  CLINT u_clint(
+    .clk(clk), .rst(rst),
+    .mtime(mtime_shared),
+    .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
+    .clint_araddr(clint_araddr), .clint_arid(clint_arid),
+    .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),
+    .clint_arburst(clint_arburst),
+    .clint_rvalid(clint_rvalid), .clint_rready(clint_rready),
+    .clint_rdata(clint_rdata), .clint_rresp(clint_rresp),
+    .clint_rlast(clint_rlast), .clint_rid(clint_rid)
   );
 
   CSR u_csr(
@@ -481,7 +514,8 @@ module top(
 
 `ifdef SOC_MODE
         if (retire_is_mem &&
-            ((retire_addr >= 32'h10000000 && retire_addr < 32'h10020000) ||
+            ((retire_addr >= 32'h02000000 && retire_addr < 32'h02010000) ||
+             (retire_addr >= 32'h10000000 && retire_addr < 32'h10020000) ||
              (retire_addr >= 32'h21000000 && retire_addr < 32'h22000000))) begin
           difftest_skip_ref();
         end

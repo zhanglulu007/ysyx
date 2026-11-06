@@ -54,6 +54,23 @@ module Arbiter(
   output [1:0] lsu_bresp,
   output [3:0] lsu_bid,
 
+  // CLINT AXI4 AR
+  output        clint_arvalid,
+  input         clint_arready,
+  output [31:0] clint_araddr,
+  output [3:0]  clint_arid,
+  output [7:0]  clint_arlen,
+  output [2:0]  clint_arsize,
+  output [1:0]  clint_arburst,
+
+  // CLINT AXI4 R
+  input         clint_rvalid,
+  output        clint_rready,
+  input  [31:0] clint_rdata,
+  input  [1:0]  clint_rresp,
+  input         clint_rlast,
+  input  [3:0]  clint_rid,
+
   // MEM AXI4 AR
   output        mem_arvalid,
   input         mem_arready,
@@ -98,43 +115,36 @@ module Arbiter(
   localparam LSU_ID = 4'b0010;
   localparam [2:0] IFU_SIZE = 3'b010;
 
-  assign mem_awvalid = lsu_awvalid;
-  assign mem_awaddr  = lsu_awaddr;
-  assign mem_awid    = lsu_awid;
-  assign mem_awlen   = lsu_awlen;
-  assign mem_awsize  = lsu_awsize;
-  assign mem_awburst = lsu_awburst;
-  assign lsu_awready = mem_awready;
-
-  assign mem_wvalid  = lsu_wvalid;
-  assign mem_wdata   = lsu_wdata;
-  assign mem_wstrb   = lsu_wstrb;
-  assign mem_wlast   = lsu_wlast;
-  assign lsu_wready  = mem_wready;
-
-  assign lsu_bvalid  = mem_bvalid;
-  assign lsu_bresp   = mem_bresp;
-  assign lsu_bid     = mem_bid;
-  assign mem_bready  = lsu_bready;
+  localparam [31:0] CLINT_BASE = 32'h0200_0000;
+  localparam [31:0] CLINT_MASK = 32'hffff_0000;
 
 `ifdef SOC_MODE
-  wire ifu_chan = (ifu_araddr >= 32'ha000_0000) && (ifu_araddr < 32'ha200_0000);
-  wire lsu_chan = (lsu_araddr >= 32'ha000_0000) && (lsu_araddr < 32'ha200_0000);
+  wire [1:0] ifu_chan = ((ifu_araddr & CLINT_MASK) == CLINT_BASE) ? 2'd2 :
+                        ((ifu_araddr >= 32'ha000_0000) &&
+                         (ifu_araddr <  32'ha200_0000)) ? 2'd1 : 2'd0;
+  wire [1:0] lsu_chan = ((lsu_araddr & CLINT_MASK) == CLINT_BASE) ? 2'd2 :
+                        ((lsu_araddr >= 32'ha000_0000) &&
+                         (lsu_araddr <  32'ha200_0000)) ? 2'd1 : 2'd0;
 `else
-  wire ifu_chan = 1'b0;
-  wire lsu_chan = 1'b0;
+  wire [1:0] ifu_chan = ((ifu_araddr & CLINT_MASK) == CLINT_BASE) ? 2'd2 : 2'd0;
+  wire [1:0] lsu_chan = ((lsu_araddr & CLINT_MASK) == CLINT_BASE) ? 2'd2 : 2'd0;
 `endif
 
   reg rd_busy_ifu, rd_busy_lsu;
-  reg rd_chan_ifu, rd_chan_lsu;
+  reg [1:0] rd_chan_ifu, rd_chan_lsu;
+  reg rd_clint_ifu, rd_clint_lsu;
 
-  wire ch0_used = (rd_busy_ifu && rd_chan_ifu == 1'b0) ||
-                  (rd_busy_lsu && rd_chan_lsu == 1'b0);
-  wire ch1_used = (rd_busy_ifu && rd_chan_ifu == 1'b1) ||
-                  (rd_busy_lsu && rd_chan_lsu == 1'b1);
+  wire ch0_used = (rd_busy_ifu && rd_chan_ifu == 2'd0) ||
+                  (rd_busy_lsu && rd_chan_lsu == 2'd0);
+  wire ch1_used = (rd_busy_ifu && rd_chan_ifu == 2'd1) ||
+                  (rd_busy_lsu && rd_chan_lsu == 2'd1);
+  wire ch2_used = (rd_busy_ifu && rd_chan_ifu == 2'd2) ||
+                  (rd_busy_lsu && rd_chan_lsu == 2'd2);
 
-  wire ifu_free = !(ifu_chan ? ch1_used : ch0_used);
-  wire lsu_free = !(lsu_chan ? ch1_used : ch0_used);
+  wire ifu_free = (ifu_chan == 2'd0) ? !ch0_used :
+                  (ifu_chan == 2'd1) ? !ch1_used : !ch2_used;
+  wire lsu_free = (lsu_chan == 2'd0) ? !ch0_used :
+                  (lsu_chan == 2'd1) ? !ch1_used : !ch2_used;
 
   wire ifu_req = ifu_arvalid && ifu_free;
   wire lsu_req = lsu_arvalid && lsu_free;
@@ -150,36 +160,121 @@ module Arbiter(
   wire sel_ifu = (state == S_IFU) || ((state == S_IDLE) && pick_ifu);
   wire sel_lsu = (state == S_LSU) || ((state == S_IDLE) && pick_lsu);
 
-  assign mem_arvalid = (sel_ifu && ifu_arvalid) || (sel_lsu && lsu_arvalid);
-  assign mem_araddr  = sel_ifu ? ifu_araddr : lsu_araddr;
-  assign mem_arid    = sel_ifu ? IFU_ID : lsu_arid;
-  assign mem_arlen   = sel_ifu ? ifu_arlen : lsu_arlen;
-  assign mem_arsize  = sel_ifu ? IFU_SIZE : lsu_arsize;
-  assign mem_arburst = sel_ifu ? ifu_arburst : lsu_arburst;
+  wire        ar_req   = (sel_ifu && ifu_arvalid) || (sel_lsu && lsu_arvalid);
+  wire [31:0] ar_addr  = sel_ifu ? ifu_araddr : lsu_araddr;
+  wire [3:0]  ar_id    = sel_ifu ? IFU_ID : lsu_arid;
+  wire [7:0]  ar_len   = sel_ifu ? ifu_arlen : lsu_arlen;
+  wire [2:0]  ar_size  = sel_ifu ? IFU_SIZE : lsu_arsize;
+  wire [1:0]  ar_burst = sel_ifu ? ifu_arburst : lsu_arburst;
 
-  assign ifu_arready = sel_ifu && mem_arready;
-  assign lsu_arready = sel_lsu && mem_arready;
+  wire ar_clint = ar_req && ((ar_addr & CLINT_MASK) == CLINT_BASE);
+  wire ar_ready = ar_clint ? clint_arready : mem_arready;
+  wire ar_fire  = ar_req && ar_ready;
 
-  assign ifu_rvalid  = mem_rvalid && (mem_rid == IFU_ID);
-  assign ifu_rdata   = mem_rdata;
-  assign ifu_rlast   = mem_rlast;
+  assign clint_arvalid = ar_req &&  ar_clint;
+  assign clint_araddr  = ar_addr;
+  assign clint_arid    = ar_id;
+  assign clint_arlen   = ar_len;
+  assign clint_arsize  = ar_size;
+  assign clint_arburst = ar_burst;
 
-  assign lsu_rvalid  = mem_rvalid && (mem_rid == LSU_ID);
-  assign lsu_rresp   = mem_rresp;
-  assign lsu_rdata   = mem_rdata;
-  assign lsu_rlast   = mem_rlast;
-  assign lsu_rid     = mem_rid;
+  assign mem_arvalid  = ar_req && !ar_clint;
+  assign mem_araddr   = ar_addr;
+  assign mem_arid     = ar_id;
+  assign mem_arlen    = ar_len;
+  assign mem_arsize   = ar_size;
+  assign mem_arburst  = ar_burst;
 
-  assign mem_rready  = (mem_rid == IFU_ID) ? ifu_rready : lsu_rready;
+  assign ifu_arready = sel_ifu && ar_ready;
+  assign lsu_arready = sel_lsu && ar_ready;
 
-  wire ar_fire = mem_arvalid && mem_arready;
-  wire r_fire  = mem_rvalid && mem_rready;
+  wire ifu_from_clint = rd_clint_ifu;
+  wire lsu_from_clint = rd_clint_lsu;
+
+  assign ifu_rvalid = ifu_from_clint ? (clint_rvalid && (clint_rid == IFU_ID))
+                                     : (mem_rvalid   && (mem_rid   == IFU_ID));
+  assign ifu_rdata  = ifu_from_clint ? clint_rdata : mem_rdata;
+  assign ifu_rlast  = ifu_from_clint ? clint_rlast : mem_rlast;
+
+  assign lsu_rvalid = lsu_from_clint ? (clint_rvalid && (clint_rid == LSU_ID))
+                                     : (mem_rvalid   && (mem_rid   == LSU_ID));
+  assign lsu_rresp  = lsu_from_clint ? clint_rresp : mem_rresp;
+  assign lsu_rdata  = lsu_from_clint ? clint_rdata : mem_rdata;
+  assign lsu_rlast  = lsu_from_clint ? clint_rlast : mem_rlast;
+  assign lsu_rid    = lsu_from_clint ? clint_rid   : mem_rid;
+
+  assign clint_rready = (clint_rid == IFU_ID) ? (rd_clint_ifu && ifu_rready) :
+                        (clint_rid == LSU_ID) ? (rd_clint_lsu && lsu_rready) : 1'b0;
+  assign mem_rready   = (mem_rid == IFU_ID) ? (!rd_clint_ifu && ifu_rready) :
+                        (mem_rid == LSU_ID) ? (!rd_clint_lsu && lsu_rready) : 1'b0;
+
+  wire ifu_rfire = ifu_rvalid && ifu_rready && ifu_rlast;
+  wire lsu_rfire = lsu_rvalid && lsu_rready && lsu_rlast;
 
   wire ar_open_ifu = ar_fire && sel_ifu;
   wire ar_open_lsu = ar_fire && sel_lsu;
 
-  wire rd_close_ifu = rd_busy_ifu && r_fire && mem_rlast && (mem_rid == IFU_ID);
-  wire rd_close_lsu = rd_busy_lsu && r_fire && mem_rlast && (mem_rid == LSU_ID);
+  wire rd_close_ifu = rd_busy_ifu && ifu_rfire;
+  wire rd_close_lsu = rd_busy_lsu && lsu_rfire;
+
+  reg        clint_aw_pending;
+  reg        clint_w_done;
+  reg        clint_b_pending;
+  reg [ 3:0] clint_bid_r;
+
+  wire lsu_aw_clint = lsu_awvalid && ((lsu_awaddr & CLINT_MASK) == CLINT_BASE);
+  wire lsu_w_clint = clint_aw_pending || lsu_aw_clint;
+
+  wire clint_aw_fire = lsu_awvalid && lsu_aw_clint && lsu_awready;
+  wire clint_w_fire  = lsu_wvalid  && lsu_w_clint  && lsu_wready;
+
+  assign mem_awvalid  = lsu_awvalid && !lsu_aw_clint;
+  assign mem_awaddr   = lsu_awaddr;
+  assign mem_awid     = lsu_awid;
+  assign mem_awlen    = lsu_awlen;
+  assign mem_awsize   = lsu_awsize;
+  assign mem_awburst  = lsu_awburst;
+
+  assign lsu_awready  = lsu_aw_clint ? 1'b1 : mem_awready;
+
+  assign mem_wvalid   = lsu_wvalid && !lsu_w_clint;
+  assign mem_wdata    = lsu_wdata;
+  assign mem_wstrb    = lsu_wstrb;
+  assign mem_wlast    = lsu_wlast;
+
+  assign lsu_wready   = lsu_w_clint ? 1'b1 : mem_wready;
+
+  assign lsu_bvalid   = clint_b_pending ? 1'b1 : mem_bvalid;
+  assign lsu_bresp    = clint_b_pending ? 2'b00 : mem_bresp;
+  assign lsu_bid      = clint_b_pending ? clint_bid_r : mem_bid;
+
+  assign mem_bready   = lsu_bready && !clint_b_pending;
+
+  always @(posedge clk) begin
+    if (rst) begin
+      clint_aw_pending <= 1'b0;
+      clint_w_done     <= 1'b0;
+      clint_b_pending  <= 1'b0;
+      clint_bid_r      <= 4'b0;
+    end else begin
+      if (clint_aw_fire) begin
+        clint_aw_pending <= 1'b1;
+        clint_bid_r      <= lsu_awid;
+      end
+      if (clint_w_fire)
+        clint_w_done <= 1'b1;
+
+      if ((clint_aw_pending || clint_aw_fire) &&
+          (clint_w_done     || clint_w_fire)) begin
+        clint_aw_pending <= 1'b0;
+        clint_w_done     <= 1'b0;
+        clint_b_pending  <= 1'b1;
+      end
+
+      if (clint_b_pending && lsu_bready)
+        clint_b_pending <= 1'b0;
+    end
+  end
 
   always @(posedge clk) begin
     if (rst) begin
@@ -187,20 +282,23 @@ module Arbiter(
       rr_ifu      <= 1'b1;
       rd_busy_ifu <= 1'b0;
       rd_busy_lsu <= 1'b0;
-      rd_chan_ifu <= 1'b0;
-      rd_chan_lsu <= 1'b0;
+      rd_chan_ifu <= 2'd0;
+      rd_chan_lsu <= 2'd0;
+      rd_clint_ifu <= 1'b0;
+      rd_clint_lsu <= 1'b0;
     end else begin
       case (state)
         S_IDLE: begin
-          if (mem_arvalid && !mem_arready) begin
+          if (ar_req && !ar_ready)
             state <= sel_ifu ? S_IFU : S_LSU;
-          end
         end
         S_IFU: begin
-          if (!ifu_arvalid || mem_arready) state <= S_IDLE;
+          if (!ifu_arvalid || ar_ready)
+            state <= S_IDLE;
         end
         S_LSU: begin
-          if (!lsu_arvalid || mem_arready) state <= S_IDLE;
+          if (!lsu_arvalid || ar_ready)
+            state <= S_IDLE;
         end
         default: state <= S_IDLE;
       endcase
@@ -214,15 +312,19 @@ module Arbiter(
       if (ar_open_ifu) begin
         rd_busy_ifu <= 1'b1;
         rd_chan_ifu <= ifu_chan;
+        rd_clint_ifu <= ar_clint;
       end else if (rd_close_ifu) begin
         rd_busy_ifu <= 1'b0;
+        rd_clint_ifu <= 1'b0;
       end
 
       if (ar_open_lsu) begin
         rd_busy_lsu <= 1'b1;
         rd_chan_lsu <= lsu_chan;
+        rd_clint_lsu <= ar_clint;
       end else if (rd_close_lsu) begin
         rd_busy_lsu <= 1'b0;
+        rd_clint_lsu <= 1'b0;
       end
     end
   end
