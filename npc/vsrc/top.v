@@ -140,6 +140,7 @@ module top(
   wire [31:0] csr_wdata, csr_rdata, csr_pc;
   wire        csr_wen, csr_ecall;
   wire [31:0] mepc, mtvec, mstatus, mcause, mcycle_lo, mcycle_hi;
+  wire [63:0] mtime_shared = {mcycle_hi, mcycle_lo};
 
   // ---------------- core ----------------
   wire [31:0] cur_pc, cur_inst;
@@ -245,6 +246,7 @@ module top(
 
   CLINT u_clint(
     .clk(clk), .rst(rst),
+    .mtime(mtime_shared),
     .clint_arvalid(clint_arvalid), .clint_arready(clint_arready),
     .clint_araddr(clint_araddr), .clint_arid(clint_arid),
     .clint_arlen(clint_arlen), .clint_arsize(clint_arsize),

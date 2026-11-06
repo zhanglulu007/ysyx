@@ -43,31 +43,32 @@ module ICache(
   localparam S_BYP_AR  = 3'd3;
   localparam S_BYP_R   = 3'd4;
 
-  reg [31:0] data [0:15];
-  reg [25:0] tag [0:3];
+  // Fixed geometry: 4 sets x 8 words (32-byte line).
+  reg [31:0] data [0:31];
+  reg [24:0] tag [0:3];
   reg [3:0] valid;
 
   reg [2:0] state;
   reg [1:0] fill_idx;
-  reg [25:0] fill_tag;
-  reg [1:0] fill_cnt;
+  reg [24:0] fill_tag;
+  reg [2:0] fill_cnt;
 `ifdef SOC_MODE
-  reg [1:0] fill_start;   // word offset the wrap burst begins at
+  reg [2:0] fill_start;   // word offset the wrap burst begins at
 `endif
   reg [29:0] byp_addr;              // cpu_addr[31:2], instruction addresses are 4B aligned
 
-  wire [1:0]  req_word = cpu_addr[3:2];
-  wire [1:0]  req_idx  = cpu_addr[5:4];
-  wire [25:0] req_tag  = cpu_addr[31:6];
+  wire [2:0]  req_word = cpu_addr[4:2];
+  wire [1:0]  req_idx  = cpu_addr[6:5];
+  wire [24:0] req_tag  = cpu_addr[31:7];
   wire [31:0] req_data = data[{req_idx, req_word}];
 
   // Reconstruct the fill line base from the latched tag/index; no duplicate fill_line register.
 `ifdef SOC_MODE
   wire [31:0] fill_addr = {fill_tag, fill_idx, fill_start, 2'b00};
-  wire [1:0]  fill_wr_word = fill_start + fill_cnt;
+  wire [2:0]  fill_wr_word = fill_start + fill_cnt;
 `else
-  wire [31:0] fill_addr = {fill_tag, fill_idx, 4'b0};
-  wire [1:0]  fill_wr_word = fill_cnt;
+  wire [31:0] fill_addr = {fill_tag, fill_idx, 5'b0};
+  wire [2:0]  fill_wr_word = fill_cnt;
 `endif
 
   wire is_flash = (cpu_addr[31:24] == 8'h30);
@@ -85,9 +86,9 @@ module ICache(
                     (req_idx == fill_idx) &&
                     (req_tag == fill_tag);
 `ifdef SOC_MODE
-  wire [1:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
+  wire [2:0] req_dist = req_word - fill_start;  // WRAP: beats until req_word
 `else
-  wire [1:0] req_dist = req_word;               // INCR: burst starts at 0
+  wire [2:0] req_dist = req_word;               // INCR: burst starts at 0
 `endif
   wire fill_has_word   = fill_match &&
                          ((req_dist < fill_cnt) ||
@@ -103,7 +104,7 @@ module ICache(
 
   assign arvalid = !rst && ((state == S_FILL_AR) || (state == S_BYP_AR));
   assign araddr  = (state == S_BYP_AR) ? {byp_addr, 2'b00} : fill_addr;
-  assign arlen   = (state == S_BYP_AR) ? 8'd0 : 8'd3;
+  assign arlen   = (state == S_BYP_AR) ? 8'd0 : 8'd7;
 `ifdef SOC_MODE
   assign arburst = (state == S_BYP_AR) ? BURST_INCR : BURST_WRAP;
 `else
@@ -127,16 +128,16 @@ module ICache(
     if (rst) begin
       state <= S_BOOT;
       valid <= 4'b0;
-      fill_cnt <= 2'b0;
+      fill_cnt <= 3'b0;
 `ifdef SOC_MODE
-      fill_start <= 2'b0;
+      fill_start <= 3'b0;
 `endif
     end else if (flush) begin
       state <= S_IDLE;
       valid <= 4'b0;
-      fill_cnt <= 2'b0;
+      fill_cnt <= 3'b0;
 `ifdef SOC_MODE
-      fill_start <= 2'b0;
+      fill_start <= 3'b0;
 `endif
     end else begin
       case (state)
@@ -158,7 +159,7 @@ module ICache(
 `ifdef SOC_MODE
             fill_start <= req_word;   // critical word first
 `endif
-            fill_cnt  <= 2'b0;
+            fill_cnt  <= 3'b0;
             valid[req_idx] <= 1'b0;
           end
         end

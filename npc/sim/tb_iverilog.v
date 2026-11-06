@@ -1,17 +1,3 @@
-//============================================================================
-// tb_iverilog.v - 4-state RTL/netlist testbench for ysyx_xxxxxxxx.v
-//
-// The generated CPU is the SOC_MODE + SYNTHESIS view.  Core.v keeps a
-// SIM_IVERILOG reset switch:
-//   * RTL simulation (npc/Makefile passes -DSIM_IVERILOG) resets at 0x8000_0000;
-//   * a CI/SoC netlist synthesized without SIM_IVERILOG resets at 0x3000_0000,
-//     fetches the two-instruction boot stub below, and jumps to 0x8000_0000.
-// This testbench maps both 0x3000_0000 (boot) and 0x8000_0000 (program), so
-// the same RTL and netlist can use it.
-//
-// Program image is passed with +hex=FILE (one 32-bit word per line).
-//============================================================================
-
 `timescale 1ns/1ps
 
 module tb_iverilog;
@@ -20,9 +6,6 @@ module tb_iverilog;
   initial $display("[tb] netlist simulation mode");
 `endif
 
-  // ---------------------------------------------------------------------------
-  // Clock / reset
-  // ---------------------------------------------------------------------------
   reg clock = 1'b0;
   reg reset = 1'b1;
   reg io_interrupt = 1'b0;
@@ -35,9 +18,6 @@ module tb_iverilog;
     reset = 1'b0;
   end
 
-  // ---------------------------------------------------------------------------
-  // AXI4 master-side signals (TB is the slave)
-  // ---------------------------------------------------------------------------
   wire        m_awvalid;
   reg         m_awready;
   wire [31:0] m_awaddr;
@@ -72,9 +52,6 @@ module tb_iverilog;
   reg         m_rlast;
   reg  [ 3:0] m_rid;
 
-  // ---------------------------------------------------------------------------
-  // DUT
-  // ---------------------------------------------------------------------------
   ysyx_26020070 dut (
     .clock(clock),
     .reset(reset),
@@ -114,7 +91,6 @@ module tb_iverilog;
     .io_master_rlast (m_rlast),
     .io_master_rid   (m_rid),
 
-    // CPU slave interface is unused in the CI testbench.
     .io_slave_awvalid(1'b0),
     .io_slave_awaddr (32'b0),
     .io_slave_awid   (4'b0),
@@ -135,28 +111,23 @@ module tb_iverilog;
     .io_slave_rready (1'b0)
   );
 
-  // ---------------------------------------------------------------------------
-  // Memory
-  // ---------------------------------------------------------------------------
-  // 0x3000_0000: small boot window used when the CPU resets at the SoC
-  //               reset vector (CI netlist, ysyxSoC).  It contains a two
-  //               instruction stub that jumps to the program at 0x8000_0000.
-  // 0x8000_0000: 128MB program/data/stack window.
   localparam FLASH_WORDS = 1 << 8;
   localparam PROG_WORDS  = 1 << 25;
 
-  reg [31:0] flash_mem [0:FLASH_WORDS-1];
+  reg [31:0] boot_mem [0:FLASH_WORDS-1];
   reg [31:0] prog_mem  [0:PROG_WORDS-1];
 
   function [31:0] read_mem;
     input [31:0] addr;
     begin
       if (addr[31:20] == 12'h300)
-        read_mem = flash_mem[addr[19:2]];
+        read_mem = boot_mem[addr[19:2]];
       else if (addr[31:27] == 5'b10000)
         read_mem = prog_mem[addr[26:2]];
-      else
+      else begin
         read_mem = 32'b0;
+        $display("WARNING: read from unimplemented address %08x", addr);
+      end
     end
   endfunction
 
@@ -167,8 +138,6 @@ module tb_iverilog;
     reg   [31:0] word;
     begin
       if (addr == 32'h1000_0000) begin
-        // AM serial port: the CI monitor looks for characters printed by
-        // the program (e.g. the random microbench key) on stdout.
         if (strb[0]) $write("%c", data[7:0]);
       end else if (addr[31:27] == 5'b10000) begin
         word = prog_mem[addr[26:2]];
@@ -181,9 +150,6 @@ module tb_iverilog;
     end
   endtask
 
-  // ---------------------------------------------------------------------------
-  // Program loading
-  // ---------------------------------------------------------------------------
   reg [1023:0] hex_file;
   integer max_cycles;
   integer i;
@@ -196,25 +162,16 @@ module tb_iverilog;
       $display("ERROR: +hex=FILE is required");
       $fatal;
     end
-    if (!$value$plusargs("max_cycles=%d", max_cycles))
-      max_cycles = 5000000;
 
-    // Zero the program window so uninitialized heap/stack does not produce X.
-    for (i = 0; i < PROG_WORDS; i = i + 1)
-      prog_mem[i] = 32'b0;
+    if (!$value$plusargs("max_cycles=%d", max_cycles)) max_cycles = 5000000;
 
-    // Boot stub at 0x3000_0000 (the SoC/CI reset vector):
-    //   lui  t0, 0x80000
-    //   jalr x0, 0(t0)
-    // A CPU built with SIM_IVERILOG starts at 0x8000_0000 and simply
-    // ignores this window.
-    flash_mem[0] = 32'h800002b7;
-    flash_mem[1] = 32'h00028067;
-    for (i = 2; i < 8; i = i + 1)
-      flash_mem[i] = 32'b0;
+    for (i = 0; i < PROG_WORDS; i = i + 1) prog_mem[i] = 32'b0;
 
-    // Read words manually so a short image does not trigger $readmemh's
-    // "not enough words for the requested range" warning.
+    boot_mem[0] = 32'h800002b7;
+    boot_mem[1] = 32'h00028067;
+
+    for (i = 2; i < 8; i = i + 1) boot_mem[i] = 32'b0;
+
     fd = $fopen(hex_file, "r");
     if (fd == 0) begin
       $display("ERROR: cannot open %0s", hex_file);
@@ -288,25 +245,6 @@ module tb_iverilog;
   reg        seen_ebreak;
   integer    ebreak_wait;
   integer    cycles;
-
-`ifdef SIM_TB_DEBUG
-  always @(posedge clock) begin
-    if (!reset) begin
-      if (m_arvalid && m_arready)
-        $display("[axi] AR  addr=%08x len=%0d id=%0d size=%0d burst=%0d",
-                 m_araddr, m_arlen, m_arid, m_arsize, m_arburst);
-      if (r_valid && m_rready)
-        $display("[axi] R   data=%08x id=%0d last=%0d",
-                 r_data, r_id, r_last);
-      if (m_awvalid && m_awready)
-        $display("[axi] AW  addr=%08x id=%0d", m_awaddr, m_awid);
-      if (m_wvalid && m_wready)
-        $display("[axi] W   data=%08x strb=%x", m_wdata, m_wstrb);
-      if (b_valid && m_bready)
-        $display("[axi] B   id=%0d resp=%0d", b_id, b_resp);
-    end
-  end
-`endif
 
   always @(posedge clock) begin
     if (reset) begin
@@ -403,13 +341,6 @@ module tb_iverilog;
       if (b_valid && m_bready)
         b_valid <= 1'b0;
 
-      // ---- ebreak monitor ----
-      // IFU uses AXI ID 1 in the NPC arbiter.  Only the first beat of a
-      // cache-line fill is the word the CPU actually requested; the other
-      // beats are neighboring words and must not be mistaken for an executed
-      // ebreak.  For a single-beat bypass read r_progress is also 0.
-      // Once the requested word is an ebreak, wait a short while for it to
-      // retire, then stop.  This works for both RTL and netlist.
       if (r_valid && m_rready && (r_id == 4'b0001) &&
           (r_progress == 8'd0) && (r_data == 32'h00100073)) begin
         seen_ebreak <= 1'b1;

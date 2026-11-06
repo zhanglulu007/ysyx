@@ -54,7 +54,7 @@ module Arbiter(
   output [1:0] lsu_bresp,
   output [3:0] lsu_bid,
 
-  // CLINT AXI4 AR (local slave)
+  // CLINT AXI4 AR
   output        clint_arvalid,
   input         clint_arready,
   output [31:0] clint_araddr,
@@ -118,9 +118,6 @@ module Arbiter(
   localparam [31:0] CLINT_BASE = 32'h0200_0000;
   localparam [31:0] CLINT_MASK = 32'hffff_0000;
 
-  // ---------------------------------------------------------------------------
-  // Read arbitration and address decode
-  // ---------------------------------------------------------------------------
 `ifdef SOC_MODE
   wire [1:0] ifu_chan = ((ifu_araddr & CLINT_MASK) == CLINT_BASE) ? 2'd2 :
                         ((ifu_araddr >= 32'ha000_0000) &&
@@ -170,8 +167,6 @@ module Arbiter(
   wire [2:0]  ar_size  = sel_ifu ? IFU_SIZE : lsu_arsize;
   wire [1:0]  ar_burst = sel_ifu ? ifu_arburst : lsu_arburst;
 
-  // Decode only when there is a real request, so an idle CPU address cannot
-  // create X on the slave-selection controls.
   wire ar_clint = ar_req && ((ar_addr & CLINT_MASK) == CLINT_BASE);
   wire ar_ready = ar_clint ? clint_arready : mem_arready;
   wire ar_fire  = ar_req && ar_ready;
@@ -193,9 +188,6 @@ module Arbiter(
   assign ifu_arready = sel_ifu && ar_ready;
   assign lsu_arready = sel_lsu && ar_ready;
 
-  // ---------------------------------------------------------------------------
-  // Read response routing
-  // ---------------------------------------------------------------------------
   wire ifu_from_clint = rd_clint_ifu;
   wire lsu_from_clint = rd_clint_lsu;
 
@@ -225,11 +217,6 @@ module Arbiter(
   wire rd_close_ifu = rd_busy_ifu && ifu_rfire;
   wire rd_close_lsu = rd_busy_lsu && lsu_rfire;
 
-  // ---------------------------------------------------------------------------
-  // Write channel: external writes pass through; writes to CLINT are
-  // terminated locally because mtime is read-only.  A local B response is
-  // still required by AXI, otherwise the LSU would wait forever.
-  // ---------------------------------------------------------------------------
   reg        clint_aw_pending;
   reg        clint_w_done;
   reg        clint_b_pending;
@@ -289,9 +276,6 @@ module Arbiter(
     end
   end
 
-  // ---------------------------------------------------------------------------
-  // State and outstanding-read bookkeeping
-  // ---------------------------------------------------------------------------
   always @(posedge clk) begin
     if (rst) begin
       state       <= S_IDLE;

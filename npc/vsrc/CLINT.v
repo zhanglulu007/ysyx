@@ -1,22 +1,7 @@
-// CLINT - Core Local INTerrupt controller (timer subset)
-//
-// Base address : 0x0200_0000 (same as the CLINT window in ysyxSoC)
-// Register map :
-//   0x0200_bff8 : mtime[31:0]  (read-only)
-//   0x0200_bffc : mtime[63:32] (read-only)
-//
-// The 64-bit mtime counter advances by one every clock.  Software reads the
-// low and high halves separately and combines them into a 64-bit value.
-//
-// The bus port carries the AXI4 read-channel set used by the NPC internal
-// bus, but the CLINT only implements the single-beat AXI4-Lite read subset.
-// The timer has no writable register, so there is no AW/W/B channel here.
-// The Arbiter terminates writes to this address range with a local B reply.
-
-/* verilator lint_off UNUSEDSIGNAL */
 module CLINT(
   input         clk,
   input         rst,
+  input  [63:0] mtime,
 
   // AXI4 AR
   input         clint_arvalid,
@@ -36,21 +21,7 @@ module CLINT(
   output [ 3:0] clint_rid
 );
 
-  // ---------------------------------------------------------------------------
-  // mtime: 64-bit, increments every clock.
-  // ---------------------------------------------------------------------------
-  reg [63:0] mtime;
-
-  always @(posedge clk) begin
-    if (rst)
-      mtime <= 64'b0;
-    else
-      mtime <= mtime + 64'd1;
-  end
-
-  // ---------------------------------------------------------------------------
-  // Read channel
-  // ---------------------------------------------------------------------------
+  // mtime is the shared mcycle/mtime counter from CSR.
   localparam R_IDLE = 1'b0;
   localparam R_WAIT = 1'b1;
 
@@ -101,4 +72,3 @@ module CLINT(
   end
 
 endmodule
-/* verilator lint_on UNUSEDSIGNAL */
