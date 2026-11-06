@@ -144,9 +144,10 @@ module Arbiter(
   wire ch2_used = (rd_busy_ifu && rd_chan_ifu == 2'd2) ||
                   (rd_busy_lsu && rd_chan_lsu == 2'd2);
 
-  wire [2:0] ch_used = {ch2_used, ch1_used, ch0_used};
-  wire ifu_free = !ch_used[ifu_chan];
-  wire lsu_free = !ch_used[lsu_chan];
+  wire ifu_free = (ifu_chan == 2'd0) ? !ch0_used :
+                  (ifu_chan == 2'd1) ? !ch1_used : !ch2_used;
+  wire lsu_free = (lsu_chan == 2'd0) ? !ch0_used :
+                  (lsu_chan == 2'd1) ? !ch1_used : !ch2_used;
 
   wire ifu_req = ifu_arvalid && ifu_free;
   wire lsu_req = lsu_arvalid && lsu_free;
