@@ -18,7 +18,6 @@
 
 #define CPU_FREQ_MHZ 500
 
-// CLINT (Core Local INTerrupt controller) timer subset
 #define CLINT_BASE    0x02000000
 #define CLINT_MTIME   0x0000bff8   // 64-bit mtime, low word first
 

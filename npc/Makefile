@@ -55,11 +55,9 @@ PERF_EVAL_LOG := $(BUILD_DIR)/perf-eval.log
 PERF_MICROBENCH_LOG := $(BUILD_DIR)/perf-microbench.log
 $(shell mkdir -p $(BUILD_DIR) $(WAVE_DIR))
 
-# CI / tapeout single-file view.
 GEN_VERILOG := $(PROJECT_DIR)/scripts/gen_verilog.py
 VERILOG_OUT := $(BUILD_DIR)/$(STUID).v
 
-# 4-state and netlist simulation.
 SIM_DIR := $(PROJECT_DIR)/sim
 SIM_TB := $(SIM_DIR)/tb_iverilog.v
 BIN2HEX := $(PROJECT_DIR)/scripts/bin2hex.py
@@ -257,9 +255,6 @@ run: build
 	  $(OBJ_DIR)/$(TOP_CLASS) $(PROG_ABS) \
 	  $(ELF_ARG) $(DIFFTEST_ARG) $(BATCH)
 
-# 生成 CI / 流片交付用的单文件 CPU RTL：
-#   build/ysyx_xxxxxxxx.v
-# 该文件是 SOC_MODE + SYNTHESIS 视图，不含 DPI-C/PMEM/perf/trace。
 verilog:
 	@test -f "$(GEN_VERILOG)" || { \
 	  echo "Error: missing $(GEN_VERILOG)"; exit 1; \

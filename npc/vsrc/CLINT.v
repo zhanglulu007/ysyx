@@ -8,8 +8,10 @@
 // The 64-bit mtime counter advances by one every clock.  Software reads the
 // low and high halves separately and combines them into a 64-bit value.
 //
-// The bus port carries the AXI4 channel set used by the NPC internal bus,
-// but the CLINT only implements the single-beat AXI4-Lite subset of it.
+// The bus port carries the AXI4 read-channel set used by the NPC internal
+// bus, but the CLINT only implements the single-beat AXI4-Lite read subset.
+// The timer has no writable register, so there is no AW/W/B channel here.
+// The Arbiter terminates writes to this address range with a local B reply.
 
 /* verilator lint_off UNUSEDSIGNAL */
 module CLINT(
@@ -31,29 +33,7 @@ module CLINT(
   output [31:0] clint_rdata,
   output [ 1:0] clint_rresp,
   output        clint_rlast,
-  output [ 3:0] clint_rid,
-
-  // AXI4 AW
-  input         clint_awvalid,
-  output        clint_awready,
-  input  [31:0] clint_awaddr,
-  input  [ 3:0] clint_awid,
-  input  [ 7:0] clint_awlen,
-  input  [ 2:0] clint_awsize,
-  input  [ 1:0] clint_awburst,
-
-  // AXI4 W
-  input         clint_wvalid,
-  output        clint_wready,
-  input  [31:0] clint_wdata,
-  input  [ 3:0] clint_wstrb,
-  input         clint_wlast,
-
-  // AXI4 B
-  output        clint_bvalid,
-  input         clint_bready,
-  output [ 1:0] clint_bresp,
-  output [ 3:0] clint_bid
+  output [ 3:0] clint_rid
 );
 
   // ---------------------------------------------------------------------------
@@ -116,58 +96,6 @@ module CLINT(
             r_state <= R_IDLE;
         end
         default: r_state <= R_IDLE;
-      endcase
-    end
-  end
-
-  // ---------------------------------------------------------------------------
-  // Write channel: the timer subset has no writable register.  Accept the
-  // transaction and return OKAY so that unexpected writes do not hang the bus.
-  // ---------------------------------------------------------------------------
-  localparam W_IDLE = 1'b0;
-  localparam W_RESP = 1'b1;
-
-  reg        w_state;
-  reg        aw_done;
-  reg        w_done;
-  reg [ 3:0] bid_latch;
-
-  wire aw_fire = clint_awvalid && clint_awready;
-  wire w_fire  = clint_wvalid  && clint_wready;
-
-  assign clint_awready = !rst && (w_state == W_IDLE) && !aw_done;
-  assign clint_wready  = !rst && (w_state == W_IDLE) && !w_done;
-  assign clint_bvalid  = !rst && (w_state == W_RESP);
-  assign clint_bresp   = 2'b00;
-  assign clint_bid     = bid_latch;
-
-  always @(posedge clk) begin
-    if (rst) begin
-      w_state   <= W_IDLE;
-      aw_done   <= 1'b0;
-      w_done    <= 1'b0;
-      bid_latch <= 4'b0;
-    end else begin
-      case (w_state)
-        W_IDLE: begin
-          if (aw_fire) begin
-            aw_done   <= 1'b1;
-            bid_latch <= clint_awid;
-          end
-          if (w_fire)
-            w_done <= 1'b1;
-
-          if ((aw_done || aw_fire) && (w_done || w_fire)) begin
-            aw_done <= 1'b0;
-            w_done  <= 1'b0;
-            w_state <= W_RESP;
-          end
-        end
-        W_RESP: begin
-          if (clint_bready)
-            w_state <= W_IDLE;
-        end
-        default: w_state <= W_IDLE;
       endcase
     end
   end
