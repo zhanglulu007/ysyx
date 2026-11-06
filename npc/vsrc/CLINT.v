@@ -21,7 +21,6 @@ module CLINT(
   output [ 3:0] clint_rid
 );
 
-  // mtime is the shared mcycle/mtime counter from CSR.
   localparam R_IDLE = 1'b0;
   localparam R_WAIT = 1'b1;
 

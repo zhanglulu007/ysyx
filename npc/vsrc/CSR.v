@@ -18,8 +18,6 @@ module CSR(
   output [31:0] mcycle_hi_out
 );
 
-  // Only the fields used by the current M-mode runtime are kept.
-  // mstatus: MPP[1:0] at bits [12:11]; mcause: exception code[4:0].
   reg [1:0]  mstatus;   // 0x300
   //reg [31:0] mtvec;     // 0x305 
   //reg [31:0] mepc;      // 0x341 
@@ -48,7 +46,6 @@ module CSR(
       mcycle_lo <= 32'b0;
       mcycle_hi <= 32'b0;
     end else begin
-      // Single 64-bit cycle counter shared with CLINT mtime.
       mcycle_lo <= mcycle_lo + 32'd1;
       if (mcycle_lo == 32'hffff_ffff)
         mcycle_hi <= mcycle_hi + 32'd1;

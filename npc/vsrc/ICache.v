@@ -43,7 +43,6 @@ module ICache(
   localparam S_BYP_AR  = 3'd3;
   localparam S_BYP_R   = 3'd4;
 
-  // Fixed geometry: 4 sets x 8 words (32-byte line).
   reg [31:0] data [0:31];
   reg [24:0] tag [0:3];
   reg [3:0] valid;
@@ -53,16 +52,15 @@ module ICache(
   reg [24:0] fill_tag;
   reg [2:0] fill_cnt;
 `ifdef SOC_MODE
-  reg [2:0] fill_start;   // word offset the wrap burst begins at
+  reg [2:0] fill_start; 
 `endif
-  reg [29:0] byp_addr;              // cpu_addr[31:2], instruction addresses are 4B aligned
+  reg [29:0] byp_addr;             
 
   wire [2:0]  req_word = cpu_addr[4:2];
   wire [1:0]  req_idx  = cpu_addr[6:5];
   wire [24:0] req_tag  = cpu_addr[31:7];
   wire [31:0] req_data = data[{req_idx, req_word}];
 
-  // Reconstruct the fill line base from the latched tag/index; no duplicate fill_line register.
 `ifdef SOC_MODE
   wire [31:0] fill_addr = {fill_tag, fill_idx, fill_start, 2'b00};
   wire [2:0]  fill_wr_word = fill_start + fill_cnt;
@@ -142,10 +140,6 @@ module ICache(
     end else begin
       case (state)
         S_BOOT: begin
-          // One extra cycle after reset gives the clock-gate latches a
-          // falling clock edge to capture their enable before the first
-          // real cache transaction.  Without it, a gate-level netlist can
-          // miss the first fill-address update and drive X onto AXI.
           state <= S_IDLE;
         end
         S_IDLE: begin
