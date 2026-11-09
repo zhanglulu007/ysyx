@@ -396,4 +396,3 @@ clean-log:
 	verilog sim-iverilog sim-iverilog-netlist
 # Convenience alias for the default standalone test image.
 test/mem.bin: $(TEST_BIN)
-
