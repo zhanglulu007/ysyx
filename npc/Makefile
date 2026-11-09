@@ -71,6 +71,21 @@ SIM_IVERILOG_VVP := $(BUILD_DIR)/sim-iverilog.vvp
 SIM_NETLIST_VVP := $(BUILD_DIR)/sim-netlist.vvp
 SIM_MAX_CYCLES ?= 5000000
 
+# Minimal standalone test image used by `make run` when no PROG is given.
+TEST_DIR := $(PROJECT_DIR)/test
+TEST_SRC := $(TEST_DIR)/mem.S
+TEST_ELF := $(TEST_DIR)/mem.elf
+TEST_BIN := $(TEST_DIR)/mem.bin
+TEST_CC ?= riscv64-linux-gnu-gcc
+TEST_OBJCOPY ?= riscv64-linux-gnu-objcopy
+TEST_CFLAGS ?= -march=rv32e -mabi=ilp32e -nostdlib -nostartfiles -Wl,-Ttext=0x80000000
+
+# Yosys produces two netlists: *.netlist.v (split ports, for P&R) and
+# *.netlist.v.sim (vector ports, for iverilog).  Prefer the .sim variant when
+# the caller passes the split-port file, as iverilog cannot connect the
+# bit-blasted port names used by the former.
+NETLIST_ACTUAL = $(if $(NETLIST),$(if $(wildcard $(NETLIST).sim),$(NETLIST).sim,$(NETLIST)),)
+
 CORE_RTL_SRCS := $(sort \
   $(wildcard $(PROJECT_DIR)/vsrc/*.v) \
   $(wildcard $(PROJECT_DIR)/vsrc/*.sv))
@@ -118,7 +133,8 @@ else
   TOP := top
   TOP_CLASS := Vtop
   OBJ_DIR := $(BUILD_DIR)/obj_dir
-  PROG ?= test/mem.bin
+  PROG ?= $(TEST_BIN)
+  TEST_PROG_PREREQ := $(TEST_BIN)
   DIFFTEST_SO ?= $(NEMU_HOME)/build/riscv32-nemu-interpreter-standalone-so
   RTL_SRCS := $(CORE_RTL_SRCS)
 endif
@@ -233,15 +249,39 @@ check-soc:
 	  exit 1; \
 	}
 
-lint: $(MODE_PREREQUISITE)
-	$(VERILATOR) --lint-only -Wno-fatal $(VERILATOR_FLAGS) $(RTL_SRCS)
+# Lint the source view and the delivered single-file RTL.
+#
+# -Wall enables all style checks.  Warnings are fatal by default in
+# Verilator; -Wno-fatal is deliberately NOT used here, so this target
+# actually fails when a real warning is introduced.
+# DECLFILENAME is allowed by the B-stage document.
+# UNUSEDSIGNAL is suppressed only for the source view because the wrapper /
+# standalone top intentionally exposes ports that are unused in one mode.
+lint: lint-rtl lint-verilog
+
+lint-rtl: $(MODE_PREREQUISITE)
+	@echo "-- LINT source RTL [MODE=$(MODE)] --"
+	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL \
+	  $(VERILATOR_FLAGS) $(RTL_SRCS)
+
+# This is the exact file consumed by CI (SOC_MODE + SYNTHESIS view).
+lint-verilog: verilog
+	@echo "-- LINT delivered RTL: $(VERILOG_OUT) --"
+	$(VERILATOR) --lint-only -Wall -Wno-DECLFILENAME \
+	  --top-module $(STUID) -DSOC_MODE -DSYNTHESIS $(VERILOG_OUT)
+
+$(TEST_BIN): $(TEST_SRC)
+	@mkdir -p $(TEST_DIR)
+	$(TEST_CC) $(TEST_CFLAGS) -o $(TEST_ELF) $<
+	$(TEST_OBJCOPY) -O binary -j .text -j .rodata -j .data $(TEST_ELF) $@
+	@echo "[test] built $(TEST_BIN)"
 
 build: $(NVBOARD_PREREQ) $(MODE_PREREQUISITE) $(if $(filter 1,$(DIFFTEST)),$(DIFFTEST_SO))
 	@mkdir -p $(BUILD_DIR) $(WAVE_DIR)
 	@echo "-- BUILD NPC [MODE=$(MODE) FST=$(FST) TRACE=$(TRACE) LOG=$(LOG) FFLASH=$(FFLASH)] --"
 	$(VERILATE_CMD)
 
-run: build
+run: build $(TEST_PROG_PREREQ)
 	@if [ ! -r "$(PROG_ABS)" ]; then \
 	  echo "Error: program '$(PROG_ABS)' not found."; exit 1; \
 	fi
@@ -286,6 +326,11 @@ sim-iverilog-netlist:
 	@test -n "$(NETLIST)" || { \
 	  echo "Error: NETLIST is required (pass NETLIST=xxx.v)."; exit 1; \
 	}
+	@test -f "$(NETLIST_ACTUAL)" || { \
+	  echo "Error: netlist '$(NETLIST_ACTUAL)' not found."; \
+	  echo "Pass the yosys-sta vector-port netlist, e.g. *.netlist.v.sim."; \
+	  exit 1; \
+	}
 	@test -n "$(CELLS)" || { \
 	  echo "Error: CELLS is required (pass CELLS=xxx.v)."; exit 1; \
 	}
@@ -294,8 +339,11 @@ sim-iverilog-netlist:
 	}
 	python3 $(BIN2HEX) $(IMG_ABS) $(SIM_NETLIST_HEX)
 	$(IVERILOG) -g2012 -DSIM_NETLIST \
-	  -o $(SIM_NETLIST_VVP) $(SIM_TB) $(NETLIST) $(CELLS)
-	@echo "[sim-iverilog-netlist] running $(IMG_ABS) with $(NETLIST)"
+	  -o $(SIM_NETLIST_VVP) $(SIM_TB) $(NETLIST_ACTUAL) $(CELLS)
+	@echo "[sim-iverilog-netlist] running $(IMG_ABS) with $(NETLIST_ACTUAL)"
+	@if [ "$(NETLIST_ACTUAL)" != "$(NETLIST)" ]; then \
+	  echo "[sim-iverilog-netlist] note: using vector-port netlist $(NETLIST_ACTUAL)"; \
+	fi
 	$(VVP) $(SIM_NETLIST_VVP) \
 	  +hex=$(abspath $(SIM_NETLIST_HEX)) +max_cycles=$(SIM_MAX_CYCLES)
 
@@ -338,10 +386,14 @@ perf:
 
 clean:
 	-rm -rf $(BUILD_DIR) $(WAVE_DIR) $(PROJECT_DIR)/npc.log
+	-rm -f $(TEST_BIN) $(TEST_ELF)
 
 clean-log:
 	-rm -rf $(LOG_DIR)
 
-.PHONY: all show-config check-soc lint build run \
+.PHONY: all show-config check-soc lint lint-rtl lint-verilog build run \
 	build-standalone run-standalone build-soc run-soc perf clean clean-log \
 	verilog sim-iverilog sim-iverilog-netlist
+# Convenience alias for the default standalone test image.
+test/mem.bin: $(TEST_BIN)
+
