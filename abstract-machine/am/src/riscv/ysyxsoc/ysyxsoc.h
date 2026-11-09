@@ -14,7 +14,7 @@
 #define UART_LSR_DR   0x01         // 数据就绪 (DR, bit 0)
 #define UART_LCR_DLAB 0x80         // 除数访问位 (LCR bit 7)
 #define UART_LCR_8N1  0x03         // 8 数据位, 无校验, 1 停止位
-#define UART_DIVISOR  0x08         // 波特率除数 
+#define UART_DIVISOR  0x01         // 波特率除数 
 
 #define CPU_FREQ_MHZ 500
 
