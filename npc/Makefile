@@ -265,8 +265,6 @@ verilog:
 	}
 	@echo "[verilog] generated $(VERILOG_OUT)"
 
-# 4 值 RTL 仿真：ysyx_xxxxxxxx.v + testbench + AXI 内存模型。
-# core 的 RESET_PC 在 -DSIM_IVERILOG 下切到 0x8000_0000。
 sim-iverilog: verilog
 	@test -r "$(IMG_ABS)" || { \
 	  echo "Error: program '$(IMG_ABS)' not found (pass IMG=xxx.bin)."; exit 1; \
@@ -281,11 +279,6 @@ sim-iverilog: verilog
 	$(VVP) $(SIM_IVERILOG_VVP) \
 	  +hex=$(abspath $(SIM_HEX)) +max_cycles=$(SIM_MAX_CYCLES)
 
-# 网表仿真：同一 testbench + yosys 网表 + 标准单元行为模型。
-# NETLIST 应是保留向量端口的仿真网表（例如 *.netlist.v.sim）。
-# CI 默认综合生成的文件复位值为 0x30000000，testbench 内置 0x30000000
-# boot stub 跳到 0x80000000；若网表使用 -DSIM_IVERILOG 综合（复位
-# 0x80000000）也同样支持。不是经过 splitnets -ports 的 STA 网表。
 sim-iverilog-netlist:
 	@test -r "$(IMG_ABS)" || { \
 	  echo "Error: program '$(IMG_ABS)' not found (pass IMG=xxx.bin)."; exit 1; \
@@ -325,7 +318,7 @@ perf:
 	      ARCH=riscv32e-ysyxsoc SOC=1 FFLASH=0 PERF=1 \
 	      TRACE=0 FST=0 DIFFTEST=0 NVBOARD=0 LOG=1 LOG_DIR=$(LOG_DIR) \
 	      mainargs=train run \
-	      > $(PERF_MICROBENCH_LOG) 2>&1; then \
+	      > $(PERF_MICROBENCH_LOG) 2>&1; then \`
 	  echo "[perf] microbench failed; tail of $(PERF_MICROBENCH_LOG):"; \
 	  tail -n 80 $(PERF_MICROBENCH_LOG); \
 	  exit 1; \
