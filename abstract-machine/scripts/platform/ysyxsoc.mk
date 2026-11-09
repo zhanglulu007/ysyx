@@ -28,6 +28,6 @@ image: image-dep
 
 run: insert-arg
 	@echo "Running on SoC..."
-	$(MAKE) -C $(NPC_HOME) run SOC=1 PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf)
+	$(MAKE) -C $(NPC_HOME) run SOC=1 PROG=$(IMAGE).bin ELF=$(abspath $(IMAGE).elf) NVBOARD=1
 
 .PHONY: insert-arg
