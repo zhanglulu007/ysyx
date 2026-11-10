@@ -44,8 +44,17 @@ void fsbl() {
   for (uint32_t i = 0; i < sz; i++) dst[i] = src[i];
 }
 
-void load(uint8_t *dst, const uint8_t *src, uint32_t size) {
-  for (uint32_t i = 0; i < size; i++) dst[i] = src[i];
+void load(uint8_t *dst8, const uint8_t *src8, uint32_t size) {
+  uint32_t *dst = (uint32_t *)dst8;
+  const uint32_t *src = (const uint32_t *)src8;
+  uint32_t n = size / 4;
+
+  for (uint32_t i = 0; i < n; i++) {
+    dst[i] = src[i];
+  }
+  for (uint32_t i = n * 4; i < size; i++) {
+    dst8[i] = src8[i];
+  }
 }
 
 void ssbl() {
