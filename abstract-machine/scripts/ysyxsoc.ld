@@ -25,12 +25,15 @@ SECTIONS {
     _text_start = .;
     *(.text*)
     _text_end = .;
+    . = ALIGN(4);
   } > SDRAM AT> FLASH
   _text_lma = LOADADDR(.text);
 
   .rodata : {
     _rodata_start = .;
     *(.rodata*)
+    *(.srodata*)
+    . = ALIGN(4);
     _rodata_end = .;
   } > SDRAM AT> FLASH
   _rodata_lma = LOADADDR(.rodata);
@@ -39,6 +42,7 @@ SECTIONS {
     _data_start = .;
     *(.data*)
     *(.sdata*)
+    . = ALIGN(4);
     _data_end = .;
   } > SDRAM AT> FLASH
   _data_lma = LOADADDR(.data);
@@ -51,6 +55,7 @@ SECTIONS {
     *(.bss*)
     *(.sbss*)
     *(.scommon)
+    . = ALIGN(4);
     _bss_end = .;
   } > SDRAM 
 
